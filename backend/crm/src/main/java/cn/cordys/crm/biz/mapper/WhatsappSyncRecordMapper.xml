@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper">
+
+    <resultMap id="BaseResultMap" type="cn.cordys.crm.biz.domain.WhatsappSyncRecord">
+        <id column="id" property="id"/>
+        <result column="owner_phone" property="ownerPhone"/>
+        <result column="contact_id" property="contactId"/>
+        <result column="interact_date" property="interactDate"/>
+        <result column="sync_time" property="syncTime"/>
+        <result column="status" property="status"/>
+    </resultMap>
+
+    <!-- 批量插入，冲突时忽略（MySQL ON DUPLICATE KEY UPDATE 无操作） -->
+    <insert id="insertBatchIgnore" parameterType="java.util.List">
+        INSERT INTO biz_whatsapp_sync_record
+        (owner_phone, contact_phone, interact_date, sync_time, status)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.ownerPhone},
+            #{item.contactPhone},
+            #{item.interactDate},
+            NOW(),
+            0
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        sync_time = sync_time  <!-- 无实际更新，仅避免报错 -->
+    </insert>
+
+    <select id="selectByOwnerAndContact" resultMap="BaseResultMap">
+        SELECT *
+        FROM biz_whatsapp_sync_record
+        WHERE owner_phone = #{ownerPhone}
+          AND contact_phone = #{contactPhone}
+        ORDER BY interact_date DESC LIMIT 1
+    </select>
+
+</mapper>

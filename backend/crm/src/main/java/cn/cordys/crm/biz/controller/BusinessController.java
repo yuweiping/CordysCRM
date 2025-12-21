@@ -1,15 +1,15 @@
 package cn.cordys.crm.biz.controller;
 
+import cn.cordys.common.response.handler.ResultHolder;
 import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
+import cn.cordys.crm.biz.dto.SyncContactsRequest;
 import cn.cordys.crm.biz.service.BusinessService;
+import cn.cordys.crm.biz.service.WhatsappSyncService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -26,5 +26,16 @@ public class BusinessController {
     public List<ContactByPhoneResponse> getContactsByUserPhone(
             @Parameter(description = "用户手机号", required = true) @RequestParam String phone) {
         return businessService.getContactsByUserPhone(phone);
+    }
+
+    @Resource
+    private WhatsappSyncService whatsappSyncService;
+
+    @PostMapping("/contact/sync-contacts")
+    @Operation(summary = "同步WhatsApp联系人")
+    public ResultHolder syncWhatsappContacts(
+            @Parameter(description = "同步联系人请求参数", required = true) @RequestBody SyncContactsRequest request) {
+        whatsappSyncService.syncContacts(request);
+        return ResultHolder.success("");
     }
 }

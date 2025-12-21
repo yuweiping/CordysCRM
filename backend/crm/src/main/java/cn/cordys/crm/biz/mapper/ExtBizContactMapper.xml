@@ -4,14 +4,11 @@
 
     <select id="getContactsByUserPhone" resultType="cn.cordys.crm.biz.dto.ContactByPhoneResponse">
         SELECT c.*,
-               MAX(cc.phone)                                                            AS phone,
-               MAX(CASE WHEN cf.field_id = 'customer_category' THEN cf.field_value END) AS category,
-               MAX(CASE WHEN cf.field_id = 'customer_website' THEN cf.field_value END)  AS website
-        FROM customer c
-                 LEFT JOIN customer_field cf ON c.id = cf.resource_id
-                 LEFT JOIN customer_contact cc ON c.id = cc.customer_id
+               MAX(CASE WHEN cf.field_id = 'category' THEN cf.field_value END) AS category,
+               MAX(CASE WHEN cf.field_id = 'website' THEN cf.field_value END)  AS website
+        FROM clue c
+                 LEFT JOIN clue_field cf ON c.id = cf.resource_id
         WHERE c.owner = (SELECT id FROM sys_user WHERE phone = #{phone})
-
         GROUP BY c.id
     </select>
 </mapper>

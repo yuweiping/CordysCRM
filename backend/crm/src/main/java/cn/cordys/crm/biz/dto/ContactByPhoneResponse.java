@@ -1,6 +1,6 @@
 package cn.cordys.crm.biz.dto;
 
-import cn.cordys.crm.customer.domain.Customer;
+import cn.cordys.crm.clue.domain.Clue;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -10,10 +10,7 @@ import lombok.Data;
  * @author jianxing
  */
 @Data
-public class ContactByPhoneResponse extends Customer {
-
-    @Schema(description = "联系人电话")
-    private String phone;
+public class ContactByPhoneResponse extends Clue {
 
     @Schema(description = "客户分类")
     private String category;

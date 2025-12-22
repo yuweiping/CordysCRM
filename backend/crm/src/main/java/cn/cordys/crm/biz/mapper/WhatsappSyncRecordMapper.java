@@ -19,4 +19,12 @@ public interface WhatsappSyncRecordMapper {
             @Param("ownerPhone") String ownerPhone,
             @Param("contactPhone") String contactPhone
     );
+
+    /**
+     * 查询负责人冲突的记录
+     */
+    List<WhatsappSyncRecord> selectOwnerConflict(
+            @Param("contactPhone") String contactPhone,
+            @Param("currentOwnerPhone") String currentOwnerPhone
+    );
 }

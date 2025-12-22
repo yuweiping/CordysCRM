@@ -10,21 +10,19 @@
         <result column="contact_phone" property="contactPhone"/>
         <result column="interact_date" property="interactDate"/>
         <result column="sync_time" property="syncTime"/>
-        <result column="status" property="status"/>
     </resultMap>
 
     <!-- 批量插入，冲突时忽略（MySQL ON DUPLICATE KEY UPDATE 无操作） -->
     <insert id="insertBatchIgnore" parameterType="java.util.List">
         INSERT INTO biz_whatsapp_sync_record
-        (owner_phone, contact_phone, interact_date, sync_time, status)
+        (owner_phone, contact_phone, interact_date, sync_time)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (
             #{item.ownerPhone},
             #{item.contactPhone},
             #{item.interactDate},
-            NOW(),
-            0
+            NOW()
             )
         </foreach>
         ON DUPLICATE KEY UPDATE
@@ -37,6 +35,14 @@
         WHERE owner_phone = #{ownerPhone}
           AND contact_phone = #{contactPhone}
         ORDER BY interact_date DESC LIMIT 1
+    </select>
+
+    <!-- 查询负责人冲突的记录 -->
+    <select id="selectOwnerConflict" resultMap="BaseResultMap">
+        SELECT *
+        FROM biz_whatsapp_sync_record
+        WHERE contact_phone = #{contactPhone}
+          AND owner_phone != #{currentOwnerPhone}
     </select>
 
 </mapper>

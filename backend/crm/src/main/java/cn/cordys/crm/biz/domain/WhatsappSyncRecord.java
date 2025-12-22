@@ -23,6 +23,4 @@ public class WhatsappSyncRecord extends BaseModel {
     @Schema(description = "同步时间")
     private LocalDateTime syncTime;
 
-    @Schema(description = "0=待处理, 1=已关联")
-    private Byte status;
 }

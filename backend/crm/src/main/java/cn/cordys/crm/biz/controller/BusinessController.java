@@ -35,7 +35,11 @@ public class BusinessController {
     @Operation(summary = "同步WhatsApp联系人")
     public ResultHolder syncWhatsappContacts(
             @Parameter(description = "同步联系人请求参数", required = true) @RequestBody SyncContactsRequest request) {
-        whatsappSyncService.syncContacts(request);
-        return ResultHolder.success("");
+        try {
+            whatsappSyncService.syncContacts(request);
+        } catch (RuntimeException e) {
+            return ResultHolder.error("同步WhatsApp联系人失败", e.getMessage());
+        }
+        return ResultHolder.success("同步WhatsApp联系人成功");
     }
 }

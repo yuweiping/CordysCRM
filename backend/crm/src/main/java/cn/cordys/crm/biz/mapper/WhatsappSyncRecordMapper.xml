@@ -7,7 +7,7 @@
     <resultMap id="BaseResultMap" type="cn.cordys.crm.biz.domain.WhatsappSyncRecord">
         <id column="id" property="id"/>
         <result column="owner_phone" property="ownerPhone"/>
-        <result column="contact_id" property="contactId"/>
+        <result column="contact_phone" property="contactPhone"/>
         <result column="interact_date" property="interactDate"/>
         <result column="sync_time" property="syncTime"/>
         <result column="status" property="status"/>

@@ -10,19 +10,23 @@
         <result column="contact_phone" property="contactPhone"/>
         <result column="interact_date" property="interactDate"/>
         <result column="sync_time" property="syncTime"/>
+        <result column="type" property="type"/>
+        <result column="target_id" property="targetId"/>
     </resultMap>
 
     <!-- 批量插入，冲突时忽略（MySQL ON DUPLICATE KEY UPDATE 无操作） -->
     <insert id="insertBatchIgnore" parameterType="java.util.List">
         INSERT INTO biz_whatsapp_sync_record
-        (owner_phone, contact_phone, interact_date, sync_time)
+        (owner_phone, contact_phone, interact_date, sync_time, type, target_id)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (
             #{item.ownerPhone},
             #{item.contactPhone},
             #{item.interactDate},
-            NOW()
+            NOW(),
+            #{item.type},
+            #{item.targetId}
             )
         </foreach>
         ON DUPLICATE KEY UPDATE

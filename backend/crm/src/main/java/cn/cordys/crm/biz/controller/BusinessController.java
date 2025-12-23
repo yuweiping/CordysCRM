@@ -22,7 +22,7 @@ public class BusinessController {
     private BusinessService businessService;
 
     @GetMapping("/contact/by-phone")
-    @Operation(summary = "根据用户手机号查询联系人信息")
+    @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
     public List<ContactByPhoneResponse> getContactsByUserPhone(
             @Parameter(description = "用户手机号", required = true) @RequestParam String phone) {
         return businessService.getContactsByUserPhone(phone);
@@ -36,10 +36,12 @@ public class BusinessController {
     public ResultHolder syncWhatsappContacts(
             @Parameter(description = "同步联系人请求参数", required = true) @RequestBody SyncContactsRequest request) {
         try {
-            whatsappSyncService.syncContacts(request);
+            // 调用服务方法获取同步结果
+            Object result = whatsappSyncService.syncContacts(request);
+            // 将结果封装在ResultHolder中返回
+            return ResultHolder.success(result);
         } catch (RuntimeException e) {
             return ResultHolder.error("同步WhatsApp联系人失败", e.getMessage());
         }
-        return ResultHolder.success("同步WhatsApp联系人成功");
     }
 }

@@ -5,6 +5,7 @@ import cn.cordys.crm.biz.domain.WhatsappOwnerConflict;
 import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
 import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
 import cn.cordys.crm.biz.dto.SyncContactsRequest;
+import cn.cordys.crm.biz.dto.SyncContactsResponse;
 import cn.cordys.crm.biz.mapper.WhatsappOwnerConflictMapper;
 import cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper;
 import cn.cordys.crm.clue.domain.Clue;
@@ -72,29 +73,46 @@ public class WhatsappSyncService {
      * - 在联系人中，增加跟踪记录
      */
     @Transactional(rollbackFor = Exception.class)
-    public void syncContacts(SyncContactsRequest request) {
+    public SyncContactsResponse syncContacts(SyncContactsRequest request) {
+        SyncContactsResponse response = new SyncContactsResponse();
+        List<SyncContactsResponse.ContactResult> results = new ArrayList<>();
+
         if (request == null || request.getContacts() == null || request.getContacts().isEmpty()) {
-            return;
+            response.setResults(results);
+            return response;
         }
 
         List<WhatsappSyncRecord> records = new ArrayList<>();
         List<WhatsappOwnerConflict> conflicts = new ArrayList<>();
 
         for (SyncContactsRequest.ContactItem item : request.getContacts()) {
-            if (item.getContactPhone() == null || item.getDate() == null) {
-                continue;
-            }
+            SyncContactsResponse.ContactResult result = new SyncContactsResponse.ContactResult();
+            result.setContactPhone(item.getContactPhone());
+            result.setSuccess(false);
 
-            String contactPhone = item.getContactPhone();
-            String ownerPhone = request.getPhone();
+            try {
+                if (item.getContactPhone() == null || item.getDate() == null) {
+                    result.setErrorMessage("联系人电话或日期不能为空");
+                    results.add(result);
+                    continue;
+                }
 
-            // 检查负责人冲突
-            String conflictPhone = checkOwnerConflict(contactPhone, ownerPhone);
-            if (conflictPhone != null) {
-                // 如果有冲突，记录冲突信息
-                WhatsappOwnerConflict conflict = createConflictRecord(contactPhone, ownerPhone, conflictPhone);
-                conflicts.add(conflict);
-            } else {
+                String contactPhone = item.getContactPhone();
+                String ownerPhone = request.getPhone();
+                String type = null;
+                String targetId = null;
+
+                // 检查负责人冲突
+                String conflictPhone = checkOwnerConflict(contactPhone, ownerPhone);
+                if (conflictPhone != null) {
+                    // 如果有冲突，记录冲突信息
+                    WhatsappOwnerConflict conflict = createConflictRecord(contactPhone, ownerPhone, conflictPhone);
+                    conflicts.add(conflict);
+                    result.setErrorMessage("存在负责人冲突：" + conflictPhone);
+                    results.add(result);
+                    continue;
+                }
+
                 // 没有冲突，正常处理同步
                 // 1. 判断手机号是否在线索中
                 Clue clue = getClueByPhone(item.getContactPhone());
@@ -102,9 +120,12 @@ public class WhatsappSyncService {
                 if (clue != null) {
                     // 在线索中的处理逻辑
                     handleClueExists(clue, request.getPhone(), item);
+                    type = "CLUE";
+                    targetId = clue.getId();
                 } else {
                     // 不在线索中的处理逻辑
-                    handleClueNotExists(item.getContactPhone(), request.getPhone(), item);
+                    type = handleClueNotExists(item.getContactPhone(), request.getPhone(), item);
+                    targetId = getTargetIdByType(type, contactPhone);
                 }
 
                 // 构建WhatsApp同步记录
@@ -112,8 +133,20 @@ public class WhatsappSyncService {
                 record.setOwnerPhone(request.getPhone());
                 record.setContactPhone(item.getContactPhone());
                 record.setInteractDate(LocalDate.parse(item.getDate()));
+                record.setType(type);
+                record.setTargetId(targetId);
                 // status 默认为 0，sync_time 由 SQL 的 NOW() 设置
                 records.add(record);
+
+                // 设置处理结果
+                result.setType(type);
+                result.setTargetId(targetId);
+                result.setSuccess(true);
+            } catch (Exception e) {
+                result.setErrorMessage("处理失败：" + e.getMessage());
+                System.err.println("处理联系人失败：" + item.getContactPhone() + "，错误：" + e.getMessage());
+            } finally {
+                results.add(result);
             }
         }
 
@@ -124,6 +157,25 @@ public class WhatsappSyncService {
         if (!conflicts.isEmpty()) {
             whatsappOwnerConflictMapper.insertBatch(conflicts);
         }
+
+        response.setResults(results);
+        return response;
+    }
+
+    /**
+     * 根据类型获取目标ID
+     */
+    private String getTargetIdByType(String type, String contactPhone) {
+        if ("CLUE".equals(type)) {
+            // 查找刚创建的线索ID
+            Clue clue = getClueByPhone(contactPhone);
+            return clue != null ? clue.getId() : null;
+        } else if ("CONTACT".equals(type)) {
+            // 查找联系人ID
+            List<ContactByPhoneResponse> contacts = businessService.getContactsByUserPhone(contactPhone);
+            return contacts != null && !contacts.isEmpty() ? contacts.get(0).getId() : null;
+        }
+        return null;
     }
 
     /**
@@ -209,7 +261,7 @@ public class WhatsappSyncService {
     /**
      * 处理手机号不在线索中的情况
      */
-    private void handleClueNotExists(String contactPhone, String ownerPhone, SyncContactsRequest.ContactItem item) {
+    private String handleClueNotExists(String contactPhone, String ownerPhone, SyncContactsRequest.ContactItem item) {
         String currentUserId = getUserIdByPhone(ownerPhone);
 
         // 判断是否在联系人中
@@ -223,9 +275,11 @@ public class WhatsappSyncService {
                 // 增加跟踪记录
                 addFollowUpRecord(newClue.getId(), "CLUE", item.getDate(), "WhatsApp互动 - 新增线索", currentUserId, DEFAULT_ORGANIZATION_ID);
             }
+            return "CLUE";
         } else {
             // 增加跟踪记录
             addFollowUpRecord(contacts.get(0).getId(), "CONTACT", item.getDate(), "WhatsApp互动", currentUserId, DEFAULT_ORGANIZATION_ID);
+            return "CONTACT";
         }
     }
 

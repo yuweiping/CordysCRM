@@ -33,6 +33,8 @@ public class BusinessController {
     @Resource
     private WhatsappSyncRecordMapper whatsappSyncRecordMapper;
     @Resource
+    private WhatsappSyncService whatsappSyncService;
+    @Resource
     private UserLoginService userLoginService;
 
     @GetMapping("/contact/by-phone")
@@ -42,8 +44,6 @@ public class BusinessController {
         return businessService.getContactsByUserPhone(phone);
     }
 
-    @Resource
-    private WhatsappSyncService whatsappSyncService;
 
     @PostMapping("/contact/sync-contacts")
     @Operation(summary = "同步WhatsApp联系人")
@@ -63,16 +63,8 @@ public class BusinessController {
     @Operation(summary = "线索转换为客户")
     public ResultHolder transitionClueToCustomer(@RequestBody TransitionCustomerRequest request) {
         try {
-            // 根据手机号获取用户ID
-            UserDTO userDTO = userLoginService.authenticateUser(request.getOwnerPhone());
-            String sessionId = SessionUtils.getSessionId();
-            SessionUser sessionUser = SessionUser.fromUser(userDTO, sessionId);
-
-// 3. 将用户信息放入session
-            SessionUtils.putUser(sessionUser);
-            if (userDTO == null) {
-                return ResultHolder.error(-1, "根据手机号未找到用户");
-            }
+            // 登录用户并获取用户ID
+            UserDTO userDTO = login(request.getOwnerPhone());
             String userId = userDTO.getId();
             ClueTransformRequest clueTransformRequest = new ClueTransformRequest();
             clueTransformRequest.setClueId(request.getClueId());
@@ -94,5 +86,16 @@ public class BusinessController {
         } catch (RuntimeException e) {
             return ResultHolder.error("线索转换为客户失败", e.getMessage());
         }
+    }
+
+    private UserDTO login(String ownerPhone) {
+        // 根据手机号获取用户ID
+        UserDTO userDTO = userLoginService.authenticateUser(ownerPhone);
+        String sessionId = SessionUtils.getSessionId();
+        SessionUser sessionUser = SessionUser.fromUser(userDTO, sessionId);
+
+// 3. 将用户信息放入session
+        SessionUtils.putUser(sessionUser);
+        return userDTO;
     }
 }

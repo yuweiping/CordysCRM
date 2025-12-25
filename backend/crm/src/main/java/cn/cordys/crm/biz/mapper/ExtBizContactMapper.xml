@@ -10,6 +10,6 @@
                  LEFT JOIN clue_field cf ON c.id = cf.resource_id
         WHERE c.owner = (SELECT id FROM sys_user WHERE phone = #{phone})
           and c.id not in (SELECT clue_id from follow_up_record)
-        GROUP BY c.id limit 20
+        GROUP BY c.id limit 30
     </select>
 </mapper>

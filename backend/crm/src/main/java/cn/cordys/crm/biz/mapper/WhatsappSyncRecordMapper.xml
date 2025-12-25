@@ -15,6 +15,7 @@
     </resultMap>
 
     <!-- 批量插入，冲突时忽略（MySQL ON DUPLICATE KEY UPDATE 无操作） -->
+    <!-- 批量插入，冲突时更新 -->
     <insert id="insertBatchIgnore" parameterType="java.util.List">
         INSERT INTO biz_whatsapp_sync_record
         (owner_phone, contact_phone, interact_date, sync_time, type, target_id)
@@ -30,7 +31,8 @@
             )
         </foreach>
         ON DUPLICATE KEY UPDATE
-        sync_time = sync_time  <!-- 无实际更新，仅避免报错 -->
+        interact_date = VALUES(interact_date),
+        sync_time = NOW()
     </insert>
 
     <select id="selectByOwnerAndContact" resultMap="BaseResultMap">

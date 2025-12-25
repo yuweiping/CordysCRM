@@ -27,4 +27,9 @@ public interface WhatsappSyncRecordMapper {
             @Param("contactPhone") String contactPhone,
             @Param("currentOwnerPhone") String currentOwnerPhone
     );
+
+    /**
+     * 更新WhatsApp同步记录
+     */
+    void update(@Param("record") WhatsappSyncRecord record);
 }

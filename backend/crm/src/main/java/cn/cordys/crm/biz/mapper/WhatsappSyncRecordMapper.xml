@@ -51,4 +51,19 @@
           AND owner_phone != #{currentOwnerPhone}
     </select>
 
+    <!-- 更新WhatsApp同步记录 -->
+    <!-- 更新WhatsApp同步记录 -->
+    <update id="update" parameterType="cn.cordys.crm.biz.domain.WhatsappSyncRecord">
+        UPDATE biz_whatsapp_sync_record
+        <set>
+            <if test="record.type != null">type = #{record.type},</if>
+            <if test="record.targetId != null">target_id = #{record.targetId},</if>
+            <if test="record.interactDate != null">interact_date = #{record.interactDate},</if>
+            <if test="record.syncTime != null">sync_time = #{record.syncTime},</if>
+            <if test="record.ownerPhone != null">owner_phone = #{record.ownerPhone},</if>
+            <if test="record.contactPhone != null">contact_phone = #{record.contactPhone},</if>
+        </set>
+        WHERE id = #{record.id}
+    </update>
+
 </mapper>

@@ -23,7 +23,7 @@ public class WhatsappSyncRecord extends BaseModel {
     @Schema(description = "同步时间")
     private LocalDateTime syncTime;
 
-    @Schema(description = "类型：CLUE(线索)或CONTACT(联系人)")
+    @Schema(description = "类型：CLUE(线索)或CUSTOMER(客户)")
     private String type;
 
     @Schema(description = "对应类型的ID")

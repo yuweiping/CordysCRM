@@ -18,7 +18,7 @@ public class SyncContactsResponse {
         @Schema(description = "联系人电话")
         private String contactPhone;
 
-        @Schema(description = "处理类型：CLUE(线索)或CONTACT(联系人)")
+        @Schema(description = "处理类型：CLUE(线索)或CUSTOMER(客户)")
         private String type;
 
         @Schema(description = "对应类型的ID")

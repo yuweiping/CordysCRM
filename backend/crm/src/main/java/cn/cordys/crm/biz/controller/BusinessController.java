@@ -5,7 +5,6 @@ import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
 import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
 import cn.cordys.crm.biz.dto.SyncContactsRequest;
 import cn.cordys.crm.biz.dto.TransitionCustomerRequest;
-import cn.cordys.crm.biz.dto.TransitionCustomerResponse;
 import cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper;
 import cn.cordys.crm.biz.service.BusinessService;
 import cn.cordys.crm.biz.service.WhatsappSyncService;
@@ -84,20 +83,14 @@ public class BusinessController {
             // 查询对应的WhatsApp同步记录
             WhatsappSyncRecord record = whatsappSyncRecordMapper.selectByOwnerAndContact(request.getOwnerPhone(), request.getContactPhone());
             if (record != null) {
-                // 更新记录的type为CONTACT，targetId为转换后的客户ID
-                record.setType("CONTACT");
+                // 更新记录的type为CUSTOMER，targetId为转换后的客户ID
+                record.setType("CUSTOMER");
                 record.setTargetId(customerId);
                 // 更新记录
                 whatsappSyncRecordMapper.update(record);
             }
 
-            // 创建返回结果
-            TransitionCustomerResponse response = new TransitionCustomerResponse();
-            response.setContactPhone(request.getContactPhone());
-            response.setType("CONTACT");
-            response.setTargetId(customerId); // 这里应该是转换后的客户ID
-
-            return ResultHolder.success(response);
+            return ResultHolder.success(record);
         } catch (RuntimeException e) {
             return ResultHolder.error("线索转换为客户失败", e.getMessage());
         }

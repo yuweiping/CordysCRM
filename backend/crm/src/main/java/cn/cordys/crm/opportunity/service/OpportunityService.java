@@ -18,7 +18,7 @@ import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
 import cn.cordys.common.permission.PermissionUtils;
-import cn.cordys.common.service.BaseResourceFieldService;
+import cn.cordys.common.service.BaseChartService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
@@ -104,6 +104,8 @@ public class OpportunityService {
     private BaseService baseService;
     @Resource
     private OpportunityFieldService opportunityFieldService;
+    @Resource
+    private BaseChartService baseChartService;
     @Resource
     private LogService logService;
     @Resource
@@ -728,7 +730,7 @@ public class OpportunityService {
     private ImportResponse checkImportExcel(MultipartFile file, String currentOrg) {
         try {
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(FormKey.OPPORTUNITY.getKey(), currentOrg);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "opportunity", "opportunity_field", currentOrg, null, null);
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "opportunity", "opportunity_field", currentOrg);
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
@@ -796,11 +798,11 @@ public class OpportunityService {
 
     public List<ChartResult> chart(ChartAnalysisRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
         ModuleFormConfigDTO formConfig = getFormConfig(orgId);
-        formConfig.getFields().addAll(BaseResourceFieldService.getChartBaseFields());
+        formConfig.getFields().addAll(BaseChartService.getChartBaseFields());
         formConfig.getFields().addAll(getChartFields(orgId));
         ChartAnalysisDbRequest chartAnalysisDbRequest = ConditionFilterUtils.parseChartAnalysisRequest(request, formConfig);
         List<ChartResult> chartResults = extOpportunityMapper.chart(chartAnalysisDbRequest, userId, orgId, deptDataPermission);
-        return opportunityFieldService.translateAxisName(formConfig, chartAnalysisDbRequest, chartResults);
+        return baseChartService.translateAxisName(formConfig, chartAnalysisDbRequest, chartResults);
     }
 
     public List<BaseField> getChartFields(String orgId) {

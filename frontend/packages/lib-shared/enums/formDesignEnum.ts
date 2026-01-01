@@ -20,8 +20,9 @@ export enum FormDesignKeyEnum {
   FOLLOW_RECORD = 'followRecord',
   CONTRACT = 'contract', // 合同
   CONTRACT_SNAPSHOT = 'contractSnapshot', // 合同快照
-  CONTRACT_PAYMENT = 'contractPaymentPlan', // 回款
-  CONTRACT_CONTRACT_PAYMENT = 'contractContractPayment', // 合同下的回款
+  CONTRACT_PAYMENT = 'contractPaymentPlan', // 回款计划
+  CONTRACT_CONTRACT_PAYMENT = 'contractContractPayment', // 合同下的回款计划
+  CONTRACT_PAYMENT_RECORD = 'contractPaymentRecord', // 回款记录
   PRICE = 'price', // 价格表
   OPPORTUNITY_QUOTATION = 'quotation', // 商机报价单
   OPPORTUNITY_QUOTATION_SNAPSHOT = 'quotationSnapshot', // 商机快照报价单
@@ -66,6 +67,7 @@ export enum FieldTypeEnum {
   FORMULA = 'FORMULA', // 计算公式
   SUB_PRODUCT = 'SUB_PRODUCT',
   SUB_PRICE = 'SUB_PRICE',
+  INPUT_NUMBER_WITH_UNIT = 'INPUT_NUMBER_WITH_UNIT', // 数值带单位组件，用于到到期提醒等场景X年、月、天、小时
 }
 
 export enum FieldRuleEnum {

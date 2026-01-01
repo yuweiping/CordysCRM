@@ -237,22 +237,14 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     ],
     [FormDesignKeyEnum.CUSTOMER_OPPORTUNITY]: opportunityInternalFields,
     [FormDesignKeyEnum.CLUE_TRANSITION_CUSTOMER]: customerInternalFields,
-    [FormDesignKeyEnum.CONTRACT]: [
+    [FormDesignKeyEnum.CONTRACT_SNAPSHOT]: [
       {
         title: t('org.department'),
         key: 'departmentName',
       },
       {
-        title: t('contract.voidReason'),
-        key: 'voidReason',
-      },
-      {
         title: t('opportunity.quotation.amount'),
         key: 'amount',
-      },
-      {
-        title: t('contract.archivedStatus'),
-        key: 'archivedStatus',
       },
     ],
     [FormDesignKeyEnum.CONTRACT_PAYMENT]: [
@@ -389,7 +381,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     } else if (
       item.type === FieldTypeEnum.DATA_SOURCE &&
       item.dataSourceType === FieldDataSourceTypeEnum.CONTRACT &&
-      [FormDesignKeyEnum.CONTRACT_PAYMENT].includes(props.formKey.value)
+      [FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD].includes(props.formKey.value)
     ) {
       descriptions.value.push({
         label: item.name,
@@ -752,6 +744,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       const asyncApi = getFormDetailApiMap[props.formKey.value];
       if (!asyncApi || !props.sourceId?.value) return;
       const res = await asyncApi(props.sourceId?.value);
+      formDetail.value = {};
       if (needInitFormDescription) {
         await initFormDescription(res);
       }
@@ -832,7 +825,10 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         };
       }
     }
-    if (props.formKey.value === FormDesignKeyEnum.CONTRACT_PAYMENT && props.sourceId?.value) {
+    if (
+      [FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD].includes(props.formKey.value) &&
+      props.sourceId?.value
+    ) {
       // 合同详情下创建计划，自动带入合同信息
       if (field.businessKey === 'contractId') {
         specialInitialOptions.value = [
@@ -1109,7 +1105,9 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           staticRule.regex = rule.regex; // 正则表达式(目前没有)是配置到后台存储的，需要读取
           staticRule.message = t(staticRule.message as string, { value: t(item.name) });
           staticRule.type = getRuleType(item);
-          if ([FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(item.type)) {
+          if (
+            [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE, FieldTypeEnum.PICTURE].includes(item.type)
+          ) {
             staticRule.trigger = 'none';
           }
         }
@@ -1125,6 +1123,8 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       defaultValue = parseModuleFieldValue(field, field.defaultValue, field.initialOptions);
     } else if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(field.type)) {
       defaultValue = Number.isNaN(Number(defaultValue)) || defaultValue === '' ? null : Number(defaultValue);
+    } else if ([FieldTypeEnum.PICTURE, FieldTypeEnum.ATTACHMENT].includes(field.type)) {
+      defaultValue = defaultValue || [];
     } else if (getRuleType(field) === 'array') {
       defaultValue =
         field.type === FieldTypeEnum.DATA_SOURCE && typeof field.defaultValue === 'string'

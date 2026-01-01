@@ -3,15 +3,14 @@ export const ContractPageUrl = '/contract/page'; // 合同列表
 export const ContractAddUrl = '/contract/add'; // 添加合同
 export const ContractUpdateUrl = '/contract/update'; // 更新合同
 export const ContractDeleteUrl = '/contract/delete'; // 删除合同
-export const ContractVoidedUrl = '/contract/voided'; // 作废合同
-export const ContractArchivedUrl = '/contract/archived'; // 归档合同
 export const GetContractDetailUrl = '/contract/get'; // 获取合同详情
 export const GetContractFormConfigUrl = '/contract/module/form'; // 合同表单配置
 export const GetContractFormSnapshotConfigUrl = '/contract/module/form/snapshot'; // 合同表单配置
 export const GetContractTabUrl = '/contract/tab'; // 合同tab显隐
-export const ChangeContractStatusUrl = '/contract/status/update';
+export const ChangeContractStatusUrl = '/contract/stage/update';
 export const BatchApproveContractUrl = '/contract/batch/approval';
 export const ApproveContractUrl = '/contract/approval';
+export const RevokeContractUrl = '/contract/revoke';
 
 // 合同导出
 export const ExportContractAllUrl = '/contract/export-all'; // 合同导出全量
@@ -56,3 +55,40 @@ export const FixedPaymentPlanViewUrl = '/contract/payment-plan/view/fixed'; // �
 export const EnablePaymentPlanViewUrl = '/contract/payment-plan/view/enable'; // 启用回款计划视图
 export const DeletePaymentPlanViewUrl = '/contract/payment-plan/view/delete'; // 删除回款计划视图
 export const DragPaymentPlanViewUrl = '/contract/payment-plan/view/edit/pos'; // 拖拽回款计划视图排序
+
+// 回款记录列表
+export const PaymentRecordPageUrl = '/contract/payment-record/page'; // 回款记录列表
+export const PaymentRecordAddUrl = '/contract/payment-record/add'; // 添加回款记录
+export const PaymentRecordUpdateUrl = '/contract/payment-record/update'; // 更新回款记录
+export const PaymentRecordDeleteUrl = '/contract/payment-record/delete'; // 删除回款记录
+export const GetPaymentRecordDetailUrl = '/contract/payment-record/get'; // 获取回款记录详情
+export const GetPaymentRecordFormConfigUrl = '/contract/payment-record/module/form'; // 回款记录表单配置
+export const GetPaymentRecordTabUrl = '/contract/payment-record/tab'; // 回款记录tab显隐
+
+// 回款记录导出
+export const ExportPaymentRecordAllUrl = '/contract/payment-record/export-all'; // 回款记录导出全量
+export const ExportPaymentRecordSelectedUrl = '/contract/payment-record/export-select'; // 回款记录导出选中
+
+// 回款记录视图
+export const AddPaymentRecordViewUrl = '/contract/payment-record/view/add'; // 添加回款记录视图
+export const UpdatePaymentRecordViewUrl = '/contract/payment-record/view/update'; // 更新回款记录视图
+export const GetPaymentRecordViewListUrl = '/contract/payment-record/view/list'; // 获取回款记录视图列表
+export const GetPaymentRecordViewDetailUrl = '/contract/payment-record/view/detail'; // 获取回款记录视图详情
+export const FixedPaymentRecordViewUrl = '/contract/payment-record/view/fixed'; // 固定回款记录视图
+export const EnablePaymentRecordViewUrl = '/contract/payment-record/view/enable'; // 启用回款记录视图
+export const DeletePaymentRecordViewUrl = '/contract/payment-record/view/delete'; // 删除回款记录视图
+export const DragPaymentRecordViewUrl = '/contract/payment-record/view/edit/pos'; // 拖拽回款记录视图排序
+
+
+// 合同-工商抬头导入
+export const PreCheckBusinessNameImportUrl = '/contract/business-name/import/pre-check';
+export const DownloadBusinessNameTemplateUrl = '/contract/business-name/template/download';
+export const ImportBusinessNameUrl = '/contract/business-name/import';
+
+// 合同-工商抬头列表
+export const BusinessNamePageUrl = '/contract/business-name/page';
+export const BusinessNameAddUrl = '/contract/business-name/add';
+export const BusinessNameUpdateUrl = '/contract/business-name/update';
+export const BusinessNameDeleteUrl = '/contract/business-name/delete';
+export const BusinessNameRevokeUrl = '/contract/business-name/revoke';
+export const GetBusinessNameDetailUrl = '/contract/business-name/get';

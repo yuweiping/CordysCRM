@@ -3,7 +3,7 @@ package cn.cordys.common.constants;
 /**
  * 部门来源类型
  */
-public enum DepartmentConstants {
+public enum ThirdConfigTypeConstants {
 
     /**
      * 本地
@@ -36,5 +36,18 @@ public enum DepartmentConstants {
     /**
      * tender
      */
-    TENDER
+    TENDER,
+    /**
+     * 企查查
+     */
+    QCC;
+
+    public static ThirdConfigTypeConstants fromString(String type) {
+        try {
+            return ThirdConfigTypeConstants.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
 }

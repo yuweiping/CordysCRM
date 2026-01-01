@@ -1,7 +1,6 @@
 package cn.cordys.crm.customer.service;
 
 import cn.cordys.aspectj.constants.LogModule;
-import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.dto.DeptDataPermissionDTO;
@@ -54,28 +53,15 @@ public class CustomerExportService extends BaseExportService {
 
         String fileId = IDGenerator.nextStr();
         ExportTask exportTask = exportTaskService.saveTask(orgId, fileId, userId, ExportConstants.ExportType.CUSTOMER.toString(), request.getFileName());
-        Thread.startVirtualThread(() -> {
-            try {
-                this.exportCustomerData(exportTask, userId, request, orgId, deptDataPermission, locale);
-            } catch (InterruptedException e) {
-                LogUtils.error("任务停止中断", e);
-                exportTaskService.update(exportTask.getId(), ExportConstants.ExportStatus.STOP.toString(), userId);
-            } catch (Exception e) {
-                //更新任务
-                exportTaskService.update(exportTask.getId(), ExportConstants.ExportStatus.ERROR.toString(), userId);
-            } finally {
-                //从注册中心移除
-                ExportThreadRegistry.remove(exportTask.getId());
-                //日志
-                exportLog(orgId, exportTask.getId(), userId, LogType.EXPORT, LogModule.CUSTOMER_INDEX, request.getFileName());
-            }
-        });
+
+        // 启动虚拟线程执行导出任务
+        runExport(orgId, userId, LogModule.CUSTOMER_INDEX, locale, exportTask, request.getFileName(),
+                () -> exportCustomerData(exportTask, userId, request, orgId, deptDataPermission, locale));
+
         return exportTask.getId();
     }
 
     public void exportCustomerData(ExportTask exportTask, String userId, CustomerExportRequest request, String orgId, DeptDataPermissionDTO deptDataPermission, Locale locale) throws Exception {
-        LocaleContextHolder.setLocale(locale);
-        ExportThreadRegistry.register(exportTask.getId(), Thread.currentThread());
         //表头信息
         List<List<String>> headList = request.getHeadList().stream()
                 .map(head -> Collections.singletonList(head.getTitle()))
@@ -87,39 +73,6 @@ public class CustomerExportService extends BaseExportService {
                 request.getFileName(),
                 request,
                 t -> getExportData(request.getHeadList(), request, userId, orgId, deptDataPermission, exportTask.getId()));
-        //更新状态
-        exportTaskService.update(exportTask.getId(), ExportConstants.ExportStatus.SUCCESS.toString(), userId);
-    }
-
-
-    /**
-     * 构建导出的数据
-     *
-     * @param headList           表头列表
-     * @param request            导出请求
-     * @param userId             用户ID
-     * @param orgId              组织id
-     * @param deptDataPermission 部门数据权限
-     *
-     * @return 导出数据列表
-     */
-    private List<List<Object>> getExportData(List<ExportHeadDTO> headList, CustomerExportRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission, String taskId) throws InterruptedException {
-        PageHelper.startPage(request.getCurrent(), request.getPageSize());
-        //获取数据
-        List<CustomerListResponse> allList = extCustomerMapper.list(request, orgId, userId, deptDataPermission);
-        List<CustomerListResponse> dataList = customerService.buildListData(allList, orgId);
-        Map<String, BaseField> fieldConfigMap = getFieldConfigMap(FormKey.CUSTOMER.getKey(), orgId);
-        //构建导出数据
-        List<List<Object>> data = new ArrayList<>();
-        for (CustomerListResponse response : dataList) {
-            if (ExportThreadRegistry.isInterrupted(taskId)) {
-                throw new InterruptedException("线程已被中断，主动退出");
-            }
-            List<Object> value = buildData(headList, response, fieldConfigMap);
-            data.add(value);
-        }
-
-        return data;
     }
 
     private List<Object> buildData(List<ExportHeadDTO> headList, CustomerListResponse data, Map<String, BaseField> fieldConfigMap) {
@@ -153,20 +106,10 @@ public class CustomerExportService extends BaseExportService {
 
         String fileId = IDGenerator.nextStr();
         ExportTask exportTask = exportTaskService.saveTask(orgId, fileId, userId, ExportConstants.ExportType.CUSTOMER.toString(), request.getFileName());
-        Thread.startVirtualThread(() -> {
-            try {
-                this.exportSelectData(exportTask, userId, request, orgId, locale);
-            } catch (Exception e) {
-                LogUtils.error("导出客户异常", e);
-                //更新任务
-                exportTaskService.update(exportTask.getId(), ExportConstants.ExportStatus.ERROR.toString(), userId);
-            } finally {
-                //从注册中心移除
-                ExportThreadRegistry.remove(exportTask.getId());
-                //日志
-                exportLog(orgId, exportTask.getId(), userId, LogType.EXPORT, LogModule.CUSTOMER_INDEX, request.getFileName());
-            }
-        });
+
+        runExport(orgId, userId, LogModule.CUSTOMER_INDEX, locale, exportTask, request.getFileName(),
+                () -> exportSelectData(exportTask, userId, request, orgId, locale));
+
         return exportTask.getId();
     }
 
@@ -204,29 +147,48 @@ public class CustomerExportService extends BaseExportService {
 
     /**
      * 选中客户数据
-     *
-     * @param headList 表头列表
-     * @param ids      选中数据ID列表
-     * @param orgId    组织ID
-     * @param taskId   任务ID
-     *
-     * @return 导出数据列表
      */
-    private List<List<Object>> getExportDataBySelect(List<ExportHeadDTO> headList, List<String> ids, String orgId, String taskId) throws InterruptedException {
-        //获取数据
-        List<CustomerListResponse> allList = extCustomerMapper.getListByIds(ids);
-        List<CustomerListResponse> dataList = customerService.buildListData(allList, orgId);
+    private List<List<Object>> getExportDataBySelect(
+            List<ExportHeadDTO> headList, List<String> ids, String orgId, String taskId
+    ) throws InterruptedException {
+
+        List<CustomerListResponse> rawList = extCustomerMapper.getListByIds(ids);
+        return buildCustomerExportData(headList, rawList, orgId, taskId);
+    }
+
+    /**
+     * 条件分页导出客户数据
+     */
+    private List<List<Object>> getExportData(
+            List<ExportHeadDTO> headList, CustomerExportRequest request,
+            String userId, String orgId, DeptDataPermissionDTO deptDataPermission, String taskId
+    ) throws InterruptedException {
+
+        PageHelper.startPage(request.getCurrent(), request.getPageSize());
+        List<CustomerListResponse> rawList =
+                extCustomerMapper.list(request, orgId, userId, deptDataPermission);
+        return buildCustomerExportData(headList, rawList, orgId, taskId);
+    }
+
+    /**
+     * 构建客户导出数据（公共逻辑）
+     */
+    private List<List<Object>> buildCustomerExportData(
+            List<ExportHeadDTO> headList, List<CustomerListResponse> rawList,
+            String orgId, String taskId
+    ) throws InterruptedException {
+
+        List<CustomerListResponse> dataList = customerService.buildListData(rawList, orgId);
         Map<String, BaseField> fieldConfigMap = getFieldConfigMap(FormKey.CUSTOMER.getKey(), orgId);
-        //构建导出数据
-        List<List<Object>> data = new ArrayList<>();
+
+        List<List<Object>> result = new ArrayList<>(dataList.size());
         for (CustomerListResponse response : dataList) {
             if (ExportThreadRegistry.isInterrupted(taskId)) {
                 throw new InterruptedException("线程已被中断，主动退出");
             }
-            List<Object> value = buildData(headList, response, fieldConfigMap);
-            data.add(value);
+            result.add(buildData(headList, response, fieldConfigMap));
         }
-
-        return data;
+        return result;
     }
+
 }

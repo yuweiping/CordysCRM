@@ -15,9 +15,10 @@
 </template>
 
 <script setup lang="ts">
-  import { DataTableCreateSummary, NButton, NDataTable, NTooltip } from 'naive-ui';
+  import { DataTableCreateSummary, NButton, NDataTable, NImage, NImageGroup, NTooltip } from 'naive-ui';
   import { isEqual } from 'lodash-es';
 
+  import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { FieldRuleEnum, FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -28,6 +29,7 @@
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import dataSource from '@/components/business/crm-form-create/components/advanced/dataSource.vue';
   import formula from '@/components/business/crm-form-create/components/advanced/formula.vue';
+  import upload from '@/components/business/crm-form-create/components/advanced/upload.vue';
   import inputNumber from '@/components/business/crm-form-create/components/basic/inputNumber.vue';
   import select from '@/components/business/crm-form-create/components/basic/select.vue';
   import singleText from '@/components/business/crm-form-create/components/basic/singleText.vue';
@@ -172,6 +174,21 @@
   }
 
   const sumInitialOptions = ref<Record<string, any>[]>([]);
+  const pictureFields = computed<FormCreateField[]>(() => {
+    return props.subFields.filter((field) => field.type === FieldTypeEnum.PICTURE);
+  });
+  const maxPictureCountMap = computed<Record<string, number>>(() => {
+    return data.value.reduce((prev, curr) => {
+      pictureFields.value.forEach((field) => {
+        const key = field.businessKey || field.id;
+        const currCount = Array.isArray(curr[key]) ? curr[key].length : 0;
+        if (!prev[key] || currCount > prev[key]) {
+          prev[key] = currCount;
+        }
+      });
+      return prev;
+    }, {} as Record<string, number>);
+  });
   const renderColumns = computed<CrmDataTableColumn[]>(() => {
     if (props.readonly) {
       return props.subFields
@@ -184,22 +201,39 @@
           }
           return {
             title: field.showLabel ? field.name : '',
-            width: 150,
+            width:
+              maxPictureCountMap.value[field.id] > 0 && field.type === FieldTypeEnum.PICTURE
+                ? maxPictureCountMap.value[field.id] * 110
+                : 120,
             key,
             fieldId: key,
-            ellipsis: {
-              tooltip: true,
-            },
+            ellipsis:
+              field.type === FieldTypeEnum.PICTURE
+                ? undefined
+                : {
+                    tooltip: true,
+                  },
             render: (row: any) =>
-              h(
-                NTooltip,
-                { trigger: 'hover' },
-                {
-                  default: () => initFieldValueText(field, key, row[key]),
-                  trigger: () =>
-                    h('div', { class: 'one-line-text max-w-[200px]' }, initFieldValueText(field, key, row[key])),
-                }
-              ),
+              field.type === FieldTypeEnum.PICTURE
+                ? h(
+                    NImageGroup,
+                    {},
+                    {
+                      default: () =>
+                        (row[key] || []).map((img: string) =>
+                          h(NImage, { src: `${PreviewPictureUrl}/${img}`, class: 'w-[100px] h-[100px] mr-[8px]' })
+                        ),
+                    }
+                  )
+                : h(
+                    NTooltip,
+                    { trigger: 'hover' },
+                    {
+                      default: () => initFieldValueText(field, key, row[key]),
+                      trigger: () =>
+                        h('div', { class: 'one-line-text max-w-[200px]' }, initFieldValueText(field, key, row[key])),
+                    }
+                  ),
             filedType: field.type,
             fieldConfig: field,
             fixed: props.fixedColumn && props.fixedColumn >= index + 1 ? 'left' : undefined,
@@ -265,15 +299,6 @@
                 formDetail: props.formDetail,
                 disabled: props.disabled,
                 class: 'w-[240px]',
-                disabledSelection: (r: Record<string, any>) => {
-                  if (key === 'product') {
-                    // 产品列不允许重复选择
-                    return data.value.some(
-                      (dataRow, dataRowIndex) => dataRowIndex !== rowIndex && dataRow[key].includes(r.id)
-                    );
-                  }
-                  return false;
-                },
                 onChange: (val, source) => {
                   row[key] = val;
                   sumInitialOptions.value = sumInitialOptions.value.concat(
@@ -287,17 +312,7 @@
                       let fieldVal: string | string[] = '';
                       if (targetSource) {
                         const sourceFieldVal = targetSource[sf.businessKey || sf.id];
-                        if (sf.subTableFieldId) {
-                          // 根据同一行选择的业务产品字段值去获取价格表内对应产品的字段值 TODO:后续应该使用字段联动配置去实现
-                          if (targetSource.products && row.product?.length) {
-                            fieldVal =
-                              targetSource.products.find((st: any) => st.product === row.product[0])?.[sf.id] || '';
-                          } else {
-                            fieldVal = '';
-                          }
-                        } else {
-                          fieldVal = sourceFieldVal;
-                        }
+                        fieldVal = sourceFieldVal;
                       }
                       if (Array.isArray(fieldVal)) {
                         row[sf.id] = fieldVal.join(',');
@@ -396,6 +411,38 @@
                 },
               }),
             fixed: props.fixedColumn && props.fixedColumn >= index + 1 ? 'left' : undefined,
+          };
+        }
+        if (field.type === FieldTypeEnum.PICTURE) {
+          let finalPictureColWidth = 0;
+          if (maxPictureCountMap.value[field.id]) {
+            if (field.uploadLimit && maxPictureCountMap.value[field.id] >= field.uploadLimit) {
+              finalPictureColWidth = field.uploadLimit * 110;
+            } else {
+              finalPictureColWidth = maxPictureCountMap.value[field.id] * 110 + 32;
+            }
+          }
+          return {
+            title,
+            width: finalPictureColWidth || 150, // 每个卡片 100px + 8px间距 + 2px 冗余 + 上传按钮宽度 32px
+            key,
+            fieldId: key,
+            render: (row: any, rowIndex: number) =>
+              h(upload, {
+                value: row[key],
+                fieldConfig: field,
+                path: `${props.parentId}[${rowIndex}].${key}`,
+                isSubTableRender: true,
+                disabled: props.disabled,
+                needInitDetail: props.needInitDetail,
+                onChange: (val: any) => {
+                  row[key] = val;
+                  emit('change', data.value);
+                },
+              }),
+            fixed: props.fixedColumn && props.fixedColumn >= index + 1 ? 'left' : undefined,
+            filedType: field.type,
+            fieldConfig: field,
           };
         }
         return {
@@ -514,7 +561,9 @@
           : field.defaultValue ?? null;
       } else if (field.type === FieldTypeEnum.FORMULA) {
         newRow[key] = field.defaultValue ?? 0;
-      } else if ([FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.DATA_SOURCE].includes(field.type)) {
+      } else if (
+        [FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.PICTURE].includes(field.type)
+      ) {
         newRow[key] = [];
       } else {
         newRow[key] = field.defaultValue ?? '';

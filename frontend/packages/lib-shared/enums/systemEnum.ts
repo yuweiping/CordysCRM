@@ -26,6 +26,7 @@ export enum SystemResourceMessageTypeEnum {
   CUSTOMER_CONTACT = 'CUSTOMER_CONTACT',
   CONTRACT = 'CONTRACT',
   CONTRACT_PAYMENT_PLAN = 'CONTRACT_PAYMENT_PLAN',
+  CONTRACT_PAYMENT_RECORD = 'CONTRACT_PAYMENT_RECORD',
   PRODUCT_PRICE = 'PRODUCT_PRICE',
 }
 
@@ -51,8 +52,6 @@ export enum OperationTypeEnum {
   APPROVAL = 'APPROVAL', // 审批
   VOIDED = 'VOIDED', // 作废
   CANCEL_VOID = 'CANCEL_VOID', // 取消作废
-  ARCHIVE = 'ARCHIVE', // 归档
-  UNARCHIVE = 'UNARCHIVE', // 取消归档
   DOWNLOAD = 'DOWNLOAD', // 下载
 }
 

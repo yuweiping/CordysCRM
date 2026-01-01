@@ -11,8 +11,6 @@ import {
   GetContractFormConfigUrl,
   GetContractTabUrl,
   ChangeContractStatusUrl,
-  ContractVoidedUrl,
-  ContractArchivedUrl,
   GetContractFormSnapshotConfigUrl,
   ExportContractAllUrl,
   ExportContractSelectedUrl,
@@ -45,7 +43,34 @@ import {
   DeletePaymentPlanViewUrl,
   DragPaymentPlanViewUrl,
   BatchApproveContractUrl,
-  ApproveContractUrl
+  ApproveContractUrl,
+  RevokeContractUrl,
+  PaymentRecordPageUrl,
+  PaymentRecordAddUrl,
+  PaymentRecordUpdateUrl,
+  PaymentRecordDeleteUrl,
+  GetPaymentRecordDetailUrl,
+  GetPaymentRecordFormConfigUrl,
+  GetPaymentRecordTabUrl,
+  ExportPaymentRecordAllUrl,
+  ExportPaymentRecordSelectedUrl,
+  AddPaymentRecordViewUrl,
+  UpdatePaymentRecordViewUrl,
+  GetPaymentRecordViewListUrl,
+  GetPaymentRecordViewDetailUrl,
+  FixedPaymentRecordViewUrl,
+  EnablePaymentRecordViewUrl,
+  DeletePaymentRecordViewUrl,
+  DragPaymentRecordViewUrl,
+  DownloadBusinessNameTemplateUrl,
+  ImportBusinessNameUrl,
+  PreCheckBusinessNameImportUrl,
+  BusinessNamePageUrl,
+  BusinessNameAddUrl,
+  BusinessNameUpdateUrl,
+  BusinessNameDeleteUrl,
+  GetBusinessNameDetailUrl,
+  BusinessNameRevokeUrl,
 } from '@lib/shared/api/requrls/contract';
 import type { CustomerTabHidden } from '@lib/shared/models/customer';
 import type {
@@ -66,9 +91,17 @@ import type {
   PaymentPlanDetail,
   SavePaymentPlanParams,
   UpdatePaymentPlanParams,
-  ApprovalContractParams
+  ApprovalContractParams,
+  PaymentRecordItem,
+  PaymentRecordDetail,
+  SavePaymentRecordParams,
+  UpdatePaymentRecordParams,
+  BusinessNameItem,
+  SaveBusinessNameParams,
+  UpdateBusinessNameParams,
 } from '@lib/shared/models/contract';
 import type { BatchOperationResult, BatchUpdateQuotationStatusParams } from '@lib/shared/models/opportunity';
+import { ValidateInfo } from '@lib/shared/models/system/org';
 export default function useContractApi(CDR: CordysAxios) {
   // 合同列表
   function getContractList(data: TableQueryParams) {
@@ -90,16 +123,6 @@ export default function useContractApi(CDR: CordysAxios) {
     return CDR.get({ url: `${ContractDeleteUrl}/${id}` });
   }
 
-  // 作废合同
-  function voidedContract(id: string, voidReason: string) {
-    return CDR.post({ url: `${ContractVoidedUrl}`, data: { voidReason, id } });
-  }
-
-  // 归档合同
-  function archivedContract(id: string, archivedStatus: string) {
-    return CDR.post({ url: `${ContractArchivedUrl}`, data: { archivedStatus, id } });
-  }
-
   // 合同详情
   function getContractDetail(id: string) {
     return CDR.get<ContractDetail>({ url: `${GetContractDetailUrl}/${id}` });
@@ -118,8 +141,8 @@ export default function useContractApi(CDR: CordysAxios) {
     });
   }
 
-  function changeContractStatus(id: string, status: string) {
-    return CDR.post({ url: `${ChangeContractStatusUrl}`, data: { status, id } });
+  function changeContractStatus(id: string, stage: string, voidReason?: string) {
+    return CDR.post({ url: `${ChangeContractStatusUrl}`, data: { stage, id, voidReason } });
   }
 
   // 获取合同tab显隐藏
@@ -151,6 +174,10 @@ export default function useContractApi(CDR: CordysAxios) {
 
   function approvalContract(data: ApprovalContractParams) {
     return CDR.post({ url: ApproveContractUrl, data });
+  }
+
+  function revokeContract(id: string) {
+    return CDR.get({ url: `${RevokeContractUrl}/${id}` });
   }
 
   // 视图
@@ -285,6 +312,143 @@ export default function useContractApi(CDR: CordysAxios) {
     return CDR.post({ url: DragPaymentPlanViewUrl, data });
   }
 
+  // 回款记录列表
+  function getPaymentRecordList(data: TableQueryParams) {
+    return CDR.post<CommonList<PaymentRecordItem>>({ url: PaymentRecordPageUrl, data }, { ignoreCancelToken: true });
+  }
+
+  // 添加回款记录
+  function addPaymentRecord(data: SavePaymentRecordParams) {
+    return CDR.post({ url: PaymentRecordAddUrl, data });
+  }
+
+  // 更新回款记录
+  function updatePaymentRecord(data: UpdatePaymentRecordParams) {
+    return CDR.post({ url: PaymentRecordUpdateUrl, data });
+  }
+
+  // 删除回款记录
+  function deletePaymentRecord(id: string) {
+    return CDR.get({ url: `${PaymentRecordDeleteUrl}/${id}` });
+  }
+
+  // 回款记录详情
+  function getPaymentRecordDetail(id: string) {
+    return CDR.get<PaymentRecordDetail>({ url: `${GetPaymentRecordDetailUrl}/${id}` });
+  }
+
+  // 获取回款记录表单配置
+  function getPaymentRecordFormConfig() {
+    return CDR.get<FormDesignConfigDetailParams>({
+      url: GetPaymentRecordFormConfigUrl,
+    });
+  }
+
+  // 获取回款记录 tab 显隐
+  function getPaymentRecordTab() {
+    return CDR.get<CustomerTabHidden>({ url: GetPaymentRecordTabUrl });
+  }
+
+  // 导出全量回款记录
+  function exportPaymentRecordAll(data: TableExportParams) {
+    return CDR.post({ url: ExportPaymentRecordAllUrl, data });
+  }
+
+  // 导出选中回款记录
+  function exportPaymentRecordSelected(data: TableExportSelectedParams) {
+    return CDR.post({ url: ExportPaymentRecordSelectedUrl, data });
+  }
+
+  // 添加视图
+  function addPaymentRecordView(data: ViewParams) {
+    return CDR.post({ url: AddPaymentRecordViewUrl, data });
+  }
+
+  // 更新视图
+  function updatePaymentRecordView(data: ViewParams) {
+    return CDR.post({ url: UpdatePaymentRecordViewUrl, data });
+  }
+
+  // 获取视图列表
+  function getPaymentRecordViewList() {
+    return CDR.get<ViewItem[]>({ url: GetPaymentRecordViewListUrl });
+  }
+
+  // 获取视图详情
+  function getPaymentRecordViewDetail(id: string) {
+    return CDR.get({ url: `${GetPaymentRecordViewDetailUrl}/${id}` });
+  }
+
+  // 固定视图
+  function fixedPaymentRecordView(id: string) {
+    return CDR.get({ url: `${FixedPaymentRecordViewUrl}/${id}` });
+  }
+
+  // 启用视图
+  function enablePaymentRecordView(id: string) {
+    return CDR.get({ url: `${EnablePaymentRecordViewUrl}/${id}` });
+  }
+
+  // 删除视图
+  function deletePaymentRecordView(id: string) {
+    return CDR.get({ url: `${DeletePaymentRecordViewUrl}/${id}` });
+  }
+
+  // 拖拽排序视图
+  function dragPaymentRecordView(data: TableDraggedParams) {
+    return CDR.post({ url: DragPaymentRecordViewUrl, data });
+  }
+
+  // 合同-工商抬头导入
+  function preCheckImportBusinessName(file: File) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({url: PreCheckBusinessNameImportUrl}, {fileList: [file]}, 'file');
+  }
+  
+  function downloadBusinessNameTemplate() {
+    return CDR.get(
+      {
+         url: DownloadBusinessNameTemplateUrl,
+          responseType: 'blob',
+      },
+      {isTransformResponse: false, isReturnNativeResponse: true}
+      );
+  }
+  
+  function importBusinessName(file: File) {
+    return CDR.uploadFile({url: ImportBusinessNameUrl}, {fileList: [file]}, 'file');
+  }
+
+  // 工商抬头列表
+  function getBusinessNameList(data: TableQueryParams) {
+    return CDR.post<CommonList<BusinessNameItem>>({ url: BusinessNamePageUrl, data }, { ignoreCancelToken: true });
+  }
+
+  // 添加工商抬头
+  function addBusinessName(data: SaveBusinessNameParams) {
+    return CDR.post({ url: BusinessNameAddUrl, data });
+  }
+
+  // 更新工商抬头
+  function updateBusinessName(data: UpdateBusinessNameParams) {
+    return CDR.post({ url: BusinessNameUpdateUrl, data });
+  }
+
+  // 删除工商抬头
+  function deleteBusinessName(id: string) {
+    return CDR.get({ url: `${BusinessNameDeleteUrl}/${id}` });
+  }
+
+  //撤销工商抬头
+  function revokeBusinessName(id: string) {
+    return CDR.get({ url: `${BusinessNameRevokeUrl}/${id}` });
+  }
+
+  // 工商抬头详情 todo xinxinwu
+  function getBusinessNameDetail (id: string) {
+    return CDR.get<BusinessNameItem>({ url: `${GetBusinessNameDetailUrl}/${id}` });
+  }
+  
+
   return {
     exportContractAll,
     exportContractSelected,
@@ -305,11 +469,10 @@ export default function useContractApi(CDR: CordysAxios) {
     deleteContract,
     changeContractStatus,
     getContractFormConfig,
-    voidedContract,
-    archivedContract,
     getContractFormSnapshotConfig,
     batchApproveContract,
     approvalContract,
+    revokeContract,
     // 回款计划
     getPaymentPlanList,
     getContractPaymentPlanList,
@@ -330,5 +493,33 @@ export default function useContractApi(CDR: CordysAxios) {
     enablePaymentPlanView,
     deletePaymentPlanView,
     dragPaymentPlanView,
+    // 回款记录
+    getPaymentRecordFormConfig,
+    addPaymentRecord,
+    updatePaymentRecord,
+    getPaymentRecordDetail,
+    getPaymentRecordList,
+    deletePaymentRecord,
+    getPaymentRecordTab,
+    exportPaymentRecordAll,
+    exportPaymentRecordSelected,
+    addPaymentRecordView,
+    updatePaymentRecordView,
+    getPaymentRecordViewList,
+    getPaymentRecordViewDetail,
+    fixedPaymentRecordView,
+    enablePaymentRecordView,
+    deletePaymentRecordView,
+    dragPaymentRecordView,
+    // 合同工商抬头
+    preCheckImportBusinessName,
+    downloadBusinessNameTemplate,
+    importBusinessName,
+    getBusinessNameList,
+    addBusinessName,
+    updateBusinessName,
+    deleteBusinessName,
+    revokeBusinessName,
+    getBusinessNameDetail,
   };
 }

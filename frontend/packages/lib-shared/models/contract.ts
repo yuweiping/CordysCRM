@@ -1,6 +1,7 @@
 import { ModuleField } from '@lib/shared/models/customer';
 import { AttachmentInfo } from '@cordys/web/src/components/business/crm-form-create/types';
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
+import { ContractBusinessNameStatusEnum } from '@lib/shared/enums/contractEnum';
 
 // 合同列表项
 export interface ContractItem {
@@ -9,9 +10,8 @@ export interface ContractItem {
   customerId: string;
   customerName: string;
   amount: number;
-  archivedStatus: string;
   approvalStatus: QuotationStatusEnum;
-  status: string;
+  stage: string;
   owner: string;
   ownerName: string;
   createUser: string;
@@ -88,5 +88,63 @@ export interface SavePaymentPlanParams {
 
 // 更新回款计划参数
 export interface UpdatePaymentPlanParams extends SavePaymentPlanParams {
+  id: string;
+}
+
+// 回款记录列表项
+// TODO lmy 联调
+export interface PaymentRecordItem {
+  id: string;
+  createUser: string;
+  updateUser: string;
+  createTime: number;
+  updateTime: number;
+  contractId: string;
+  owner: string;
+  organizationId: string;
+  createUserName: string;
+  updateUserName: string;
+  ownerName: string;
+  departmentId: string;
+  departmentName: string;
+  contractName: string;
+  moduleFields: ModuleField[]; // 自定义字段
+}
+
+// 回款记录详情
+export interface PaymentRecordDetail extends PaymentRecordItem {
+  optionMap?: Record<string, any[]>;
+}
+
+// 添加回款记录参数
+export interface SavePaymentRecordParams {
+  contractId?: string;
+  owner?: string;
+}
+
+// 更新回款记录参数
+export interface UpdatePaymentRecordParams extends SavePaymentRecordParams {
+  id: string;
+}
+
+// todo xxw 工商合同列表项
+export interface BusinessNameItem {
+  id: string;
+  name: string;
+  address: string;
+  status: ContractBusinessNameStatusEnum;
+  createUser: string;
+  updateUser: string;
+  createTime: number;
+  updateTime: number;
+  createUserName: string;
+  updateUserName: string;
+}
+
+export interface SaveBusinessNameParams {
+  // todo xxw 工商合同添加参数
+}
+
+export interface UpdateBusinessNameParams extends SaveBusinessNameParams {
   id: string;
 }

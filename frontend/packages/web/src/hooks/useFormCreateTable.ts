@@ -1,16 +1,12 @@
-import { NImage, NImageGroup, NSwitch } from 'naive-ui';
+import { NImage, NImageGroup } from 'naive-ui';
 import dayjs from 'dayjs';
 
 import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
-import { ArchiveStatusEnum, ContractStatusEnum } from '@lib/shared/enums/contractEnum';
 import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
 import { SpecialColumnEnum, TableKeyEnum } from '@lib/shared/enums/tableEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
-import { formatTimeValue, getCityPath, getIndustryPath } from '@lib/shared/method';
 import { formatNumberValue, transformData } from '@lib/shared/method/formCreate';
-import type { CommonList } from '@lib/shared/models/common';
-import type { ModuleField } from '@lib/shared/models/customer';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
 
 import type { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -51,6 +47,7 @@ export type FormKey =
   | FormDesignKeyEnum.CONTRACT
   | FormDesignKeyEnum.CONTRACT_PAYMENT
   | FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT
+  | FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD
   | FormDesignKeyEnum.PRICE;
 
 export interface FormCreateTableProps {
@@ -103,6 +100,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     [FormDesignKeyEnum.CONTRACT]: TableKeyEnum.CONTRACT,
     [FormDesignKeyEnum.CONTRACT_PAYMENT]: TableKeyEnum.CONTRACT_PAYMENT,
     [FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT]: TableKeyEnum.CONTRACT_PAYMENT,
+    [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: TableKeyEnum.CONTRACT_PAYMENT_RECORD,
     [FormDesignKeyEnum.PRICE]: TableKeyEnum.PRICE,
   };
   const noPaginationKey = [FormDesignKeyEnum.CUSTOMER_CONTACT];
@@ -745,12 +743,12 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
       {
         title: t('contract.status'),
         width: 120,
-        key: 'status',
+        key: 'stage',
         filterOptions: contractStatusOptions,
         sortOrder: false,
         sorter: true,
         filter: true,
-        render: props.specialRender?.status,
+        render: props.specialRender?.stage,
       },
       {
         title: t('contract.voidReason'),
@@ -768,23 +766,10 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         sorter: true,
       },
       {
-        title: t('contract.archivedStatus'),
-        width: 120,
-        key: 'archivedStatus',
-        sortOrder: false,
-        sorter: true,
-        render: (row: any) =>
-          row.archivedStatus === ArchiveStatusEnum.ARCHIVED ? t('common.archive') : t('common.notArchived'),
-      },
-      {
         title: t('contract.approvalStatus'),
         width: 120,
         key: 'approvalStatus',
-        filterOptions: quotationStatusOptions.filter((item) =>
-          [QuotationStatusEnum.APPROVED, QuotationStatusEnum.UNAPPROVED, QuotationStatusEnum.APPROVING].includes(
-            item.value
-          )
-        ),
+        filterOptions: quotationStatusOptions.filter((item) => ![QuotationStatusEnum.VOIDED].includes(item.value)),
         sortOrder: false,
         sorter: true,
         filter: true,
@@ -793,6 +778,19 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     ],
     [FormDesignKeyEnum.CONTRACT_PAYMENT]: paymentInternalColumns,
     [FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT]: paymentInternalColumns,
+    [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: [
+      {
+        title: t('org.department'),
+        width: 120,
+        key: 'departmentId',
+        ellipsis: {
+          tooltip: true,
+        },
+        sortOrder: false,
+        sorter: 'default',
+        render: (row: any) => row.departmentName || '-',
+      },
+    ],
     [FormDesignKeyEnum.PRICE]: [],
   };
   const staticColumns: CrmDataTableColumn[] = [
@@ -998,9 +996,11 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
             (field.businessKey === 'name' &&
               ![FormDesignKeyEnum.CUSTOMER_CONTACT, FormDesignKeyEnum.BUSINESS_CONTACT].includes(props.formKey) &&
               !field.resourceFieldId) ||
-            ([FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT].includes(
-              props.formKey
-            ) &&
+            ([
+              FormDesignKeyEnum.CONTRACT_PAYMENT,
+              FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT,
+              FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
+            ].includes(props.formKey) &&
               field.businessKey === 'contractId')
           ) {
             return {

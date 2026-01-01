@@ -19,7 +19,7 @@ import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
 import cn.cordys.common.permission.PermissionUtils;
 import cn.cordys.common.response.result.CrmHttpResultCode;
-import cn.cordys.common.service.BaseResourceFieldService;
+import cn.cordys.common.service.BaseChartService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
@@ -134,6 +134,8 @@ public class CustomerService {
     @Resource
     private CustomerContactService customerContactService;
     @Resource
+    private BaseChartService baseChartService;
+    @Resource
     private DictService dictService;
     @Resource
     private BaseMapper<CustomerField> customerFieldMapper;
@@ -168,7 +170,7 @@ public class CustomerService {
         List<CustomerPool> pools = extCustomerPoolMapper.getPoolByScopeIds(scopeIds, orgId);
         request.setTransitionPoolIds(pools.stream().map(CustomerPool::getId).toList());
         request.setTransition(true);
-		request.setTransitionDataPermission(dataScopeService.getDeptDataPermission(userId, orgId, null, PermissionConstants.CUSTOMER_MANAGEMENT_READ));
+        request.setTransitionDataPermission(dataScopeService.getDeptDataPermission(userId, orgId, null, PermissionConstants.CUSTOMER_MANAGEMENT_READ));
         return list(request, userId, orgId, null);
     }
 
@@ -306,16 +308,18 @@ public class CustomerService {
         return getResponse;
     }
 
-	/**
-	 * ⚠️反射调用; 勿修改入参, 返回, 方法名!
-	 * @param id 客户ID
-	 * @return 客户详情
-	 */
+    /**
+     * ⚠️反射调用; 勿修改入参, 返回, 方法名!
+     *
+     * @param id 客户ID
+     *
+     * @return 客户详情
+     */
     public CustomerGetResponse get(String id) {
         Customer customer = customerMapper.selectByPrimaryKey(id);
-		if (customer == null) {
+        if (customer == null) {
             return null;
-		}
+        }
         CustomerGetResponse customerGetResponse = BeanUtils.copyBean(new CustomerGetResponse(), customer);
         customerGetResponse = baseService.setCreateUpdateOwnerUserName(customerGetResponse);
         // 获取模块字段
@@ -685,8 +689,8 @@ public class CustomerService {
         new EasyExcelExporter()
                 .exportMultiSheetTplWithSharedHandler(response, moduleFormService.getCustomImportHeadsNoRef(FormKey.CUSTOMER.getKey(), currentOrg),
                         Translator.get("customer.import_tpl.name"), Translator.get(SheetKey.DATA), Translator.get(SheetKey.COMMENT),
-						new CustomTemplateWriteHandler(moduleFormService.getAllCustomImportFields(FormKey.CUSTOMER.getKey(), currentOrg)),
-						new CustomHeadColWidthStyleStrategy());
+                        new CustomTemplateWriteHandler(moduleFormService.getAllCustomImportFields(FormKey.CUSTOMER.getKey(), currentOrg)),
+                        new CustomHeadColWidthStyleStrategy());
     }
 
     /**
@@ -751,7 +755,7 @@ public class CustomerService {
     private ImportResponse checkImportExcel(MultipartFile file, String currentOrg) {
         try {
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(FormKey.CUSTOMER.getKey(), currentOrg);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "customer", "customer_field", currentOrg, null, null);
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "customer", "customer_field", currentOrg);
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
@@ -858,11 +862,11 @@ public class CustomerService {
 
     public List<ChartResult> chart(ChartAnalysisRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
         ModuleFormConfigDTO formConfig = getFormConfig(orgId);
-        formConfig.getFields().addAll(BaseResourceFieldService.getChartBaseFields());
+        formConfig.getFields().addAll(BaseChartService.getChartBaseFields());
         ChartAnalysisDbRequest chartAnalysisDbRequest = ConditionFilterUtils.parseChartAnalysisRequest(request, formConfig);
         CustomerChartAnalysisDbRequest customerChartAnalysisDbRequest = BeanUtils.copyBean(new CustomerChartAnalysisDbRequest(), chartAnalysisDbRequest);
         List<ChartResult> chartResults = extCustomerMapper.chart(customerChartAnalysisDbRequest, userId, orgId, deptDataPermission);
-        return customerFieldService.translateAxisName(formConfig, chartAnalysisDbRequest, chartResults);
+        return baseChartService.translateAxisName(formConfig, chartAnalysisDbRequest, chartResults);
     }
 
     /**

@@ -1,16 +1,26 @@
 <template>
   <n-form-item
     :label="props.fieldConfig.name"
-    :show-label="props.fieldConfig.showLabel"
     :path="props.path"
     :rule="props.fieldConfig.rules"
+    :show-label="(props.fieldConfig.showLabel && !props.isSubTableRender) || props.isSubTableField"
     :required="props.fieldConfig.rules.some((rule) => rule.key === 'required')"
+    :label-placement="props.isSubTableField || props.isSubTableRender ? 'top' : props.formConfig?.labelPos"
+    :validation-status="fileKeys.length > 0 ? 'success' : undefined"
   >
+    <template #label>
+      <div v-if="props.fieldConfig.showLabel" class="flex h-[22px] items-center gap-[4px] whitespace-nowrap">
+        <div class="one-line-text">{{ props.fieldConfig.name }}</div>
+        <CrmIcon v-if="props.fieldConfig.resourceFieldId" type="iconicon_correlation" />
+      </div>
+      <div v-else-if="props.isSubTableField || props.isSubTableRender" class="h-[22px]"></div>
+    </template>
     <div
       v-if="props.fieldConfig.description"
       class="crm-form-create-item-desc"
       v-html="props.fieldConfig.description"
     ></div>
+    <n-divider v-if="props.isSubTableField && !props.isSubTableRender" class="!my-0" />
     <n-upload
       v-model:file-list="fileList"
       :max="props.fieldConfig.uploadLimit || 10"
@@ -18,10 +28,18 @@
       :list-type="props.fieldConfig.pictureShowType === 'card' ? 'image-card' : 'text'"
       :custom-request="customRequest"
       :disabled="props.fieldConfig.editable === false || !!props.fieldConfig.resourceFieldId"
+      :file-list-class="props.isSubTableRender ? 'crm-upload--subtable-file-list' : ''"
+      :trigger-style="getTriggerStyle"
       multiple
       directory-dnd
       @before-upload="beforeUpload"
-      @update-file-list="() => emit('change', fileKeys, fileList)"
+      @update-file-list="
+        () => {
+          if (fileKeys.length !== 0 || fileKeys.length === fileList.length) {
+            emit('change', fileKeys, fileList);
+          }
+        }
+      "
       @remove="handleFileRemove"
     >
       <n-upload-dragger>
@@ -38,6 +56,7 @@
 
 <script setup lang="ts">
   import {
+    NDivider,
     NFormItem,
     NUpload,
     NUploadDragger,
@@ -50,6 +69,7 @@
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import type { FormConfig } from '@lib/shared/models/system/module';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
 
@@ -60,6 +80,9 @@
   const props = defineProps<{
     fieldConfig: FormCreateField;
     path: string;
+    formConfig?: FormConfig;
+    isSubTableField?: boolean; // 是否是子表字段
+    isSubTableRender?: boolean; // 是否是子表渲染
   }>();
   const emit = defineEmits<{
     (e: 'change', value: string[], files: UploadFileInfo[]): void;
@@ -69,10 +92,20 @@
   const Message = useMessage();
 
   const fileKeys = defineModel<string[]>('value', {
-    default: [],
+    default: () => [],
   });
   const fileList = ref<UploadFileInfo[]>([]);
   const fileKeysMap = ref<Record<string, string>>({});
+
+  const getTriggerStyle = computed(() => {
+    if (props.isSubTableField || props.isSubTableRender) {
+      return {
+        width: '32px',
+        height: '32px',
+      };
+    }
+    return undefined;
+  });
 
   async function beforeUpload({
     file,
@@ -130,6 +163,7 @@
       onFinish();
       fileKeys.value.push(...res.data);
       [fileKeysMap.value[file.id]] = res.data;
+      emit('change', fileKeys.value, fileList.value);
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);
@@ -151,10 +185,6 @@
       delete fileKeysMap.value[file.id];
     }
   }
-
-  onBeforeMount(() => {
-    fileList.value = [];
-  });
 
   watch(
     () => fileKeys.value,
@@ -181,6 +211,18 @@
     }
   );
 </script>
+
+<style lang="less">
+  .crm-upload--subtable-file-list {
+    grid-auto-flow: column;
+    grid-template-columns: repeat(auto-fill, minmax(auto, 100px)) !important; /* 最小宽度自适应，最大宽度 100px */
+    align-items: center;
+    .n-upload-file--image-card-type {
+      width: 100px !important;
+      height: 100px !important;
+    }
+  }
+</style>
 
 <style lang="less" scoped>
   .n-upload-dragger {

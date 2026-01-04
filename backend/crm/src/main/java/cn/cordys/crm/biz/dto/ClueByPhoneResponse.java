@@ -10,7 +10,7 @@ import lombok.Data;
  * @author jianxing
  */
 @Data
-public class ContactByPhoneResponse extends Clue {
+public class ClueByPhoneResponse extends Clue {
 
     @Schema(description = "客户分类")
     private String category;

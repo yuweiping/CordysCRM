@@ -1,6 +1,6 @@
 package cn.cordys.crm.biz.service;
 
-import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
+import cn.cordys.crm.biz.dto.ClueByPhoneResponse;
 import cn.cordys.crm.biz.mapper.ExtBizContactMapper;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
@@ -24,7 +24,7 @@ public class BusinessService {
      * @param phone 用户手机号
      * @return 联系人列表
      */
-    public List<ContactByPhoneResponse> getContactsByUserPhone(String phone) {
-        return extBizContactMapper.getContactsByUserPhone(phone);
+    public List<ClueByPhoneResponse> getClueByUserPhone(String phone) {
+        return extBizContactMapper.getClueByUserPhone(phone);
     }
 }

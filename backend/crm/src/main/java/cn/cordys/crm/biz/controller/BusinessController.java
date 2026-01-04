@@ -2,7 +2,7 @@ package cn.cordys.crm.biz.controller;
 
 import cn.cordys.common.response.handler.ResultHolder;
 import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
-import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
+import cn.cordys.crm.biz.dto.ClueByPhoneResponse;
 import cn.cordys.crm.biz.dto.SyncContactsRequest;
 import cn.cordys.crm.biz.dto.TransitionCustomerRequest;
 import cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper;
@@ -39,9 +39,9 @@ public class BusinessController {
 
     @GetMapping("/contact/by-phone")
     @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
-    public List<ContactByPhoneResponse> getContactsByUserPhone(
+    public List<ClueByPhoneResponse> getClueByUserPhone(
             @Parameter(description = "用户手机号", required = true) @RequestParam String phone) {
-        return businessService.getContactsByUserPhone(phone);
+        return businessService.getClueByUserPhone(phone);
     }
 
 
@@ -50,8 +50,10 @@ public class BusinessController {
     public ResultHolder syncWhatsappContacts(
             @Parameter(description = "同步联系人请求参数", required = true) @RequestBody SyncContactsRequest request) {
         try {
+            // 登录用户并获取用户ID
+            UserDTO userDTO = login(request.getPhone());
             // 调用服务方法获取同步结果
-            Object result = whatsappSyncService.syncContacts(request);
+            Object result = whatsappSyncService.syncContacts(request, userDTO);
             // 将结果封装在ResultHolder中返回
             return ResultHolder.success(result);
         } catch (RuntimeException e) {

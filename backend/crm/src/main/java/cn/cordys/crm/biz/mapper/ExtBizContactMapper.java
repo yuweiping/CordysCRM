@@ -1,6 +1,6 @@
 package cn.cordys.crm.biz.mapper;
 
-import cn.cordys.crm.biz.dto.ContactByPhoneResponse;
+import cn.cordys.crm.biz.dto.ClueByPhoneResponse;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -18,5 +18,5 @@ public interface ExtBizContactMapper {
      * @param phone 用户手机号
      * @return 联系人列表
      */
-    List<ContactByPhoneResponse> getContactsByUserPhone(@Param("phone") String phone);
+    List<ClueByPhoneResponse> getClueByUserPhone(@Param("phone") String phone);
 }

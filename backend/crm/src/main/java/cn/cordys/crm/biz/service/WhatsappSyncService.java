@@ -134,14 +134,14 @@ public class WhatsappSyncService {
                         // 线索
                         type = "CLUE";
                         targetId = clue.getId();
-                    } else if ("NONE".equals(transitionType)) {
-                        // 线索
-                        type = "CLUE";
-                        targetId = clue.getId();
                     } else if ("CUSTOMER".equals(transitionType)) {
                         // 客户
                         type = "CUSTOMER";
                         targetId = clue.getTransitionId();
+                    } else {
+                        // 线索
+                        type = "CLUE";
+                        targetId = clue.getId();
                     }
                 } else {
                     // 不在线索中的处理逻辑

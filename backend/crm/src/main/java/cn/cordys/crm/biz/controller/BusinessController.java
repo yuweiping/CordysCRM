@@ -1,16 +1,24 @@
 package cn.cordys.crm.biz.controller;
 
+import cn.cordys.common.constants.PermissionConstants;
+import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.response.handler.ResultHolder;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
-import cn.cordys.crm.biz.dto.ClueByPhoneResponse;
-import cn.cordys.crm.biz.dto.SyncContactsRequest;
-import cn.cordys.crm.biz.dto.TransitionCustomerRequest;
+import cn.cordys.crm.biz.dto.*;
 import cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper;
 import cn.cordys.crm.biz.service.BusinessService;
 import cn.cordys.crm.biz.service.WhatsappSyncService;
 import cn.cordys.crm.clue.service.ClueService;
+import cn.cordys.crm.customer.domain.CustomerContact;
 import cn.cordys.crm.customer.dto.request.ClueTransformRequest;
+import cn.cordys.crm.follow.domain.FollowUpPlan;
+import cn.cordys.crm.follow.dto.CustomerDataDTO;
+import cn.cordys.crm.follow.dto.response.FollowUpPlanListResponse;
+import cn.cordys.crm.follow.service.FollowUpPlanService;
 import cn.cordys.crm.system.service.UserLoginService;
+import cn.cordys.mybatis.BaseMapper;
+import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import cn.cordys.security.SessionUser;
 import cn.cordys.security.SessionUtils;
 import cn.cordys.security.UserDTO;
@@ -18,6 +26,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,6 +45,10 @@ public class BusinessController {
     private WhatsappSyncService whatsappSyncService;
     @Resource
     private UserLoginService userLoginService;
+    @Resource
+    private FollowUpPlanService followUpPlanService;
+    @Resource
+    private BaseMapper<CustomerContact> customerContactMapper;
 
     @GetMapping("/contact/by-phone")
     @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
@@ -88,6 +101,32 @@ public class BusinessController {
         } catch (RuntimeException e) {
             return ResultHolder.error("线索转换为客户失败", e.getMessage());
         }
+    }
+
+    @PostMapping("/follow/plan/add")
+    @Operation(summary = "添加客户跟进计划")
+    public FollowUpPlan add(@Validated @RequestBody FollowUpPlanAddExtRequest request) {
+        // 登录用户并获取用户ID
+        UserDTO userDTO = login(request.getOwnerPhone());
+//        根据联系人手机号来查询联系人id
+        if (request.getContactPhone() != null) {
+            LambdaQueryWrapper<CustomerContact> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(CustomerContact::getPhone, request.getContactPhone());
+            List<CustomerContact> contacts = customerContactMapper.selectListByLambda(wrapper);
+            if (!contacts.isEmpty()) {
+                request.setContactId(contacts.get(0).getId());
+            }
+        }
+        return followUpPlanService.add(request, userDTO.getId(), OrganizationContext.getOrganizationId());
+    }
+
+    @PostMapping("/follow/plan/page")
+    @Operation(summary = "客户跟进计划列表")
+    public PagerWithOption<List<FollowUpPlanListResponse>> list(@Validated @RequestBody FollowUpPlanPageExtRequest request) {
+        UserDTO userDTO = login(request.getOwnerPhone());
+        CustomerDataDTO customerData = followUpPlanService.getCustomerPermission(SessionUtils.getUserId(),
+                request.getSourceId(), PermissionConstants.CUSTOMER_MANAGEMENT_READ);
+        return followUpPlanService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), "CUSTOMER", "CUSTOMER", customerData);
     }
 
     private UserDTO login(String ownerPhone) {

@@ -1,8 +1,7 @@
 package cn.cordys.crm.biz.controller;
 
-import cn.cordys.common.constants.PermissionConstants;
-import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.response.handler.ResultHolder;
+import cn.cordys.common.service.BaseService;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
 import cn.cordys.crm.biz.dto.*;
@@ -13,8 +12,6 @@ import cn.cordys.crm.clue.service.ClueService;
 import cn.cordys.crm.customer.domain.CustomerContact;
 import cn.cordys.crm.customer.dto.request.ClueTransformRequest;
 import cn.cordys.crm.follow.domain.FollowUpPlan;
-import cn.cordys.crm.follow.dto.CustomerDataDTO;
-import cn.cordys.crm.follow.dto.response.FollowUpPlanListResponse;
 import cn.cordys.crm.follow.service.FollowUpPlanService;
 import cn.cordys.crm.system.service.UserLoginService;
 import cn.cordys.mybatis.BaseMapper;
@@ -30,6 +27,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "客户端")
 @RestController
@@ -49,6 +47,10 @@ public class BusinessController {
     private FollowUpPlanService followUpPlanService;
     @Resource
     private BaseMapper<CustomerContact> customerContactMapper;
+    @Resource
+    private BaseMapper<FollowUpPlan> followUpPlanMapper;
+    @Resource
+    private BaseService baseService;
 
     @GetMapping("/contact/by-phone")
     @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
@@ -120,14 +122,43 @@ public class BusinessController {
         return followUpPlanService.add(request, userDTO.getId(), OrganizationContext.getOrganizationId());
     }
 
-    @PostMapping("/follow/plan/page")
+    @GetMapping("/follow/plan/list")
     @Operation(summary = "客户跟进计划列表")
-    public PagerWithOption<List<FollowUpPlanListResponse>> list(@Validated @RequestBody FollowUpPlanPageExtRequest request) {
-        UserDTO userDTO = login(request.getOwnerPhone());
-        CustomerDataDTO customerData = followUpPlanService.getCustomerPermission(SessionUtils.getUserId(),
-                request.getSourceId(), PermissionConstants.CUSTOMER_MANAGEMENT_READ);
-        return followUpPlanService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), "CUSTOMER", "CUSTOMER", customerData);
+    public List<FollowUpPlanListExtResponse> list(@RequestParam String ownerPhone) {
+        // 根据ownerPhone登录获取用户信息
+        UserDTO userDTO = login(ownerPhone);
+        String userId = userDTO.getId();
+
+        // 使用BaseMapper根据userId查询FollowUpPlan数据
+        LambdaQueryWrapper<FollowUpPlan> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(FollowUpPlan::getOwner, userId);
+
+        wrapper.eq(FollowUpPlan::getStatus, "PREPARED");
+        // 添加过滤条件：estimatedTime大于当前时间
+        wrapper.gt(FollowUpPlan::getEstimatedTime, System.currentTimeMillis());
+
+        List<FollowUpPlan> followUpPlans = followUpPlanMapper.selectListByLambda(wrapper);
+        List<String> contactIds = followUpPlans.stream().map(FollowUpPlan::getContactId).toList();
+        Map<String, String> contactPhoneMap = baseService.getContactPhone(contactIds);
+        // 转换为FollowUpPlanListResponse列表
+        List<FollowUpPlanListExtResponse> list = followUpPlans.stream().map(plan -> {
+            FollowUpPlanListExtResponse response = new FollowUpPlanListExtResponse();
+            // 复制基础字段
+            response.setId(plan.getId());
+            response.setCustomerId(plan.getCustomerId());
+            response.setContent(plan.getContent()); // 确保content字段被正确设置
+            response.setOwner(plan.getOwner());
+            response.setContactId(plan.getContactId()); // 确保contactId字段被正确设置，以便后续获取phone
+            response.setEstimatedTime(plan.getEstimatedTime()); // 确保estimatedTime字段被正确设置
+            response.setStatus(plan.getStatus());
+            response.setOwnerPhone(ownerPhone);
+            response.setPhone(contactPhoneMap.get(plan.getContactId()));
+            return response;
+        }).toList();
+
+        return list;
     }
+
 
     private UserDTO login(String ownerPhone) {
         // 根据手机号获取用户ID

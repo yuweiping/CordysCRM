@@ -159,6 +159,11 @@ public class BusinessController {
         return list;
     }
 
+    @GetMapping("/follow/plan/delete/{id}")
+    @Operation(summary = "删除跟进计划")
+    public void delete(@PathVariable String id) {
+        followUpPlanService.delete(id);
+    }
 
     private UserDTO login(String ownerPhone) {
         // 根据手机号获取用户ID

@@ -11,11 +11,11 @@ import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.utils.ConditionFilterUtils;
 import cn.cordys.context.OrganizationContext;
-import cn.cordys.crm.contract.dto.response.ContractListResponse;
-import cn.cordys.crm.contract.dto.response.ContractPaymentPlanListResponse;
-import cn.cordys.crm.contract.dto.response.CustomerContractStatisticResponse;
-import cn.cordys.crm.contract.dto.response.CustomerPaymentPlanStatisticResponse;
+import cn.cordys.crm.contract.dto.request.ContractPaymentRecordPageRequest;
+import cn.cordys.crm.contract.dto.response.*;
+import cn.cordys.crm.contract.service.ContractInvoiceService;
 import cn.cordys.crm.contract.service.ContractPaymentPlanService;
+import cn.cordys.crm.contract.service.ContractPaymentRecordService;
 import cn.cordys.crm.contract.service.ContractService;
 import cn.cordys.crm.customer.domain.Customer;
 import cn.cordys.crm.customer.dto.request.*;
@@ -48,6 +48,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -73,6 +74,10 @@ public class CustomerController {
     private ContractService contractService;
     @Resource
     private ContractPaymentPlanService contractPaymentPlanService;
+	@Resource
+	private ContractPaymentRecordService contractPaymentRecordService;
+    @Resource
+    private ContractInvoiceService contractInvoiceService;
 
     @GetMapping("/module/form")
     @RequiresPermissions(value = {PermissionConstants.CUSTOMER_MANAGEMENT_READ, PermissionConstants.CUSTOMER_MANAGEMENT_POOL_READ}, logical = Logical.OR)
@@ -282,7 +287,53 @@ public class CustomerController {
     public CustomerPaymentPlanStatisticResponse calculateCustomerPaymentPlanStatistic(@PathVariable String accountId) {
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
                 OrganizationContext.getOrganizationId(), PermissionConstants.CONTRACT_PAYMENT_PLAN_READ);
-        return contractPaymentPlanService.calculateCustomerPaymentPlanStatisticByCustomerId(accountId, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+        return contractPaymentPlanService.calculateCustomerPaymentPlanStatistic(accountId, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
     }
 
+	@PostMapping("/contract/payment-record/page")
+	@RequiresPermissions({PermissionConstants.CUSTOMER_MANAGEMENT_READ, PermissionConstants.CONTRACT_PAYMENT_RECORD_READ})
+	@Operation(summary = "客户详情-合同回款记录列表")
+	public PagerWithOption<List<ContractPaymentRecordResponse>> recordList(@Validated @RequestBody ContractPaymentRecordPageRequest request) {
+		ConditionFilterUtils.parseCondition(request);
+		request.setViewId(InternalUserView.ALL.name());
+		DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
+				OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_PAYMENT_RECORD_READ);
+		return contractPaymentRecordService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+	}
+
+	@GetMapping("/contract/payment-record/statistic/{accountId}")
+	@RequiresPermissions({PermissionConstants.CUSTOMER_MANAGEMENT_READ, PermissionConstants.CONTRACT_PAYMENT_RECORD_READ})
+	@Operation(summary = "客户详情-合同回款记录列表统计")
+	public CustomerPaymentRecordStatisticResponse calculateCustomerPaymentRecordStatistic(@PathVariable String accountId) {
+		DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
+				OrganizationContext.getOrganizationId(), PermissionConstants.CONTRACT_PAYMENT_RECORD_READ);
+		return contractPaymentRecordService.sumCustomerPaymentAmount(accountId, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+	}
+
+    @PostMapping("/invoice/page")
+    @RequiresPermissions({PermissionConstants.CUSTOMER_MANAGEMENT_READ, PermissionConstants.CONTRACT_INVOICE_READ})
+    @Operation(summary = "客户详情-发票列表")
+    public PagerWithOption<List<ContractInvoiceListResponse>> invoiceList(@Validated @RequestBody CustomerContractInvoicePageRequest request) {
+        ConditionFilterUtils.parseCondition(request);
+        request.setViewId(InternalUserView.ALL.name());
+        DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
+                OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_INVOICE_READ);
+        return contractInvoiceService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+    }
+
+    @GetMapping("/invoice/statistic/{accountId}")
+    @RequiresPermissions({PermissionConstants.CUSTOMER_MANAGEMENT_READ, PermissionConstants.CONTRACT_INVOICE_READ})
+    @Operation(summary = "客户详情-发票列表统计")
+    public CustomerInvoiceStatisticResponse calculateCustomerInvoiceStatistic(@PathVariable String accountId) {
+        DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
+                OrganizationContext.getOrganizationId(), PermissionConstants.CONTRACT_INVOICE_READ);
+        BigDecimal invoiceAmount = contractInvoiceService.calculateCustomerInvoiceAmount(accountId, SessionUtils.getUserId(),
+                OrganizationContext.getOrganizationId(), deptDataPermission);
+
+        CustomerInvoiceStatisticResponse response = new CustomerInvoiceStatisticResponse();
+        response.setContractAmount(calculateCustomerContractStatistic(accountId).getTotalAmount());
+        response.setInvoicedAmount(invoiceAmount);
+        response.setUninvoicedAmount(response.getContractAmount().subtract(invoiceAmount));
+        return response;
+    }
 }

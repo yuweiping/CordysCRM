@@ -10,6 +10,7 @@ export enum CompanyTypeEnum {
   LARK_OAUTH2 = 'LARK_OAUTH2', // 飞书OAUTH2认证
   MAXKB = 'MAXKB',
   TENDER = 'TENDER', // 招标信息
+  QCC = 'QCC', // 企查查
 }
 
 // 操作符号
@@ -42,5 +43,5 @@ export enum ColumnTypeEnum {
 }
 
 export enum ImportTypeExcludeFormDesignEnum {
-  CONTRACT_BUSINESS_NAME_IMPORT = 'contractBusinessNameImport',
+  CONTRACT_BUSINESS_TITLE_IMPORT = 'contractBusinessTitleImport',
 }

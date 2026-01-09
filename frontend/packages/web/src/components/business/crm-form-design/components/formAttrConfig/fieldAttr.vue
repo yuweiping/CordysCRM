@@ -1447,13 +1447,25 @@
         value: FieldDataSourceTypeEnum.CONTRACT,
         formKey: FormDesignKeyEnum.CONTRACT,
       },
+      {
+        label: t('module.paymentPlan'),
+        value: FieldDataSourceTypeEnum.CONTRACT_PAYMENT,
+        formKey: FormDesignKeyEnum.CONTRACT_PAYMENT,
+      },
     ];
     if (isSubTableField.value) {
-      return fullList.filter(
-        (item) =>
-          [FieldDataSourceTypeEnum.PRODUCT, FieldDataSourceTypeEnum.PRICE].includes(item.value) &&
-          item.formKey !== props.formKey
-      );
+      return parentField.value?.subFields?.some(
+        (e) => e.dataSourceType === FieldDataSourceTypeEnum.PRICE && e.id !== fieldConfig.value?.id
+      )
+        ? // 子表格里只能有一个价格表
+          fullList.filter(
+            (item) => [FieldDataSourceTypeEnum.PRODUCT].includes(item.value) && item.formKey !== props.formKey
+          )
+        : fullList.filter(
+            (item) =>
+              [FieldDataSourceTypeEnum.PRODUCT, FieldDataSourceTypeEnum.PRICE].includes(item.value) &&
+              item.formKey !== props.formKey
+          );
     }
     return fullList.filter((item) => item.formKey !== props.formKey);
   });

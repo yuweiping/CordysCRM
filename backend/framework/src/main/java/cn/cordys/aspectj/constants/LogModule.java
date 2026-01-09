@@ -95,7 +95,7 @@ public class LogModule {
      */
     public static final String OPPORTUNITY_INDEX = "OPPORTUNITY_INDEX";
 
-     /**
+    /**
      * 商机报价
      */
     public static final String OPPORTUNITY_QUOTATION = "OPPORTUNITY_QUOTATION";
@@ -110,10 +110,10 @@ public class LogModule {
      */
     public static final String PRODUCT_MANAGEMENT = "PRODUCT_MANAGEMENT_PRO";
 
-	/**
-	 * 产品价格表
-	 */
-	public static final String PRODUCT_PRICE_MANAGEMENT = "PRODUCT_MANAGEMENT_PRICE";
+    /**
+     * 产品价格表
+     */
+    public static final String PRODUCT_PRICE_MANAGEMENT = "PRODUCT_MANAGEMENT_PRICE";
 
     /**
      * 客户公海
@@ -131,5 +131,17 @@ public class LogModule {
      * 合同回款计划
      */
     public static final String CONTRACT_PAYMENT = "CONTRACT_PAYMENT";
+	/**
+	 * 合同回款记录
+	 */
+    public static final String CONTRACT_PAYMENT_RECORD = "CONTRACT_PAYMENT_RECORD";
+    /**
+     * 发票
+     */
+    public static final String CONTRACT_INVOICE = "CONTRACT_INVOICE";
+    /**
+     * 工商抬头
+     */
+    public static final String BUSINESS_TITLE = "BUSINESS_TITLE";
 
 }

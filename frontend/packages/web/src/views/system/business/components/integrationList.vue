@@ -33,7 +33,7 @@
                   {{ t('system.business.notConfigured') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === false"
+                  v-else-if="item.hasConfig && item.verify === false"
                   theme="light"
                   type="error"
                   size="small"
@@ -42,7 +42,7 @@
                   {{ t('common.fail') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === null"
+                  v-else-if="item.hasConfig && item.verify === null"
                   theme="light"
                   type="warning"
                   size="small"
@@ -92,13 +92,13 @@
 
         <div class="flex justify-between gap-[8px]">
           <div class="flex items-center gap-[8px]">
-            <n-tooltip :disabled="item.response.verify">
+            <n-tooltip :disabled="item.verify">
               <template #trigger>
                 <n-switch
                   size="small"
                   :rubber-band="false"
-                  :value="item.response.startEnable"
-                  :disabled="!item.hasConfig || !item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  :value="item.config.startEnable"
+                  :disabled="!item.hasConfig || !item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                   @update:value="handleChangeEnable(item, 'startEnable')"
                 />
               </template>
@@ -152,7 +152,7 @@
                   {{ t('system.business.notConfigured') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === false"
+                  v-else-if="item.hasConfig && item.verify === false"
                   theme="light"
                   type="error"
                   size="small"
@@ -161,7 +161,7 @@
                   {{ t('common.fail') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === null"
+                  v-else-if="item.hasConfig && item.verify === null"
                   theme="light"
                   type="warning"
                   size="small"
@@ -209,13 +209,13 @@
           </div>
         </div>
         <div v-if="item.type === CompanyTypeEnum.DATA_EASE" class="flex items-center gap-[8px]">
-          <n-tooltip :disabled="item.response.verify">
+          <n-tooltip :disabled="item.verify">
             <template #trigger>
               <n-switch
                 size="small"
                 :rubber-band="false"
-                :value="item.response.deBoardEnable"
-                :disabled="!item.hasConfig || !item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                :value="item.config.deBoardEnable"
+                :disabled="!item.hasConfig || !item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                 @update:value="handleChangeEnable(item, 'deBoardEnable')"
               />
             </template>
@@ -225,13 +225,13 @@
         </div>
         <div v-else-if="item.type === CompanyTypeEnum.SQLBot" class="flex justify-between gap-[8px]">
           <!--          <div class="flex items-center gap-[8px]">
-            <n-tooltip :disabled="item.response.verify">
+            <n-tooltip :disabled="item.verify">
               <template #trigger>
                 <n-switch
                   size="small"
                   :rubber-band="false"
-                  :value="item.response.sqlBotBoardEnable"
-                  :disabled="!item.hasConfig || !item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  :value="item.config.sqlBotBoardEnable"
+                  :disabled="!item.hasConfig || !item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                   @update:value="handleChangeEnable(item, 'sqlBotBoardEnable')"
                 />
               </template>
@@ -240,13 +240,13 @@
             <div class="text-[12px]">{{ t('common.dashboard') }}</div>
           </div>-->
           <div class="flex items-center gap-[8px]">
-            <n-tooltip :disabled="item.response.verify">
+            <n-tooltip :disabled="item.verify">
               <template #trigger>
                 <n-switch
                   size="small"
                   :rubber-band="false"
-                  :value="item.response.sqlBotChatEnable"
-                  :disabled="!item.hasConfig || !item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  :value="item.config.sqlBotChatEnable"
+                  :disabled="!item.hasConfig || !item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                   @update:value="handleChangeEnable(item, 'sqlBotChatEnable')"
                 />
               </template>
@@ -284,7 +284,7 @@
                   {{ t('system.business.notConfigured') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === false"
+                  v-else-if="item.hasConfig && item.verify === false"
                   theme="light"
                   type="error"
                   size="small"
@@ -293,7 +293,7 @@
                   {{ t('common.fail') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === null"
+                  v-else-if="item.hasConfig && item.verify === null"
                   theme="light"
                   type="warning"
                   size="small"
@@ -331,13 +331,13 @@
         </div>
         <div class="flex justify-between gap-[8px]">
           <div class="flex items-center gap-[8px]">
-            <n-tooltip :disabled="item.response.verify">
+            <n-tooltip :disabled="item.verify">
               <template #trigger>
                 <n-switch
                   size="small"
                   :rubber-band="false"
-                  :value="item.response.mkEnable"
-                  :disabled="!item.hasConfig || !item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  :value="item.config.mkEnable"
+                  :disabled="!item.hasConfig || !item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                   @update:value="handleChangeEnable(item, 'mkEnable')"
                 />
               </template>
@@ -366,7 +366,7 @@
               <div>
                 <span class="mr-[8px] font-medium">{{ item.title }}</span>
                 <CrmTag
-                  v-if="item.hasConfig && item.response.verify === false"
+                  v-if="item.hasConfig && item.verify === false"
                   theme="light"
                   type="error"
                   size="small"
@@ -375,7 +375,7 @@
                   {{ t('common.fail') }}
                 </CrmTag>
                 <CrmTag
-                  v-else-if="item.hasConfig && item.response.verify === null"
+                  v-else-if="item.hasConfig && item.verify === null"
                   theme="light"
                   type="warning"
                   size="small"
@@ -398,13 +398,13 @@
         </div>
         <div class="flex justify-between gap-[8px]">
           <div class="flex items-center gap-[8px]">
-            <n-tooltip :disabled="item.response.verify">
+            <n-tooltip :disabled="item.verify">
               <template #trigger>
                 <n-switch
                   size="small"
                   :rubber-band="false"
-                  :value="item.response.tenderEnable"
-                  :disabled="!item.response.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  :value="item.config.tenderEnable"
+                  :disabled="!item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
                   @update:value="handleChangeEnable(item, 'tenderEnable')"
                 />
               </template>
@@ -416,10 +416,87 @@
       </div>
     </div>
   </CrmCard>
+
+  <CrmCard hide-footer auto-height class="mt-[16px]">
+    <div class="content-title mb-[16px]">{{ t('system.business.thirdPartyPlatform') }}</div>
+    <div v-if="thirdPartyIntegrationList.length" class="grid gap-[16px] xl:grid-cols-2 2xl:grid-cols-3">
+      <div
+        v-for="item of thirdPartyIntegrationList"
+        :key="item.type"
+        class="flex h-[140px] flex-col justify-between rounded-[6px] border border-solid border-[var(--text-n8)] bg-[var(--text-n10)] p-[24px]"
+      >
+        <div class="flex">
+          <div class="mr-[8px] flex h-[40px] w-[40px] items-center justify-center rounded-[2px] bg-[var(--text-n9)]">
+            <CrmSvgIcon :name="item.logo" width="24px" height="24px" />
+          </div>
+          <div class="flex-1">
+            <div class="flex justify-between gap-[8px]">
+              <div>
+                <span class="mr-[8px] font-medium">{{ item.title }}</span>
+                <CrmTag
+                  v-if="item.hasConfig && item.verify === false"
+                  theme="light"
+                  type="error"
+                  size="small"
+                  custom-class="px-[4px]"
+                >
+                  {{ t('common.fail') }}
+                </CrmTag>
+                <CrmTag
+                  v-else-if="item.hasConfig && item.verify === null"
+                  theme="light"
+                  type="warning"
+                  size="small"
+                  custom-class="px-[4px]"
+                >
+                  {{ t('common.unVerify') }}
+                </CrmTag>
+                <CrmTag v-else theme="light" type="success" size="small" custom-class="px-[4px]">
+                  {{ t('common.success') }}
+                </CrmTag>
+              </div>
+              <div>
+                <n-button
+                  v-permission="['SYSTEM_SETTING:UPDATE']"
+                  size="small"
+                  type="default"
+                  class="outline--secondary mr-[8px] px-[8px]"
+                  @click="handleEdit(item)"
+                >
+                  {{ t('common.config') }}
+                </n-button>
+                <n-button size="small" type="default" class="outline--secondary px-[8px]" @click="testLink(item)">
+                  {{ t('system.business.mailSettings.testLink') }}
+                </n-button>
+              </div>
+            </div>
+            <p class="text-[12px] text-[var(--text-n4)]">{{ item.description }}</p>
+          </div>
+        </div>
+        <div class="flex justify-between gap-[8px]">
+          <div class="flex items-center gap-[8px]">
+            <n-tooltip :disabled="item.verify">
+              <template #trigger>
+                <n-switch
+                  size="small"
+                  :rubber-band="false"
+                  :value="item.config.qccEnable"
+                  :disabled="!item.verify || !hasAnyPermission(['SYSTEM_SETTING:UPDATE'])"
+                  @update:value="handleChangeEnable(item, 'qccEnable')"
+                />
+              </template>
+              {{ t('system.business.notConfiguredTip') }}
+            </n-tooltip>
+            <div class="text-[12px]">{{ t('system.business.qichacha') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </CrmCard>
   <EditIntegrationModal
     v-model:show="showEditIntegrationModal"
     :title="currentTitle"
-    :integration="currentIntegration as ConfigSynchronization"
+    :integration="currentIntegration"
     @init-sync="editDone"
   />
 </template>
@@ -430,7 +507,7 @@
 
   import { CompanyTypeEnum } from '@lib/shared/enums/commonEnum';
   import { loadScript, removeScript } from '@lib/shared/method/scriptLoader';
-  import type { ConfigSynchronization, IntegrationItem } from '@lib/shared/models/system/business';
+  import type { IntegrationItem, ThirdPartyResourceConfig } from '@lib/shared/models/system/business';
 
   import CrmCard from '@/components/pure/crm-card/index.vue';
   import CrmSvgIcon from '@/components/pure/crm-svg/index.vue';
@@ -445,7 +522,7 @@
     testConfigSynchronization,
     updateConfigSynchronization,
   } from '@/api/modules';
-  import { platformType } from '@/config/business';
+  import { defaultThirdPartyConfigMap, platformType } from '@/config/business';
   import useModal from '@/hooks/useModal';
   import { useAppStore } from '@/store';
   import { hasAnyPermission } from '@/utils/permission';
@@ -502,9 +579,15 @@
     },
     {
       type: CompanyTypeEnum.TENDER,
-      title: '大单网',
-      description: '上大单中大单',
+      title: t('system.business.tenderTitle'),
+      description: t('system.business.tenderDescription'),
       logo: 'dadan',
+    },
+    {
+      type: CompanyTypeEnum.QCC,
+      title: t('system.business.qichacha'),
+      description: t('system.business.thirdQueryQccDescription'),
+      logo: 'qichacha',
     },
   ];
 
@@ -523,6 +606,10 @@
     originIntegrationList.value.filter((e) => e.type === CompanyTypeEnum.TENDER)
   );
 
+  const thirdPartyIntegrationList = computed<IntegrationItem[]>(() =>
+    originIntegrationList.value.filter((e) => e.type === CompanyTypeEnum.QCC)
+  );
+
   const loading = ref(false);
   async function initSyncList() {
     try {
@@ -537,27 +624,29 @@
             CompanyTypeEnum.SQLBot,
             CompanyTypeEnum.MAXKB,
             CompanyTypeEnum.TENDER,
+            CompanyTypeEnum.QCC,
           ].includes(item.type)
         )
         .map((item) => {
-          const config = configMap.get(item.type);
+          const result = configMap.get(item.type);
+          const config = result?.config;
           return {
             ...item,
+            ...result,
+            verify: result?.verify ?? false,
             hasConfig: Boolean(config?.appSecret),
-            response: {
-              sqlBotBoardEnable: config?.sqlBotBoardEnable ?? false,
-              sqlBotChatEnable: config?.sqlBotChatEnable ?? false,
-              startEnable: config?.startEnable ?? false,
-              mkEnable: config?.mkEnable ?? false,
-              tenderEnable: config?.tenderEnable ?? false,
-              type: item.type,
+            config: {
+              ...defaultThirdPartyConfigMap[item.type as CompanyTypeEnum],
               ...config,
             },
           };
         });
 
       integrationList.value = originIntegrationList.value.filter(
-        (e) => ![...platformType, CompanyTypeEnum.MAXKB, CompanyTypeEnum.TENDER].includes(e.type as CompanyTypeEnum)
+        (e) =>
+          ![...platformType, CompanyTypeEnum.MAXKB, CompanyTypeEnum.TENDER, CompanyTypeEnum.QCC].includes(
+            e.type as CompanyTypeEnum
+          )
       );
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -570,10 +659,15 @@
   const showEditIntegrationModal = ref(false);
 
   const currentTitle = ref('');
-  const currentIntegration = ref<ConfigSynchronization>();
+  const currentIntegration = ref<ThirdPartyResourceConfig>({
+    type: CompanyTypeEnum.WECOM,
+    verify: false,
+    config: defaultThirdPartyConfigMap[CompanyTypeEnum.WECOM],
+  });
+
   function handleEdit(item: IntegrationItem) {
     currentTitle.value = item.title;
-    currentIntegration.value = { ...item.response };
+    currentIntegration.value = { ...item };
     showEditIntegrationModal.value = true;
   }
 
@@ -591,29 +685,52 @@
     }
   }
 
+  function makeParams(item: IntegrationItem, key?: string) {
+    const config = {
+      ...item.config,
+      ...(key ? { [key]: !item.config[key] } : {}),
+    };
+    const thirdConfigKeys = Object.keys(defaultThirdPartyConfigMap[item.type as CompanyTypeEnum]);
+    const params: Record<string, any> = {};
+    thirdConfigKeys.forEach((configKey: string) => {
+      params[configKey] = config[configKey];
+    });
+    return {
+      verify: item.verify,
+      type: item.type,
+      config: params,
+    };
+  }
+
   async function handleChangeEnable(
     item: IntegrationItem,
-    key: 'deBoardEnable' | 'sqlBotBoardEnable' | 'sqlBotChatEnable' | 'startEnable' | 'mkEnable' | 'tenderEnable'
+    key:
+      | 'deBoardEnable'
+      | 'sqlBotBoardEnable'
+      | 'sqlBotChatEnable'
+      | 'startEnable'
+      | 'mkEnable'
+      | 'tenderEnable'
+      | 'qccEnable'
   ) {
     try {
       loading.value = true;
-      updateConfigSynchronization({ ...item.response, [key]: !item.response[key] })
+      updateConfigSynchronization(makeParams(item, key))
         .then(async () => {
-          Message.success(item.response[key] ? t('common.disableSuccess') : t('common.enableSuccess'));
+          Message.success(item.config[key] ? t('common.disableSuccess') : t('common.enableSuccess'));
           await initSyncList();
           appStore.initThirdPartyResource();
-          if (item.response[key]) {
+          if (item.config[key]) {
             removeScript(CompanyTypeEnum.SQLBot);
           } else {
-            await loadScript(item.response.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
+            await loadScript(item.config.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
           }
         })
         .catch(() => {
-          item.response.verify = false;
-          item.response.deBoardEnable = true;
-          item.response.startEnable = false;
-          item.response.mkEnable = false;
-          item.response.tenderEnable = false;
+          item.verify = false;
+          item.config = {
+            ...defaultThirdPartyConfigMap[item.type as CompanyTypeEnum],
+          };
         })
         .finally(() => {
           loading.value = false;
@@ -626,7 +743,7 @@
 
   async function testLink(item: IntegrationItem) {
     try {
-      testConfigSynchronization(item.response)
+      testConfigSynchronization(makeParams(item))
         .then((res) => {
           const isSuccess = res.data.data;
           if (isSuccess) {
@@ -637,11 +754,10 @@
           initSyncList();
         })
         .catch(() => {
-          item.response.verify = false;
-          item.response.deBoardEnable = true;
-          item.response.startEnable = false;
-          item.response.mkEnable = false;
-          item.response.tenderEnable = false;
+          item.verify = false;
+          item.config = {
+            ...defaultThirdPartyConfigMap[item.type as CompanyTypeEnum],
+          };
         });
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -653,8 +769,8 @@
     await initSyncList();
     const sqlItem = integrationList.value.find((item) => item.type === CompanyTypeEnum.SQLBot);
     removeScript(CompanyTypeEnum.SQLBot);
-    if (sqlItem && sqlItem.response.sqlBotChatEnable) {
-      await loadScript(sqlItem.response.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
+    if (sqlItem && sqlItem.config.sqlBotChatEnable) {
+      await loadScript(sqlItem.config.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
     }
   }
 

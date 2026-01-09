@@ -4,22 +4,25 @@ import { ValidateInfo } from '@lib/shared/models/system/org';
 
 import {
   downloadAccountTemplate,
-  downloadBusinessNameTemplate,
+  downloadBusinessTitleTemplate,
   downloadContactTemplate,
+  downloadContractPaymentRecordTemplate,
   downloadLeadTemplate,
   downloadOptTemplate,
   downloadProductPriceTemplate,
   downloadProductTemplate,
   importAccount,
-  importBusinessName,
+  importBusinessTitle,
   importContact,
+  importContractPaymentRecord,
   importLead,
   importOpportunity,
   importProduct,
   importProductPrice,
   preCheckImportAccount,
-  preCheckImportBusinessName,
+  preCheckImportBusinessTitle,
   preCheckImportContact,
+  preCheckImportContractPaymentRecord,
   preCheckImportLead,
   preCheckImportOpt,
   preCheckImportProduct,
@@ -32,8 +35,9 @@ export type ImportApiType =
   | FormDesignKeyEnum.CUSTOMER
   | FormDesignKeyEnum.CONTACT
   | FormDesignKeyEnum.PRODUCT
+  | FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD
   | FormDesignKeyEnum.PRICE
-  | ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_NAME_IMPORT;
+  | ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_TITLE_IMPORT;
 
 export interface importRequestType {
   preCheck: (file: File) => Promise<{ data: ValidateInfo }>;
@@ -72,9 +76,14 @@ export const importApiMap: Record<ImportApiType, importRequestType> = {
     save: importProductPrice,
     download: downloadProductPriceTemplate,
   },
-  [ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_NAME_IMPORT]: {
-    preCheck: preCheckImportBusinessName,
-    save: importBusinessName,
-    download: downloadBusinessNameTemplate,
+  [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: {
+    preCheck: preCheckImportContractPaymentRecord,
+    save: importContractPaymentRecord,
+    download: downloadContractPaymentRecordTemplate,
+  },
+  [ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_TITLE_IMPORT]: {
+    preCheck: preCheckImportBusinessTitle,
+    save: importBusinessTitle,
+    download: downloadBusinessTitleTemplate,
   },
 };

@@ -12,6 +12,7 @@
       :fullscreen-target-ref="props.fullscreenTargetRef"
       :childrenKey="subFieldKey"
       :columns="columns"
+      :class="subFieldKey ? 'crm-datasource-table--hasSubField' : ''"
       @page-change="propsEvent.pageChange"
       @page-size-change="propsEvent.pageSizeChange"
       @sorter-change="propsEvent.sorterChange"
@@ -63,6 +64,7 @@
       filterParams?: FilterResult;
       fullscreenTargetRef?: HTMLElement | null;
       fieldConfig?: FormCreateField;
+      isSubTableRender?: boolean;
     }>(),
     {
       multiple: true,
@@ -131,10 +133,7 @@
   );
   // 计算子表格字段的key
   const subFieldKey = computed(() => {
-    if (
-      formKeyMap[props.sourceType] === FormDesignKeyEnum.PRICE &&
-      props.fieldConfig?.showFields?.some((sf) => subField.value?.subFields?.some((sub) => sub.id === sf))
-    ) {
+    if (formKeyMap[props.sourceType] === FormDesignKeyEnum.PRICE && props.isSubTableRender) {
       const field = fieldList.value.find((e) => e.type === FieldTypeEnum.SUB_PRODUCT);
       return field?.businessKey || field?.id;
     }
@@ -209,6 +208,7 @@
       },
       containerClass: '.crm-data-source-table',
       childrenKey: subFieldKey.value,
+      cascade: false,
       rowClassName: (row) => {
         if (subFieldKey.value && row[subFieldKey.value]?.length) {
           return 'crm-data-source-has-subfields';
@@ -217,12 +217,20 @@
       },
     },
     (item, originalData) => {
-      return transformData({
+      const transformItem = transformData({
         item,
         originalData,
         fields: fieldList.value,
         needParseSubTable: true,
       });
+      if (subFieldKey.value) {
+        transformItem[subFieldKey.value] = transformItem[subFieldKey.value]?.map((subItem: any) => ({
+          ...subItem,
+          parentId: item.id,
+          parentName: item.name,
+        }));
+      }
+      return transformItem;
     }
   );
 
@@ -238,8 +246,18 @@
   }
 
   function handleRowKeyChange(keys: DataTableRowKey[], _rows: InternalRowData[]) {
-    selectedKeys.value = keys;
-    selectedRows.value = _rows;
+    if (subFieldKey.value) {
+      const parentIds = _rows.map((r) => r.parentId as DataTableRowKey);
+      selectedKeys.value = Array.from(new Set(keys.concat(parentIds)));
+      const parentRows =
+        propsRes.value.data.filter(
+          (r) => parentIds.includes(r.id as DataTableRowKey) && !_rows.some((row) => row.id === r.id)
+        ) || [];
+      selectedRows.value = _rows.concat(parentRows);
+    } else {
+      selectedKeys.value = keys;
+      selectedRows.value = _rows;
+    }
   }
 
   const isFullScreen = computed(() => crmTableRef.value?.isFullScreen);
@@ -299,6 +317,13 @@
       }
       &:not(.n-input--disabled) .n-input__input-el {
         caret-color: var(--primary-8) !important;
+      }
+    }
+  }
+  .crm-datasource-table--hasSubField {
+    .n-data-table-thead {
+      .n-checkbox {
+        @apply hidden;
       }
     }
   }

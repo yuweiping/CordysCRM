@@ -43,15 +43,15 @@ const contract: AppRouteRecordRaw = {
       meta: {
         locale: 'module.paymentRecord',
         isTopMenu: true,
-        permissions: ['CONTRACT_PAYMENT_PLAN:READ'], // TODO lmy permission
+        permissions: ['CONTRACT_PAYMENT_RECORD:READ'],
       },
     },
     {
       path: 'contractBusinessName',
       name: ContractRouteEnum.CONTRACT_BUSINESS_NAME,
-      component: () => import('@/views/contract/businessName/index.vue'),
+      component: () => import('@/views/contract/businessTitle/index.vue'),
       meta: {
-        locale: 'module.businessName',
+        locale: 'module.businessTitle',
         isTopMenu: true,
         permissions: [],
       },

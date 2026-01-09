@@ -15,11 +15,11 @@
 </template>
 
 <script setup lang="ts">
-  import { DataTableCreateSummary, NButton, NDataTable, NImage, NImageGroup, NTooltip } from 'naive-ui';
+  import { DataTableCreateSummary, NButton, NDataTable, NImage, NImageGroup, NTooltip, useMessage } from 'naive-ui';
   import { isEqual } from 'lodash-es';
 
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
-  import { FieldRuleEnum, FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
+  import { FieldRuleEnum, FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { formatTimeValue, getCityPath, getIndustryPath } from '@lib/shared/method';
@@ -34,6 +34,7 @@
   import select from '@/components/business/crm-form-create/components/basic/select.vue';
   import singleText from '@/components/business/crm-form-create/components/basic/singleText.vue';
 
+  import { formKeyMap } from '../crm-data-source-select/config';
   import { FormCreateField } from '../crm-form-create/types';
   import { RowData, TableColumns } from 'naive-ui/es/data-table/src/interface';
 
@@ -53,6 +54,7 @@
   }>();
 
   const { t } = useI18n();
+  const Message = useMessage();
 
   const data = defineModel<Record<string, any>[]>('value', {
     required: true,
@@ -173,7 +175,72 @@
     }
   }
 
-  const sumInitialOptions = ref<Record<string, any>[]>([]);
+  function makeNewRow() {
+    const newRow: Record<string, any> = {};
+    props.subFields.forEach((field) => {
+      const key = field.resourceFieldId ? field.id : field.businessKey || field.id;
+      if (field.type === FieldTypeEnum.INPUT_NUMBER) {
+        newRow[key] = field.resourceFieldId
+          ? formatNumberValue(field.defaultValue ?? 0, field)
+          : field.defaultValue ?? null;
+      } else if (field.type === FieldTypeEnum.FORMULA) {
+        newRow[key] = field.defaultValue ?? 0;
+      } else if (
+        [FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.PICTURE].includes(field.type)
+      ) {
+        newRow[key] = [];
+      } else {
+        newRow[key] = field.defaultValue ?? '';
+      }
+    });
+    return newRow;
+  }
+
+  function addLine() {
+    const newRow = makeNewRow();
+    data.value.push(newRow);
+  }
+
+  function applyDataSourceShowFields(
+    field: FormCreateField,
+    val: any[],
+    row: Record<string, any>,
+    source: Record<string, any>[],
+    rowId?: string
+  ) {
+    if (field.showFields?.length) {
+      // 数据源显示字段联动
+      const showFields = props.subFields.filter((f) => f.resourceFieldId === field.id);
+      const targetSource = source.filter((e) => !e.parentId).find((e) => val.includes(e.id)); // 子表格数据源是单选，所以目标数据源只有一个
+      showFields.forEach((sf) => {
+        let fieldVal: string | string[] = '';
+        if (targetSource) {
+          const sourceFieldVal = targetSource[sf.id]; // 数据源的显示字段都使用id 读取
+          if (sf.subTableFieldId) {
+            // 如果数据源显示字段是数据源的子表格字段，则需要 rowId 定位数据源子表格的行
+            const subTableData = targetSource[sf.subTableFieldId];
+            if (Array.isArray(subTableData) && rowId) {
+              const subTableRow = subTableData.find((stRow) => stRow.id === rowId);
+              if (subTableRow) {
+                fieldVal = subTableRow[sf.id];
+              }
+            }
+          } else {
+            fieldVal = sourceFieldVal;
+          }
+        }
+        if (Array.isArray(fieldVal)) {
+          row[sf.id] = fieldVal.join(',');
+        } else if (sf.type === FieldTypeEnum.INPUT_NUMBER && typeof fieldVal === 'number') {
+          row[sf.id] = formatNumberValue(fieldVal, sf) ?? null;
+        } else {
+          row[sf.id] = fieldVal;
+        }
+      });
+    }
+  }
+
+  const sumInitialOptions = ref<Record<string, any>[]>([]); // 记录子表格内数据源列的初始选项
   const pictureFields = computed<FormCreateField[]>(() => {
     return props.subFields.filter((field) => field.type === FieldTypeEnum.PICTURE);
   });
@@ -189,6 +256,88 @@
       return prev;
     }, {} as Record<string, number>);
   });
+
+  const isProcessingDataSourceChange = ref(false);
+  function handleDataSourceChange(
+    val: any[],
+    source: Record<string, any>[],
+    field: FormCreateField,
+    row: Record<string, any>,
+    rowIndex: number,
+    isPriceSubTableShowSubField?: boolean
+  ) {
+    if (isProcessingDataSourceChange.value) {
+      // 子表格添加多行会触发 change，避免重复处理
+      return;
+    }
+    isProcessingDataSourceChange.value = true;
+    const key = field.businessKey || field.id;
+    const parents = source.filter((s) => !s.parentId);
+    if (isPriceSubTableShowSubField && val.filter((e) => parents.some((p) => p.id === e)).length > 0) {
+      // 价格表子表格特殊处理，需要填充多行
+      const children = source.filter(
+        (s) => s.parentId && data.value.every((r) => r.price_sub !== s.id) // 过滤已存在的行
+      );
+      if (children.length === 0 && val.length > 0) {
+        Message.warning(t('crm.subTable.repeatAdd'));
+      }
+      if (children.length === 0 || !source.some((s) => s.parentId)) {
+        // 没有选中子项或没有选中父项，都表示当前为清空
+        row[key] = [];
+        row.price_sub = '';
+        applyDataSourceShowFields(field, [], row, source, row.price_sub);
+        emit('change', data.value);
+        nextTick(() => {
+          isProcessingDataSourceChange.value = false;
+        });
+        return;
+      }
+      if (children.length > 1) {
+        // 多选行时，新增多行且选中值为子项的父项信息
+        row.price_sub = children[0]?.id;
+        row[key] = [children[0].parentId, row.price_sub]; // 价格表 id 在第一位，因为当前是单选数据源，提交表单时只会保存第一个值
+        applyDataSourceShowFields(field, row[key], row, source, row.price_sub); // 数据源显示字段读取值并显示
+        for (let i = 1; i < children.length; i++) {
+          // 补充新增行
+          addLine();
+        }
+        nextTick(() => {
+          // 等待行添加完成后，给新增的行补充行号和选中价格表数据源
+          for (let i = data.value.length - 1; i > rowIndex; i--) {
+            const newRow = data.value[i];
+            newRow.price_sub = children[i - rowIndex]?.id;
+            newRow[key] = [children[i - rowIndex]?.parentId, newRow.price_sub]; // 选中值为父项以及当前行
+            applyDataSourceShowFields(field, newRow[key], newRow, source, newRow.price_sub); // 回显价格表带出的显示字段
+          }
+        });
+      } else {
+        // 单选行只有一个父级
+        row.price_sub = children[0]?.id;
+        row[key] = val.sort((a, b) => {
+          // 保证父项在前，子项在后
+          if (a === children[0].parentId) {
+            return -1;
+          }
+          if (b === children[0].parentId) {
+            return 1;
+          }
+          return 0;
+        });
+        applyDataSourceShowFields(field, row[key], row, source, row.price_sub);
+      }
+    } else {
+      row[key] = val.filter((e) => parents.some((p) => p.id === e)).length > 0 ? val : [];
+      applyDataSourceShowFields(field, val, row, source, row.price_sub);
+    }
+    sumInitialOptions.value = sumInitialOptions.value.concat(
+      ...source.filter((s) => !sumInitialOptions.value.some((io) => io.id === s.id))
+    );
+    nextTick(() => {
+      isProcessingDataSourceChange.value = false;
+    });
+    emit('change', data.value);
+  }
+
   const renderColumns = computed<CrmDataTableColumn[]>(() => {
     if (props.readonly) {
       return props.subFields
@@ -278,6 +427,8 @@
           };
         }
         if (field.type === FieldTypeEnum.DATA_SOURCE) {
+          const isPriceSubTableShowSubField =
+            field.dataSourceType && formKeyMap[field.dataSourceType] === FormDesignKeyEnum.PRICE;
           return {
             title,
             width: 250,
@@ -299,31 +450,9 @@
                 formDetail: props.formDetail,
                 disabled: props.disabled,
                 class: 'w-[240px]',
+                hideChildTag: isPriceSubTableShowSubField,
                 onChange: (val, source) => {
-                  row[key] = val;
-                  sumInitialOptions.value = sumInitialOptions.value.concat(
-                    ...source.filter((s) => !sumInitialOptions.value.some((io) => io.id === s.id))
-                  );
-                  if (field.showFields?.length) {
-                    // 数据源显示字段联动
-                    const showFields = props.subFields.filter((f) => f.resourceFieldId === field.id);
-                    const targetSource = source.find((s) => s.id === val[0]);
-                    showFields.forEach((sf) => {
-                      let fieldVal: string | string[] = '';
-                      if (targetSource) {
-                        const sourceFieldVal = targetSource[sf.businessKey || sf.id];
-                        fieldVal = sourceFieldVal;
-                      }
-                      if (Array.isArray(fieldVal)) {
-                        row[sf.id] = fieldVal.join(',');
-                      } else if (sf.type === FieldTypeEnum.INPUT_NUMBER && typeof fieldVal === 'number') {
-                        row[sf.id] = formatNumberValue(fieldVal, sf) ?? null;
-                      } else {
-                        row[sf.id] = fieldVal;
-                      }
-                    });
-                  }
-                  emit('change', data.value);
+                  handleDataSourceChange(val, source, field, row, rowIndex, isPriceSubTableShowSubField);
                 },
               });
             },
@@ -550,27 +679,6 @@
     });
     return summaryRes;
   };
-
-  function addLine() {
-    const newRow: Record<string, any> = {};
-    props.subFields.forEach((field) => {
-      const key = field.businessKey || field.id;
-      if (field.type === FieldTypeEnum.INPUT_NUMBER) {
-        newRow[key] = field.resourceFieldId
-          ? formatNumberValue(field.defaultValue ?? 0, field)
-          : field.defaultValue ?? null;
-      } else if (field.type === FieldTypeEnum.FORMULA) {
-        newRow[key] = field.defaultValue ?? 0;
-      } else if (
-        [FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.PICTURE].includes(field.type)
-      ) {
-        newRow[key] = [];
-      } else {
-        newRow[key] = field.defaultValue ?? '';
-      }
-    });
-    data.value.push(newRow);
-  }
 </script>
 
 <style lang="less">

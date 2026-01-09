@@ -279,15 +279,18 @@ export const {
   getPaymentRecordDetail,
   getPaymentRecordList,
   deletePaymentRecord,
-  preCheckImportBusinessName,
-  downloadBusinessNameTemplate,
-  importBusinessName,
-  getBusinessNameList,
-  addBusinessName,
-  updateBusinessName,
-  deleteBusinessName,
-  revokeBusinessName,
-  getBusinessNameDetail,
+  preCheckImportBusinessTitle,
+  downloadBusinessTitleTemplate,
+  importBusinessTitle,
+  getBusinessTitleList,
+  addBusinessTitle,
+  updateBusinessTitle,
+  deleteBusinessTitle,
+  revokeBusinessTitle,
+  getBusinessTitleDetail,
+  getBusinessTitleInvoiceCheck,
+  exportBusinessTitleAll,
+  exportBusinessTitleSelected,
 } = contractApi;
 
 export const {
@@ -306,6 +309,7 @@ export const {
   getHomeMessageList,
   closeMessageSubscribe,
   getUnReadAnnouncement,
+  getMessageTaskConfigDetail,
 } = messageApi;
 
 export const {
@@ -340,6 +344,7 @@ export const {
   deleteAttachment,
   getFieldPriceList,
   getFieldQuotationList,
+  getFieldContractPaymentPlanList,
 } = moduleApi;
 
 export const {

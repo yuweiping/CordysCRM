@@ -18,16 +18,21 @@
       <div class="flex items-center gap-[12px]">
         <n-button
           v-if="!props.readonly"
-          v-permission="['CONTRACT_PAYMENT_PLAN:ADD']"
+          v-permission="['CONTRACT_PAYMENT_RECORD:ADD']"
           :loading="createLoading"
           type="primary"
           @click="handleNewClick"
         >
           {{ t('contract.paymentRecord.new') }}
         </n-button>
-        <!-- TODO lmy 导入 -->
+        <CrmImportButton
+          v-if="hasAnyPermission(['CONTRACT_PAYMENT_RECORD:IMPORT']) && !isContractTab"
+          :api-type="FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD"
+          :title="t('module.paymentRecord')"
+          @import-success="() => searchData()"
+        />
         <n-button
-          v-permission="['CONTRACT_PAYMENT_PLAN:EXPORT']"
+          v-permission="['CONTRACT_PAYMENT_RECORD:EXPORT']"
           type="primary"
           ghost
           class="n-btn-outline-primary"
@@ -91,15 +96,16 @@
 </template>
 
 <script setup lang="ts">
+  import { useRoute } from 'vue-router';
   import { DataTableRowKey, NButton, useMessage } from 'naive-ui';
 
   import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import useLocale from '@lib/shared/locale/useLocale';
+  import { characterLimit } from '@lib/shared/method';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { PaymentRecordItem } from '@lib/shared/models/contract';
 
-  import { COMMON_SELECTION_OPERATORS } from '@/components/pure/crm-advance-filter/index';
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
@@ -108,12 +114,13 @@
   import { BatchActionConfig } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
+  import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
   import CrmViewSelect from '@/components/business/crm-view-select/index.vue';
   import DetailDrawer from './detail.vue';
 
-  import { deletePaymentRecord, updatePaymentRecord } from '@/api/modules';
+  import { deletePaymentRecord } from '@/api/modules';
   import { baseFilterConfigList } from '@/config/clue';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormCreateTable from '@/hooks/useFormCreateTable';
@@ -127,6 +134,7 @@
   const Message = useMessage();
   const { currentLocale } = useLocale(Message.loading);
   const { openModal } = useModal();
+  const route = useRoute();
 
   const props = defineProps<{
     fullscreenTargetRef?: HTMLElement | null;
@@ -138,6 +146,7 @@
   }>();
   const emit = defineEmits<{
     (e: 'openContractDrawer', params: { id: string }): void;
+    (e: 'openPaymentPlanDrawer', params: { id: string }): void;
   }>();
 
   const activeTab = ref();
@@ -198,7 +207,7 @@
       {
         label: t('common.exportChecked'),
         key: 'exportChecked',
-        permission: ['CONTRACT_PAYMENT_PLAN:EXPORT'], // TODO lmy permission
+        permission: ['CONTRACT_PAYMENT_RECORD:EXPORT'],
       },
     ],
   };
@@ -236,21 +245,17 @@
 
   const operationGroupList = computed<ActionsItem[]>(() => {
     return [
-      {
-        label: t('common.detail'),
-        key: 'detail',
-      },
       ...(!props.readonly
         ? [
             {
               label: t('common.edit'),
               key: 'edit',
-              permission: ['CONTRACT_PAYMENT_PLAN:UPDATE'], // TODO lmy permission
+              permission: ['CONTRACT_PAYMENT_RECORD:UPDATE'],
             },
             {
               label: t('common.delete'),
               key: 'delete',
-              permission: ['CONTRACT_PAYMENT_PLAN:DELETE'], // TODO lmy permission
+              permission: ['CONTRACT_PAYMENT_RECORD:DELETE'],
             },
           ]
         : []),
@@ -263,8 +268,8 @@
   function handleDelete(row: PaymentRecordItem) {
     openModal({
       type: 'error',
-      title: t('system.personal.confirmDelete'),
-      content: t('common.deleteConfirmContent'), // TODO lmy 删除以后需要扣除已经款金额；
+      title: t('common.deleteConfirmTitle', { name: characterLimit(row.name) }),
+      content: t('contract.paymentRecord.deleteConfirmContent'),
       positiveText: t('common.confirmDelete'),
       negativeText: t('common.cancel'),
       onPositiveClick: async () => {
@@ -294,9 +299,6 @@
 
   async function handleActionSelect(row: PaymentRecordItem, actionKey: string) {
     switch (actionKey) {
-      case 'detail':
-        showDetail(row.id);
-        break;
       case 'edit':
         handleEdit(row.id);
         break;
@@ -318,12 +320,18 @@
     }
   }
 
+  function showPaymentPlanDrawer(params: { id: string }) {
+    emit('openPaymentPlanDrawer', {
+      id: params.id,
+    });
+  }
+
   const { useTableRes, customFieldsFilterConfig } = await useFormCreateTable({
     formKey: props.formKey,
-    excludeFieldIds: ['contractId'],
+    excludeFieldIds: ['contractId', 'paymentPlanId'],
     operationColumn: {
       key: 'operation',
-      width: currentLocale.value === 'en-US' ? 180 : 150,
+      width: currentLocale.value === 'en-US' ? 150 : 120,
       fixed: 'right',
       render: (row: PaymentRecordItem) =>
         h(CrmOperationButton, {
@@ -332,6 +340,17 @@
         }),
     },
     specialRender: {
+      name: (row: PaymentRecordItem) => {
+        return h(
+          CrmTableButton,
+          {
+            onClick: () => {
+              showDetail(row.id);
+            },
+          },
+          { default: () => row.name, trigger: () => row.name }
+        );
+      },
       contractId: (row: PaymentRecordItem) => {
         return props.isContractTab || !hasAnyPermission(['CONTRACT:READ'])
           ? h(
@@ -351,8 +370,27 @@
               { default: () => row.contractName, trigger: () => row.contractName }
             );
       },
+      paymentPlanId: (row: PaymentRecordItem) => {
+        return !hasAnyPermission(['CONTRACT_PAYMENT_PLAN:READ'])
+          ? h(
+              CrmNameTooltip,
+              { text: row.paymentPlanName },
+              {
+                default: () => row.paymentPlanName,
+              }
+            )
+          : h(
+              CrmTableButton,
+              {
+                onClick: () => {
+                  showPaymentPlanDrawer({ id: row.paymentPlanId });
+                },
+              },
+              { default: () => row.paymentPlanName, trigger: () => row.paymentPlanName }
+            );
+      },
     },
-    permission: ['CONTRACT_PAYMENT_PLAN:EXPORT'], // TODO lmy permission
+    permission: ['CONTRACT_PAYMENT_RECORD:EXPORT'],
     containerClass: `.crm-contract-payment-table-${props.formKey}`,
   });
   const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
@@ -399,6 +437,10 @@
   onBeforeMount(() => {
     if (props.isContractTab) {
       searchData();
+    }
+    if (route.query.id) {
+      activeSourceId.value = route.query.id as string;
+      showDetailDrawer.value = true;
     }
   });
 

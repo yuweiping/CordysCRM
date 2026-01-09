@@ -134,6 +134,8 @@ public class ContractService {
         contract.setStage(ContractStage.PENDING_SIGNING.name());
         contract.setOrganizationId(orgId);
         contract.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+        contract.setStartTime(request.getStartTime());
+        contract.setEndTime(request.getEndTime());
         contract.setCreateTime(System.currentTimeMillis());
         contract.setCreateUser(operatorId);
         contract.setUpdateTime(System.currentTimeMillis());
@@ -181,8 +183,10 @@ public class ContractService {
      */
     private void saveSnapshot(Contract contract, ModuleFormConfigDTO moduleFormConfigDTO, ContractResponse response) {
         //移除response中moduleFields 集合里 的 BaseModuleFieldValue 的 fieldId="products"的数据，避免快照数据过大
-        response.setModuleFields(response.getModuleFields().stream()
-                .filter(field -> (field.getFieldValue() != null && StringUtils.isNotBlank(field.getFieldValue().toString()) && !"[]".equals(field.getFieldValue().toString()))).toList());
+		if (CollectionUtils.isNotEmpty(response.getModuleFields())) {
+			response.setModuleFields(response.getModuleFields().stream()
+					.filter(field -> (field.getFieldValue() != null && StringUtils.isNotBlank(field.getFieldValue().toString()) && !"[]".equals(field.getFieldValue().toString()))).toList());
+		}
         ContractSnapshot snapshot = new ContractSnapshot();
         snapshot.setId(IDGenerator.nextStr());
         snapshot.setContractId(contract.getId());
@@ -264,6 +268,8 @@ public class ContractService {
 
             List<BaseModuleFieldValue> originFields = contractFieldService.getModuleFieldValuesByResourceId(request.getId());
             Contract contract = BeanUtils.copyBean(new Contract(), request);
+            contract.setStartTime(request.getStartTime());
+            contract.setEndTime(request.getEndTime());
             contract.setUpdateTime(System.currentTimeMillis());
             contract.setUpdateUser(userId);
             // 保留不可更改的字段
@@ -679,5 +685,9 @@ public class ContractService {
     public String getContractName(String id) {
         Contract contract = contractMapper.selectByPrimaryKey(id);
         return Optional.ofNullable(contract).map(Contract::getName).orElse(null);
+    }
+
+    public Contract selectByPrimaryKey(String id) {
+        return contractMapper.selectByPrimaryKey(id);
     }
 }

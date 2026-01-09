@@ -373,6 +373,8 @@ export const {
   getAccountContractStatistic,
   getAccountPayment,
   getAccountPaymentStatistic,
+  getAccountPaymentRecord,
+  getAccountPaymentRecordStatistic,
 } = customerApi;
 
 export const {
@@ -435,15 +437,21 @@ export const {
   enablePaymentRecordView,
   deletePaymentRecordView,
   dragPaymentRecordView,
-  preCheckImportBusinessName,
-  downloadBusinessNameTemplate,
-  importBusinessName,
-  getBusinessNameList,
-  addBusinessName,
-  updateBusinessName,
-  deleteBusinessName,
-  revokeBusinessName,
-  getBusinessNameDetail,
+  preCheckImportContractPaymentRecord,
+  importContractPaymentRecord,
+  downloadContractPaymentRecordTemplate,
+  preCheckImportBusinessTitle,
+  downloadBusinessTitleTemplate,
+  importBusinessTitle,
+  getBusinessTitleList,
+  addBusinessTitle,
+  updateBusinessTitle,
+  deleteBusinessTitle,
+  revokeBusinessTitle,
+  getBusinessTitleDetail,
+  getBusinessTitleInvoiceCheck,
+  exportBusinessTitleAll,
+  exportBusinessTitleSelected,
 } = contractApi;
 
 export const {
@@ -503,6 +511,7 @@ export const {
   closeMessageSubscribe,
   getUnReadAnnouncement,
   setAllNotificationRead,
+  getMessageTaskConfigDetail,
 } = messageApi;
 
 export const {
@@ -529,6 +538,7 @@ export const {
   getFieldDeptTree,
   getFieldClueList,
   getFieldContractList,
+  getFieldContractPaymentPlanList,
   deleteReasonItem,
   deleteAttachment,
   moduleNavListSort,

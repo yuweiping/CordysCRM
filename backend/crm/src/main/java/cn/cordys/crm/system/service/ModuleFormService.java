@@ -23,7 +23,6 @@ import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.uid.SerialNumGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
-import cn.cordys.common.util.LogUtils;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.constants.FieldType;
@@ -42,8 +41,8 @@ import cn.cordys.crm.system.dto.response.ModuleFormConfigLogDTO;
 import cn.cordys.crm.system.mapper.ExtModuleFieldMapper;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.collections4.MapUtils;
@@ -69,6 +68,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Transactional(rollbackFor = Exception.class)
+@Slf4j
 public class ModuleFormService {
 
     public static final Map<String, String> TYPE_SOURCE_MAP;
@@ -77,6 +77,7 @@ public class ModuleFormService {
     private static final String SUB_FIELDS = "subFields";
 	public static final String SUM_PREFIX = "sum_";
 	public static final String EXPORT_SYSTEM_TYPE = "system";
+	private static final String PRICE_SUB_ROW_KEY = "price_sub";
 
     static {
         TYPE_SOURCE_MAP = Map.of(FieldType.MEMBER.name(), "sys_user",
@@ -354,6 +355,7 @@ public class ModuleFormService {
         LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
         fieldWrapper.eq(ModuleField::getFormId, formId);
         List<ModuleField> fields = moduleFieldMapper.selectListByLambda(fieldWrapper);
+
         if (CollectionUtils.isNotEmpty(fields)) {
             fields.sort(Comparator.comparing(ModuleField::getPos));
             List<String> fieldIds = fields.stream().map(ModuleField::getId).toList();
@@ -587,7 +589,7 @@ public class ModuleFormService {
             return new ArrayList<>();
         }
         if (!TYPE_SOURCE_MAP.containsKey(type)) {
-            LogUtils.error("未知的数据源类型：{}", type);
+            log.error("未知的数据源类型：{}", type);
             return new ArrayList<>();
         }
         return extModuleFieldMapper.getSourceOptionsByKeywords(TYPE_SOURCE_MAP.get(type), nameList);
@@ -608,7 +610,7 @@ public class ModuleFormService {
             String businessKey = subFieldBusinessMap.get(bfv.getFieldId());
             Field field = ReflectionUtils.findField(resource.getClass(), f -> Strings.CS.equals(f.getName(), businessKey));
             if (field == null) {
-                LogUtils.error("Cannot find field `{}`", businessKey);
+                log.error("Cannot find field `{}`", businessKey);
                 return;
             }
             ReflectionUtils.setField(field, resource, bfv.getFieldValue());
@@ -617,7 +619,7 @@ public class ModuleFormService {
         fieldValues.removeIf(fv -> subFieldBusinessMap.containsKey(fv.getFieldId()));
         Field moduleFields = ReflectionUtils.findField(resource.getClass(), f -> Strings.CS.equals(f.getName(), "moduleFields"));
         if (moduleFields == null) {
-            LogUtils.error("No such field `moduleFields` in resource");
+            log.error("No such field `moduleFields` in resource");
             return;
         }
         ReflectionUtils.setField(moduleFields, resource, fieldValues);
@@ -640,7 +642,10 @@ public class ModuleFormService {
             // 设置特殊的业务字段 key
             field.setBusinessKey(businessEnum.getBusinessKey());
             field.setDisabledProps(businessEnum.getDisabledProps());
-        }
+        } else {
+			field.setBusinessKey(null);
+			field.setDisabledProps(null);
+		}
     }
 
     /**
@@ -800,6 +805,45 @@ public class ModuleFormService {
         initFormAndFields(allKeys);
     }
 
+	@SuppressWarnings("unchecked")
+	public void initExtFieldsByVer(String version) {
+		try {
+			List<ModuleField> fields = new ArrayList<>();
+			List<ModuleFieldBlob> fieldBlobs = new ArrayList<>();
+			Map<String, List<Map<String, Object>>> fieldMap = JSON.parseObject(fieldResource.getInputStream(), Map.class);
+			fieldMap.forEach((formKey, formFields) -> {
+				boolean existExtVerField = formFields.stream().anyMatch(f -> f.containsKey("ext_ver") && Strings.CS.equals(version, f.get("ext_ver").toString()));
+				if (!existExtVerField) {
+					return;
+				}
+				ModuleForm example = new ModuleForm();
+				example.setFormKey(formKey);
+				ModuleForm form = moduleFormMapper.selectOne(example);
+				if (form == null) {
+					log.error("未找到表单 {}, 无法初始化扩展字段", formKey);
+					return;
+				}
+				Long maxPos = extModuleFieldMapper.getMaxFieldPosByFormId(form.getId());
+				List<Map<String, Object>> extFields = formFields.stream().filter(f -> f.containsKey("ext_ver") && Strings.CS.equals(version, f.get("ext_ver").toString())).toList();
+				AtomicLong pos = new AtomicLong(maxPos + 1);
+				extFields.forEach(initField -> {
+					ModuleField field = supplyFieldInfo(initField, form.getId(), pos.getAndIncrement(), new HashMap<>(2));
+					initField.put("id", field.getId());
+					fields.add(field);
+					ModuleFieldBlob fieldBlob = new ModuleFieldBlob();
+					fieldBlob.setId(field.getId());
+					fieldBlob.setProp(JSON.toJSONString(initField));
+					fieldBlobs.add(fieldBlob);
+				});
+				moduleFieldMapper.batchInsert(fields);
+				moduleFieldBlobMapper.batchInsert(fieldBlobs);
+			});
+		} catch (Exception e) {
+			log.error("表单扩展字段初始化失败: {}", e.getMessage());
+			throw new GenericException("表单扩展字段初始化失败", e);
+		}
+	}
+
     /**
      * 表单及字段初始化 (升级)
      *
@@ -854,18 +898,7 @@ public class ModuleFormService {
                 // 显隐规则Key-ID映射
                 Map<String, String> controlKeyPreMap = new HashMap<>(2);
                 initFields.forEach(initField -> {
-                    ModuleField field = new ModuleField();
-                    field.setFormId(formId);
-                    field.setInternalKey(initField.get("internalKey").toString());
-                    field.setId(controlKeyPreMap.containsKey(field.getInternalKey()) ? controlKeyPreMap.get(field.getInternalKey()) : IDGenerator.nextStr());
-                    field.setType(initField.get("type").toString());
-                    field.setName(initField.get("name").toString());
-                    field.setMobile((Boolean) initField.getOrDefault("mobile", false));
-                    field.setPos(pos.getAndIncrement());
-                    field.setCreateTime(System.currentTimeMillis());
-                    field.setCreateUser(InternalUser.ADMIN.getValue());
-                    field.setUpdateTime(System.currentTimeMillis());
-                    field.setUpdateUser(InternalUser.ADMIN.getValue());
+					ModuleField field = supplyFieldInfo(initField, formId, pos.getAndIncrement(), controlKeyPreMap);
                     initField.put("id", field.getId());
                     fields.add(field);
                     if (initField.containsKey(CONTROL_RULES_KEY)) {
@@ -896,10 +929,34 @@ public class ModuleFormService {
             moduleFieldMapper.batchInsert(fields);
             moduleFieldBlobMapper.batchInsert(fieldBlobs);
         } catch (Exception e) {
-            LogUtils.error("表单字段初始化失败: {}", e.getMessage());
+            log.error("表单字段初始化失败: {}", e.getMessage());
             throw new GenericException("表单字段初始化失败", e);
         }
     }
+
+	/**
+	 * 组装字段基础信息
+	 * @param fieldMap 字段集合
+	 * @param formId 表单ID
+	 * @param pos 字段位置
+	 * @param controlKeyPreMap 显隐规则Key-ID映射
+	 * @return 字段
+	 */
+	private ModuleField supplyFieldInfo(Map<String, Object> fieldMap, String formId, Long pos, Map<String, String> controlKeyPreMap) {
+		ModuleField field = new ModuleField();
+		field.setId(controlKeyPreMap.containsKey(field.getInternalKey()) ? controlKeyPreMap.get(field.getInternalKey()) : IDGenerator.nextStr());
+		field.setFormId(formId);
+		field.setInternalKey(fieldMap.get("internalKey").toString());
+		field.setType(fieldMap.get("type").toString());
+		field.setName(fieldMap.get("name").toString());
+		field.setMobile((Boolean) fieldMap.getOrDefault("mobile", false));
+		field.setPos(pos);
+		field.setCreateTime(System.currentTimeMillis());
+		field.setCreateUser(InternalUser.ADMIN.getValue());
+		field.setUpdateTime(System.currentTimeMillis());
+		field.setUpdateUser(InternalUser.ADMIN.getValue());
+		return field;
+	}
 
     /**
      * 初始化数据类型-数据源映射
@@ -1233,7 +1290,7 @@ public class ModuleFormService {
                 sourceValue = applySourceValue(sourceField, sourceClass, source, sourceFieldVals);
             } catch (Exception e) {
                 sourceValue = null;
-                LogUtils.error("Apply source value error: {}", e.getMessage());
+                log.error("Apply source value error: {}", e.getMessage());
             }
 
             // 源对象中无值, 跳过取值
@@ -1481,7 +1538,7 @@ public class ModuleFormService {
 						try {
 							org.apache.commons.beanutils.BeanUtils.populate(linkField, field);
 						} catch (IllegalAccessException | InvocationTargetException e) {
-							LogUtils.error("Populate old link field error: {}", e.getMessage());
+							log.error("Populate old link field error: {}", e.getMessage());
 						}
 						return linkField;
                     }).toList();
@@ -1718,9 +1775,9 @@ public class ModuleFormService {
 							if (showFieldConf == null) {
 								return;
 							}
-							if (StringUtils.isNotEmpty(showFieldConf.getSubTableFieldId()) && sfv.containsKey(BusinessModuleField.PRICE_PRODUCT.getBusinessKey())) {
+							if (StringUtils.isNotEmpty(showFieldConf.getSubTableFieldId()) && sfv.containsKey(PRICE_SUB_ROW_KEY)) {
 								Object matchVal = baseResourceFieldService.matchSubFieldValueOfDetailMap(showFieldConf.idOrBusinessKey(), detailMap, BusinessModuleField.PRICE_PRODUCT_TABLE.getBusinessKey(),
-										BusinessModuleField.PRICE_PRODUCT.getBusinessKey(), sfv.get(BusinessModuleField.PRICE_PRODUCT.getBusinessKey()).toString());
+										sfv.get(PRICE_SUB_ROW_KEY).toString());
 								if (matchVal != null) {
 									showFieldMap.put(showFieldConf.getId(), matchVal);
 								}
@@ -1795,5 +1852,29 @@ public class ModuleFormService {
 		return allFields.stream().filter(BaseField::isAttachment)
 				.map(BaseField::getId)
 				.toList();
+	}
+
+	/**
+	 * 获取流水号字段规则
+	 * @param formKey 表单Key
+	 * @param currentOrg 当前组织
+	 * @param internalKey 字段Key
+	 * @return 字段规则集合
+	 */
+	public List<String> getSerialFieldRulesByKey(String formKey, String currentOrg, String internalKey) {
+		ModuleForm example = new ModuleForm();
+		example.setFormKey(formKey);
+		example.setOrganizationId(currentOrg);
+		ModuleForm moduleForm = moduleFormMapper.selectOne(example);
+		ModuleField fieldExample = new ModuleField();
+		fieldExample.setFormId(moduleForm.getId());
+		fieldExample.setInternalKey(internalKey);
+		ModuleField moduleField = moduleFieldMapper.selectOne(fieldExample);
+		if (moduleField == null) {
+			return List.of();
+		}
+		ModuleFieldBlob fieldBlob = moduleFieldBlobMapper.selectByPrimaryKey(moduleField.getId());
+		SerialNumberField serialNumberField = JSON.parseObject(fieldBlob.getProp(), SerialNumberField.class);
+		return serialNumberField.getSerialNumberRules();
 	}
 }

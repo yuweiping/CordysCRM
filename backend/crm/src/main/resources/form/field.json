@@ -1542,6 +1542,22 @@
   ],
   "contractPaymentPlan": [
     {
+      "name": "回款计划名称",
+      "internalKey": "contractPaymentPlanName",
+      "type": "INPUT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true,
+      "ext_ver": "1.5.0"
+    },
+    {
       "name": "合同",
       "internalKey": "contractPaymentPlanContract",
       "type": "DATA_SOURCE",
@@ -1660,7 +1676,7 @@
       "placeholder": "无需录入, 自动生成",
       "showLabel": true,
       "serialNumberRules": [
-        "Opp",
+        "Con",
         "-",
         "yyyyMM",
         "-",
@@ -1757,6 +1773,449 @@
       "editable": true,
       "mobile": true,
       "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
+    },
+    {
+      "name": "合同开始时间",
+      "internalKey": "contractStartTime",
+      "type": "DATE_TIME",
+      "dateType": "date",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true,
+      "ext_ver": "1.5.0"
+    },
+    {
+      "name": "合同结束时间",
+      "internalKey": "contractEndTime",
+      "type": "DATE_TIME",
+      "dateType": "date",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true,
+      "ext_ver": "1.5.0"
+    }
+  ],
+  "invoice": [
+    {
+      "name": "基本信息",
+      "internalKey": "invoiceBasicInfo",
+      "type": "DIVIDER",
+      "showLabel": true,
+      "readable": true,
+      "fieldWidth": 1,
+      "dividerClass": "divider--normal",
+      "dividerColor": "#edf0f1",
+      "titleColor": "#323535"
+    },
+    {
+      "name": "合同",
+      "internalKey": "invoiceContract",
+      "type": "INPUT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "mobile": true,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
+    },
+    {
+      "name": "发票名称",
+      "internalKey": "invoiceName",
+      "type": "INPUT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "开票类型",
+      "internalKey": "invoiceType",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "options": [
+        {
+          "label": "专票",
+          "value": "1"
+        },
+        {
+          "label": "普票",
+          "value": "2"
+        },
+        {
+          "label": "制造业",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "name": "开票项目名称",
+      "internalKey": "invoiceProjectName",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "options": [
+        {
+          "label": "产品1",
+          "value": "1"
+        },
+        {
+          "label": "产品2",
+          "value": "2"
+        },
+        {
+          "label": "产品3",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "name": "规格型号",
+      "internalKey": "invoiceSpecification",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "options": [
+        {
+          "label": "sku1",
+          "value": "1"
+        },
+        {
+          "label": "sku2",
+          "value": "2"
+        },
+        {
+          "label": "sku3",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "name": "单位",
+      "internalKey": "invoiceUnit",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "options": [
+        {
+          "label": "个",
+          "value": "1"
+        },
+        {
+          "label": "套",
+          "value": "2"
+        },
+        {
+          "label": "年",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "name": "数量",
+      "internalKey": "invoiceQuantity",
+      "type": "INPUT_NUMBER",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "mobile": true,
+      "numberFormat": "number"
+    },
+    {
+      "name": "税率",
+      "internalKey": "invoiceTaxRate",
+      "type": "INPUT_NUMBER",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "numberFormat": "percent",
+      "decimalPlaces": true,
+      "precision": 2
+    },
+    {
+      "name": "工商抬头",
+      "internalKey": "invoiceBusinessTitle",
+      "type": "DATA_SOURCE",
+      "dataSourceType": "BUSINESS_TITLE",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
+    },
+    {
+      "name": "金额",
+      "internalKey": "invoiceAmount",
+      "type": "INPUT_NUMBER",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "numberFormat": "number",
+      "showThousandsSeparator": true,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "开票时间",
+      "internalKey": "invoiceTime",
+      "type": "DATE_TIME",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "dateType": "date",
+      "mobile": true
+    },
+    {
+      "name": "负责人",
+      "internalKey": "invoiceOwner",
+      "type": "MEMBER",
+      "hasCurrentUser": true,
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "mobile": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
+    }
+  ],
+  "contractPaymentRecord": [
+    {
+      "name": "基本信息",
+      "internalKey": "contractPaymentRecordBasicInfo",
+      "type": "DIVIDER",
+      "showLabel": true,
+      "readable": true,
+      "fieldWidth": 1,
+      "dividerClass": "divider--normal",
+      "dividerColor": "#edf0f1",
+      "titleColor": "#323535"
+    },
+    {
+      "name": "回款记录名称",
+      "internalKey": "contractPaymentRecordName",
+      "type": "INPUT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "回款编码",
+      "internalKey": "contractPaymentRecordNo",
+      "type": "SERIAL_NUMBER",
+      "placeholder": "无需录入, 自动生成",
+      "showLabel": true,
+      "serialNumberRules": [
+        "PAY",
+        "-",
+        "yyyyMM",
+        "-",
+        "6"
+      ],
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "readable": true,
+      "editable": false,
+      "fieldWidth": 1
+    },
+    {
+      "name": "合同名称",
+      "internalKey": "contractPaymentRecordContract",
+      "type": "DATA_SOURCE",
+      "dataSourceType": "CONTRACT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "回款计划",
+      "internalKey": "contractPaymentRecordPlan",
+      "type": "DATA_SOURCE",
+      "dataSourceType": "PAYMENT_PLAN",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "mobile": true
+    },
+    {
+      "name": "负责人",
+      "internalKey": "contractPaymentRecordOwner",
+      "type": "MEMBER",
+      "hasCurrentUser": true,
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "回款信息",
+      "internalKey": "contractPaymentRecordInfo",
+      "type": "DIVIDER",
+      "showLabel": true,
+      "readable": true,
+      "fieldWidth": 1,
+      "dividerClass": "divider--normal",
+      "dividerColor": "#edf0f1",
+      "titleColor": "#323535"
+    },
+    {
+      "name": "回款时间",
+      "internalKey": "contractPaymentRecordEndTime",
+      "type": "DATE_TIME",
+      "dateType": "date",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "回款金额",
+      "internalKey": "contractPaymentRecordAmount",
+      "type": "INPUT_NUMBER",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "numberFormat": "number",
+      "decimalPlaces": true,
+      "precision": 2,
+      "showThousandsSeparator": true,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true
+    },
+    {
+      "name": "收款银行",
+      "internalKey": "contractPaymentRecordBank",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "options": [
+        {
+          "label": "中国银行",
+          "value": "1"
+        },
+        {
+          "label": "中国农业银行",
+          "value": "2"
+        },
+        {
+          "label": "中国工商银行",
+          "value": "3"
+        },
+        {
+          "label": "中国建设银行",
+          "value": "4"
+        }
+      ],
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
+    },
+    {
+      "name": "收款银行账号",
+      "internalKey": "contractPaymentRecordBankNo",
+      "type": "SELECT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "options": [],
       "rules": [
         {
           "key": "required"

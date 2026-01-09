@@ -138,6 +138,8 @@
   import FieldSection from './components/fieldSection.vue';
 
   import {
+    exportBusinessTitleAll,
+    exportBusinessTitleSelected,
     exportClueAll,
     exportCluePoolAll,
     exportCluePoolSelected,
@@ -154,6 +156,8 @@
     exportOpportunitySelected,
     exportPaymentPlanAll,
     exportPaymentPlanSelected,
+    exportPaymentRecordAll,
+    exportPaymentRecordSelected,
     exportProductPriceAll,
     exportProductPriceSelected,
   } from '@/api/modules';
@@ -170,7 +174,8 @@
       | 'contract'
       | 'contractPaymentPlan'
       | 'contractPaymentRecord'
-      | 'price';
+      | 'price'
+      | 'businessTitle';
     exportColumns: ExportTableColumnItem[];
     isExportAll?: boolean;
   }>();
@@ -197,6 +202,7 @@
     contractPaymentPlan: t('module.paymentPlan'),
     contractPaymentRecord: t('module.paymentRecord'),
     price: t('module.productManagementPrice'),
+    businessTitle: t('module.businessTitle'),
   };
 
   const loading = ref<boolean>(false);
@@ -296,8 +302,9 @@
     openSea: exportCustomerOpenSeaAll,
     contract: exportContractAll,
     contractPaymentPlan: exportPaymentPlanAll,
-    contractPaymentRecord: exportPaymentPlanAll,
+    contractPaymentRecord: exportPaymentRecordAll,
     price: exportProductPriceAll,
+    businessTitle: exportBusinessTitleAll,
   };
 
   const exportSelectedApiMap = {
@@ -309,8 +316,9 @@
     openSea: exportCustomerOpenSeaSelected,
     contract: exportContractSelected,
     contractPaymentPlan: exportPaymentPlanSelected,
-    contractPaymentRecord: exportPaymentPlanAll,
+    contractPaymentRecord: exportPaymentRecordSelected,
     price: exportProductPriceSelected,
+    businessTitle: exportBusinessTitleSelected,
   };
 
   function confirmHandler() {

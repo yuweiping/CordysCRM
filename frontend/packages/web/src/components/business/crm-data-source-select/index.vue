@@ -31,6 +31,7 @@
       :filter-params="filterParams"
       :fullscreen-target-ref="fullscreenTargetRef"
       :fieldConfig="props.fieldConfig"
+      :isSubTableRender="props.hideChildTag"
       @toggle-full-screen="(val) => (fullScreenModal = val)"
     />
   </CrmModal>
@@ -58,6 +59,7 @@
     maxTagCount?: number | 'responsive';
     filterParams?: FilterResult;
     fieldConfig?: FormCreateField;
+    hideChildTag?: boolean;
   }
 
   const props = withDefaults(defineProps<DataSourceTableProps>(), {
@@ -80,6 +82,7 @@
     [FieldDataSourceTypeEnum.PRICE]: 'crmFormCreate.drawer.price',
     [FieldDataSourceTypeEnum.CONTRACT]: 'crmFormCreate.drawer.contract',
     [FieldDataSourceTypeEnum.QUOTATION]: 'crmFormCreate.drawer.quotation',
+    [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: 'crmFormCreate.drawer.contractPaymentPlan',
   };
 
   const value = defineModel<DataTableRowKey[]>('value', {
@@ -111,27 +114,30 @@
   }
 
   const renderTag = ({ option, handleClose }: { option: SelectOption; handleClose: () => void }) => {
-    return h(
-      CrmTag,
-      {
-        type: 'default',
-        theme: 'light',
-        closable: !props.disabled,
-        onClose: () => {
-          handleClose();
-          rows.value = rows.value.filter((item) => item.id !== option.value);
-          value.value = value.value.filter((key) => key !== option.value);
-          nextTick(() => {
-            emit('change', value.value, rows.value);
-          });
-        },
-      },
-      {
-        default: () => {
-          return (rows.value || []).find((item) => item?.id === option.value)?.name || t('common.optionNotExist');
-        },
-      }
-    );
+    const row = rows.value.find((item) => item.id === option.value);
+    return props.hideChildTag && row?.parentId
+      ? null
+      : h(
+          CrmTag,
+          {
+            type: 'default',
+            theme: 'light',
+            closable: !props.disabled,
+            onClose: () => {
+              handleClose();
+              rows.value = rows.value.filter((item) => item.id !== option.value);
+              value.value = value.value.filter((key) => key !== option.value);
+              nextTick(() => {
+                emit('change', value.value, rows.value);
+              });
+            },
+          },
+          {
+            default: () => {
+              return (rows.value || []).find((item) => item?.id === option.value)?.name || t('common.optionNotExist');
+            },
+          }
+        );
   };
 
   function showDataSourcesModal() {

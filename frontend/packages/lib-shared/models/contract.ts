@@ -1,7 +1,7 @@
 import { ModuleField } from '@lib/shared/models/customer';
 import { AttachmentInfo } from '@cordys/web/src/components/business/crm-form-create/types';
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
-import { ContractBusinessNameStatusEnum } from '@lib/shared/enums/contractEnum';
+import { ContractBusinessTitleStatusEnum } from '@lib/shared/enums/contractEnum';
 
 // 合同列表项
 export interface ContractItem {
@@ -92,7 +92,6 @@ export interface UpdatePaymentPlanParams extends SavePaymentPlanParams {
 }
 
 // 回款记录列表项
-// TODO lmy 联调
 export interface PaymentRecordItem {
   id: string;
   createUser: string;
@@ -100,6 +99,8 @@ export interface PaymentRecordItem {
   createTime: number;
   updateTime: number;
   contractId: string;
+  name: string;
+  no: string;
   owner: string;
   organizationId: string;
   createUserName: string;
@@ -108,7 +109,14 @@ export interface PaymentRecordItem {
   departmentId: string;
   departmentName: string;
   contractName: string;
+  paymentPlanId: string;
+  recordBank: string;
+  recordBankNo: string;
+  paymentPlanName: string;
+  planName: string;
   moduleFields: ModuleField[]; // 自定义字段
+  recordAmount: number;
+  recordEndTime: number;
 }
 
 // 回款记录详情
@@ -118,8 +126,14 @@ export interface PaymentRecordDetail extends PaymentRecordItem {
 
 // 添加回款记录参数
 export interface SavePaymentRecordParams {
-  contractId?: string;
-  owner?: string;
+  contractId: string;
+  owner: string;
+  name: string;
+  paymentPlanId?: string;
+  recordAmount: number;
+  recordEndTime: number;
+  recordBank: string;
+  recordBankNo: string;
 }
 
 // 更新回款记录参数
@@ -127,24 +141,40 @@ export interface UpdatePaymentRecordParams extends SavePaymentRecordParams {
   id: string;
 }
 
-// todo xxw 工商合同列表项
-export interface BusinessNameItem {
-  id: string;
-  name: string;
-  address: string;
-  status: ContractBusinessNameStatusEnum;
+export interface BusinessTitleItem {
+  id: string; 
+ 
+  businessName: string;
+  type: string;
+  identificationNumber: string;
+  openingBank: string;
+  bankAccount: string;
+  registrationAddress: string;
+  phoneNumber: string;
+  registeredCapital: string;
+  companySize: string;
+  registrationNumber: string;
+  approvalStatus: ContractBusinessTitleStatusEnum;
+  unapprovedReason: string;
+  organizationId: string;
+  createUserName: string;
+  updateUserName: string;
   createUser: string;
   updateUser: string;
   createTime: number;
   updateTime: number;
-  createUserName: string;
-  updateUserName: string;
 }
 
-export interface SaveBusinessNameParams {
-  // todo xxw 工商合同添加参数
-}
-
-export interface UpdateBusinessNameParams extends SaveBusinessNameParams {
-  id: string;
+export interface SaveBusinessTitleParams {
+  id?: string;
+  businessName: string | null;// 公司名称
+  identificationNumber: string; // 纳税人识别号
+  openingBank: string; // 开户银行
+  bankAccount: string;// 银行账号
+  registrationAddress: string; // 注册地址
+  phoneNumber: string;// 注册电话
+  registeredCapital: string; // 注册资本
+  companySize: string; // 公司规模
+  registrationNumber: string; //工商注册号
+  type: string; // 来源类型
 }

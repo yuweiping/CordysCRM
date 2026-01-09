@@ -14,8 +14,11 @@ function extractSQLBotId(input: string) {
 }
 
 export function loadScript(scriptContent: string, options: ScriptOptions): Promise<void> {
+  if (!scriptContent) {
+    return Promise.reject(new Error('scriptContent is empty'));
+  }
   return new Promise((resolve, reject) => {
-    const content = scriptContent.trim();
+    const content = scriptContent?.trim();
     if (scriptElementsMap.has(options.identifier)) return;
 
     // 处理IIFE格式

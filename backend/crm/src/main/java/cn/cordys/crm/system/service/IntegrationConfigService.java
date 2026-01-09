@@ -6,7 +6,7 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.common.constants.ThirdConfigTypeConstants;
-import cn.cordys.common.constants.ThirdConstants;
+import cn.cordys.common.constants.ThirdDetailType;
 import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.uid.IDGenerator;
@@ -15,7 +15,6 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.crm.integration.common.dto.ThirdConfigBaseDTO;
 import cn.cordys.crm.integration.common.request.*;
 import cn.cordys.crm.integration.dataease.DataEaseClient;
-import cn.cordys.crm.integration.sso.service.AgentService;
 import cn.cordys.crm.integration.sso.service.TokenService;
 import cn.cordys.crm.integration.sync.dto.ThirdSwitchLogDTO;
 import cn.cordys.crm.integration.tender.constant.TenderApiPaths;
@@ -37,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -57,9 +57,6 @@ public class IntegrationConfigService {
 
     @Resource
     private TokenService tokenService;
-
-    @Resource
-    private AgentService agentService;
 
     /**
      * 获取同步的组织配置
@@ -131,8 +128,8 @@ public class IntegrationConfigService {
         String token = getToken(configDTO);
         if (ThirdConfigTypeConstants.WECOM.name().equals(configDTO.getType()) && StringUtils.isNotBlank(token)) {
             WecomThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), WecomThirdConfigRequest.class);
-            Boolean weComAgent = agentService.getWeComAgent(token, config.getAgentId());
-            if (weComAgent == null || !weComAgent) {
+            boolean weComAgent = tokenService.checkWeComAgentAvailable(token, config.getAgentId());
+            if (!weComAgent) {
                 token = null;
             }
         }
@@ -182,17 +179,6 @@ public class IntegrationConfigService {
             throw new GenericException(Translator.get("third.config.not.exist"));
         }
 
-        // 获取指定类型的配置
-        if (type.contains(ThirdConfigTypeConstants.WECOM.name())) {
-            type = ThirdConstants.ThirdDetailType.WECOM_SYNC.toString();
-        }
-        if (type.contains(ThirdConfigTypeConstants.DINGTALK.name())) {
-            type = ThirdConstants.ThirdDetailType.DINGTALK_SYNC.toString();
-        }
-        if (type.contains(ThirdConfigTypeConstants.LARK.name())) {
-            type = ThirdConstants.ThirdDetailType.LARK_SYNC.toString();
-        }
-
         return getConfigurationByType(type, details);
     }
 
@@ -215,9 +201,9 @@ public class IntegrationConfigService {
 
         // 获取CODE类型的配置详情
         List<String> codeTypes = List.of(
-                ThirdConstants.ThirdDetailType.WECOM_SYNC.toString(),
-                ThirdConstants.ThirdDetailType.DINGTALK_SYNC.toString(),
-                ThirdConstants.ThirdDetailType.LARK_SYNC.toString()
+                ThirdDetailType.WECOM_SYNC.name(),
+                ThirdDetailType.DINGTALK_SYNC.name(),
+                ThirdDetailType.LARK_SYNC.name()
         );
 
         List<OrganizationConfigDetail> details = extOrganizationConfigDetailMapper
@@ -311,7 +297,7 @@ public class IntegrationConfigService {
             String type = detail.getType();
             String content = new String(detail.getContent());
 
-            if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.WECOM_SYNC.name())) {
+            if (Strings.CI.equals(type, ThirdDetailType.WECOM_SYNC.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         WecomThirdConfigRequest.class,
@@ -320,7 +306,7 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.DINGTALK_SYNC.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.DINGTALK_SYNC.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         DingTalkThirdConfigRequest.class,
@@ -329,7 +315,7 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.LARK_SYNC.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.LARK_SYNC.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         LarkThirdConfigRequest.class,
@@ -338,7 +324,7 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.DE_BOARD.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.DE_BOARD.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         DeThirdConfigRequest.class,
@@ -347,13 +333,13 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.SQLBOT_CHAT.name())
-                    || Strings.CI.equals(type, ThirdConstants.ThirdDetailType.SQLBOT_BOARD.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.SQLBOT_CHAT.name())
+                    || Strings.CI.equals(type, ThirdDetailType.SQLBOT_BOARD.name())) {
 
                 ThirdConfigBaseDTO<?> dto = JSON.parseObject(content, ThirdConfigBaseDTO.class);
                 SqlBotThirdConfigRequest cfg = buildConfig(dto, content, SqlBotThirdConfigRequest.class);
 
-                if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.SQLBOT_CHAT.name())) {
+                if (Strings.CI.equals(type, ThirdDetailType.SQLBOT_CHAT.name())) {
                     sqlBotDTO.setSqlBotChatEnable(detail.getEnable());
                 } else {
                     sqlBotDTO.setSqlBotBoardEnable(detail.getEnable());
@@ -363,7 +349,7 @@ public class IntegrationConfigService {
                 sqlBotConfig.setType(ThirdConfigTypeConstants.SQLBOT.name());
                 sqlBotConfig.setVerify(dto.getVerify());
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.MAXKB.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.MAXKB.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         MaxKBThirdConfigRequest.class,
@@ -372,7 +358,7 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.TENDER.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.TENDER.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         TenderThirdConfigRequest.class,
@@ -381,7 +367,7 @@ public class IntegrationConfigService {
                 );
                 configDTOs.add(dto);
 
-            } else if (Strings.CI.equals(type, ThirdConstants.ThirdDetailType.QCC.name())) {
+            } else if (Strings.CI.equals(type, ThirdDetailType.QCC.name())) {
                 ThirdConfigBaseDTO<?> dto = buildDto(
                         content,
                         QccThirdConfigRequest.class,
@@ -411,7 +397,7 @@ public class IntegrationConfigService {
      */
     private <T> ThirdConfigBaseDTO<?> buildDto(String content, Class<T> configClass, Consumer<T> enableSetter, String type) {
 
-        ThirdConfigBaseDTO dto = JSON.parseObject(content, ThirdConfigBaseDTO.class);
+        var dto = JSON.parseObject(content, ThirdConfigBaseDTO.class);
         T config = buildConfig(dto, content, configClass);
 
         enableSetter.accept(config);
@@ -492,77 +478,22 @@ public class IntegrationConfigService {
     private ThirdConfigBaseDTO<?> getThirdConfigurationDTOByType(
             List<OrganizationConfigDetail> organizationConfigDetails, String type) {
 
+        if (Strings.CI.equals(ThirdConfigTypeConstants.DE.name(), type)) {
+            type = ThirdDetailType.DE_BOARD.name();
+        }
+
+        String finalType = type;
         List<OrganizationConfigDetail> detailList = organizationConfigDetails.stream()
-                .filter(t -> t.getType().contains(type))
+                .filter(t -> t.getType().contains(finalType))
                 .toList();
 
-        if (CollectionUtils.isEmpty(detailList)) {
-            return null;
+        List<ThirdConfigBaseDTO<?>> configDTOs = new ArrayList<>();
+        buildDetailData(detailList, configDTOs);
+
+        if (CollectionUtils.isNotEmpty(configDTOs)) {
+            return configDTOs.getFirst();
         }
-        ThirdConfigBaseDTO dto = new ThirdConfigBaseDTO();
-
-        for (OrganizationConfigDetail detail : detailList) {
-
-            if (Strings.CI.equals(detail.getType(), ThirdConstants.ThirdDetailType.WECOM_SYNC.name())) {
-                dto = buildDTO(detail, WecomThirdConfigRequest.class, ThirdConfigTypeConstants.WECOM.name(),
-                        cfg -> cfg.setStartEnable(detail.getEnable()));
-            }
-
-            if (Strings.CI.equals(detail.getType(), ThirdConstants.ThirdDetailType.DINGTALK_SYNC.name())) {
-                dto = buildDTO(detail, DingTalkThirdConfigRequest.class, ThirdConfigTypeConstants.DINGTALK.name(),
-                        cfg -> cfg.setStartEnable(detail.getEnable()));
-            }
-
-            if (Strings.CI.equals(detail.getType(), ThirdConstants.ThirdDetailType.LARK_SYNC.name())) {
-                dto = buildDTO(detail, LarkThirdConfigRequest.class, ThirdConfigTypeConstants.LARK.name(),
-                        cfg -> cfg.setStartEnable(detail.getEnable()));
-            }
-
-            if (Strings.CI.equals(detail.getType(), ThirdConstants.ThirdDetailType.MAXKB.name())) {
-                dto = buildDTO(detail, MaxKBThirdConfigRequest.class, ThirdConfigTypeConstants.MAXKB.name(),
-                        cfg -> cfg.setMkEnable(detail.getEnable()));
-            }
-
-            if (Strings.CI.equals(detail.getType(), ThirdConstants.ThirdDetailType.TENDER.name())) {
-                dto = buildDTO(detail, TenderThirdConfigRequest.class, ThirdConfigTypeConstants.TENDER.name(),
-                        cfg -> cfg.setTenderEnable(detail.getEnable()));
-            }
-        }
-
-        return dto;
-    }
-
-    /**
-     * 构建DTO
-     *
-     * @param detail       配置详情
-     * @param configClass  配置类
-     * @param type         类型
-     * @param enableSetter 启用设置器
-     * @param <T>          配置类型
-     *
-     * @return 配置DTO
-     */
-    private <T> ThirdConfigBaseDTO<?> buildDTO(
-            OrganizationConfigDetail detail,
-            Class<T> configClass,
-            String type,
-            Consumer<T> enableSetter) {
-
-        ThirdConfigBaseDTO dto = JSON.parseObject(new String(detail.getContent()), ThirdConfigBaseDTO.class);
-
-        T config;
-        if (dto.getConfig() == null) {
-            config = JSON.parseObject(new String(detail.getContent()), configClass);
-        } else {
-            config = JSON.MAPPER.convertValue(dto.getConfig(), configClass);
-        }
-
-        enableSetter.accept(config);
-
-        dto.setType(type);
-        dto.setConfig(config);
-        return dto;
+        return new ThirdConfigBaseDTO<>();
     }
 
     /**
@@ -729,24 +660,33 @@ public class IntegrationConfigService {
             List<OrganizationConfigDetail> existingDetails,
             Map<String, Boolean> typeEnableMap) {
 
-        // 已存在类型的映射
         Map<String, OrganizationConfigDetail> existDetailTypeMap = existingDetails.stream()
-                .collect(Collectors.toMap(OrganizationConfigDetail::getType, t -> t));
-        //ThirdConfigTypeConstants type = ThirdConfigTypeConstants.fromString(configDTO.getType());
+                .collect(Collectors.toMap(
+                        OrganizationConfigDetail::getType,
+                        Function.identity(),
+                        (left, right) -> left));
+
         for (String type : types) {
-            if (!existDetailTypeMap.containsKey(type)) {
-                // 不存在的类型，需要新建
+            OrganizationConfigDetail detail = existDetailTypeMap.get(type);
+            if (detail == null) {
                 addIntegrationDetail(configDTO, userId, token, List.of(type), organizationConfig, typeEnableMap);
-            } else {
-                // 存在的类型，需要更新
-                OrganizationConfigDetail detail = existDetailTypeMap.get(type);
-                //如果更改的企业id和之前不一致，则如果之前的同步状态未true，则改为false
-                if (BooleanUtils.isTrue(organizationConfig.isSync()) && organizationConfig.getSyncResource() != null && Strings.CI.equals(organizationConfig.getSyncResource(), configDTO.getType())
-                        && syncCorpId(existingDetails.getFirst().getContent(), configDTO)) {
-                    extOrganizationConfigMapper.updateSyncFlag(organizationConfig.getOrganizationId(), organizationConfig.getSyncResource(), organizationConfig.getType(), false);
-                }
-                updateExistingDetail(configDTO, userId, token, detail, typeEnableMap.get(type), organizationConfig.getId());
+                continue;
             }
+
+            boolean needResetSync = BooleanUtils.isTrue(organizationConfig.isSync())
+                    && StringUtils.isNotBlank(organizationConfig.getSyncResource())
+                    && Strings.CI.equals(organizationConfig.getSyncResource(), configDTO.getType())
+                    && syncCorpId(detail.getContent(), configDTO);
+
+            if (needResetSync) {
+                extOrganizationConfigMapper.updateSyncFlag(
+                        organizationConfig.getOrganizationId(),
+                        organizationConfig.getSyncResource(),
+                        organizationConfig.getType(),
+                        false);
+            }
+
+            updateExistingDetail(configDTO, userId, token, detail, typeEnableMap.get(type), organizationConfig.getId());
         }
     }
 
@@ -1070,8 +1010,8 @@ public class IntegrationConfigService {
     private void verifyWeCom(String agentId, String token, ThirdConfigBaseDTO<?> weComConfig) {
         if (StringUtils.isNotBlank(token)) {
             // 验证应用ID
-            Boolean weComAgent = agentService.getWeComAgent(token, agentId);
-            weComConfig.setVerify(weComAgent != null && weComAgent);
+            Boolean weComAgent = tokenService.checkWeComAgentAvailable(token, agentId);
+            weComConfig.setVerify(weComAgent);
         } else {
             weComConfig.setVerify(false);
         }
@@ -1120,17 +1060,17 @@ public class IntegrationConfigService {
             return Collections.emptyList();
         }
         return switch (typeConstants) {
-            case WECOM -> List.of(ThirdConstants.ThirdDetailType.WECOM_SYNC.toString());
-            case DINGTALK -> List.of(ThirdConstants.ThirdDetailType.DINGTALK_SYNC.toString());
-            case LARK -> List.of(ThirdConstants.ThirdDetailType.LARK_SYNC.toString());
-            case DE -> List.of(ThirdConstants.ThirdDetailType.DE_BOARD.toString());
+            case WECOM -> List.of(ThirdDetailType.WECOM_SYNC.toString());
+            case DINGTALK -> List.of(ThirdDetailType.DINGTALK_SYNC.name());
+            case LARK -> List.of(ThirdDetailType.LARK_SYNC.name());
+            case DE -> List.of(ThirdDetailType.DE_BOARD.name());
             case SQLBOT -> List.of(
-                    ThirdConstants.ThirdDetailType.SQLBOT_CHAT.toString(),
-                    ThirdConstants.ThirdDetailType.SQLBOT_BOARD.toString()
+                    ThirdDetailType.SQLBOT_CHAT.name(),
+                    ThirdDetailType.SQLBOT_BOARD.name()
             );
-            case MAXKB -> List.of(ThirdConstants.ThirdDetailType.MAXKB.toString());
-            case TENDER -> List.of(ThirdConstants.ThirdDetailType.TENDER.toString());
-            case QCC -> List.of(ThirdConstants.ThirdDetailType.QCC.toString());
+            case MAXKB -> List.of(ThirdDetailType.MAXKB.name());
+            case TENDER -> List.of(ThirdDetailType.TENDER.name());
+            case QCC -> List.of(ThirdDetailType.QCC.name());
             default -> Collections.emptyList();
         };
     }
@@ -1151,36 +1091,36 @@ public class IntegrationConfigService {
         switch (type) {
             case WECOM -> {
                 WecomThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), WecomThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.WECOM_SYNC.toString(), config.getStartEnable());
+                map.put(ThirdDetailType.WECOM_SYNC.name(), config.getStartEnable());
             }
             case DINGTALK -> {
                 DingTalkThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), DingTalkThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.DINGTALK_SYNC.toString(), config.getStartEnable());
+                map.put(ThirdDetailType.DINGTALK_SYNC.name(), config.getStartEnable());
             }
             case LARK -> {
                 LarkThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), LarkThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.LARK_SYNC.toString(), config.getStartEnable());
+                map.put(ThirdDetailType.LARK_SYNC.name(), config.getStartEnable());
             }
             case DE -> {
                 DeThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), DeThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.DE_BOARD.toString(), config.getDeBoardEnable());
+                map.put(ThirdDetailType.DE_BOARD.name(), config.getDeBoardEnable());
             }
             case SQLBOT -> {
                 SqlBotThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), SqlBotThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.SQLBOT_CHAT.toString(), config.getSqlBotChatEnable());
-                map.put(ThirdConstants.ThirdDetailType.SQLBOT_BOARD.toString(), config.getSqlBotBoardEnable());
+                map.put(ThirdDetailType.SQLBOT_CHAT.name(), config.getSqlBotChatEnable());
+                map.put(ThirdDetailType.SQLBOT_BOARD.name(), config.getSqlBotBoardEnable());
             }
             case MAXKB -> {
                 MaxKBThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), MaxKBThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.MAXKB.toString(), config.getMkEnable());
+                map.put(ThirdDetailType.MAXKB.name(), config.getMkEnable());
             }
             case TENDER -> {
                 TenderThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), TenderThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.TENDER.toString(), config.getTenderEnable());
+                map.put(ThirdDetailType.TENDER.name(), config.getTenderEnable());
             }
             case QCC -> {
                 QccThirdConfigRequest config = JSON.MAPPER.convertValue(configDTO.getConfig(), QccThirdConfigRequest.class);
-                map.put(ThirdConstants.ThirdDetailType.QCC.toString(), config.getQccEnable());
+                map.put(ThirdDetailType.QCC.name(), config.getQccEnable());
             }
         }
 

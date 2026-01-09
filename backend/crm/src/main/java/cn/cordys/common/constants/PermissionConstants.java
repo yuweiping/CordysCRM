@@ -188,6 +188,7 @@ public class PermissionConstants {
     public static final String CONTRACT_EXPORT = "CONTRACT:EXPORT";
     public static final String CONTRACT_APPROVAL = "CONTRACT:APPROVAL";
     public static final String CONTRACT_STAGE = "CONTRACT:STAGE";
+    public static final String CONTRACT_PAYMENT = "CONTRACT:PAYMENT";
 
     /*------ end: CONTRACT ------*/
 
@@ -202,5 +203,36 @@ public class PermissionConstants {
     /*------ start: TENDER ------*/
     public static final String TENDER_READ = "TENDER:READ";
     /*------ end: TENDER ------*/
+
+
+    /*------ start: CONTRACT_INVOICE_ROLE ------*/
+    public static final String CONTRACT_INVOICE_READ = "CONTRACT_INVOICE:READ";
+    public static final String CONTRACT_INVOICE_ADD = "CONTRACT_INVOICE:ADD";
+    public static final String CONTRACT_INVOICE_UPDATE = "CONTRACT_INVOICE:UPDATE";
+    public static final String CONTRACT_INVOICE_EXPORT = "CONTRACT_INVOICE:EXPORT";
+    public static final String CONTRACT_INVOICE_APPROVAL = "CONTRACT_INVOICE:APPROVAL";
+    public static final String CONTRACT_INVOICE_DELETE = "CONTRACT_INVOICE:DELETE";
+    /*------ end: CONTRACT_INVOICE_ROLE ------*/
+
+    /*------ start: BUSINESS_TITLE ------*/
+    public static final String BUSINESS_TITLE_READ = "BUSINESS_TITLE:READ";
+    public static final String BUSINESS_TITLE_ADD = "BUSINESS_TITLE:ADD";
+    public static final String BUSINESS_TITLE_UPDATE = "BUSINESS_TITLE:UPDATE";
+    public static final String BUSINESS_TITLE_DELETE = "BUSINESS_TITLE:DELETE";
+    public static final String BUSINESS_TITLE_EXPORT = "BUSINESS_TITLE:EXPORT";
+    public static final String BUSINESS_TITLE_APPROVAL = "BUSINESS_TITLE:APPROVAL";
+    public static final String BUSINESS_TITLE_IMPORT = "BUSINESS_TITLE:IMPORT";
+
+    /*------ end: BUSINESS_TITLE ------*/
+
+	/**
+	 * Contract payment record permission
+	 */
+	public static final String CONTRACT_PAYMENT_RECORD_READ = "CONTRACT_PAYMENT_RECORD:READ";
+	public static final String CONTRACT_PAYMENT_RECORD_ADD = "CONTRACT_PAYMENT_RECORD:ADD";
+	public static final String CONTRACT_PAYMENT_RECORD_UPDATE = "CONTRACT_PAYMENT_RECORD:UPDATE";
+	public static final String CONTRACT_PAYMENT_RECORD_DELETE = "CONTRACT_PAYMENT_RECORD:DELETE";
+	public static final String CONTRACT_PAYMENT_RECORD_IMPORT = "CONTRACT_PAYMENT_RECORD:IMPORT";
+	public static final String CONTRACT_PAYMENT_RECORD_EXPORT = "CONTRACT_PAYMENT_RECORD:EXPORT";
 }
 

@@ -541,6 +541,9 @@
           {
             "id": "CONTRACT:APPROVAL",
             "license": false
+          },
+          {
+            "id": "CONTRACT:PAYMENT"
           }
         ]
       },
@@ -563,6 +566,88 @@
           {
             "id": "CONTRACT_PAYMENT_PLAN:EXPORT"
           }
+        ]
+      },
+      {
+        "id": "CONTRACT_PAYMENT_RECORD",
+        "name": "permission.contract_payment_record.name",
+        "permissions": [
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:READ"
+          },
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:ADD"
+          },
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:UPDATE"
+          },
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:DELETE"
+          },
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:IMPORT"
+          },
+          {
+            "id": "CONTRACT_PAYMENT_RECORD:EXPORT"
+          }
+        ]
+      },
+      {
+        "id": "BUSINESS_TITLE",
+        "name": "permission.business_title.name",
+        "permissions": [
+          {
+            "id": "BUSINESS_TITLE:READ",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:ADD",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:UPDATE",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:DELETE",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:EXPORT",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:IMPORT",
+            "license": false
+          },
+          {
+            "id": "BUSINESS_TITLE:APPROVAL",
+            "license": false
+          }
+        ]
+      },
+      {
+        "id": "CONTRACT_INVOICE",
+        "name": "permission.contract.invoice.name",
+        "permissions": [
+          {
+            "id": "CONTRACT_INVOICE:READ"
+          },
+          {
+            "id": "CONTRACT_INVOICE:ADD"
+          },
+          {
+            "id": "CONTRACT_INVOICE:UPDATE"
+          },
+          {
+            "id": "CONTRACT_INVOICE:DELETE"
+          },
+          {
+            "id": "CONTRACT_INVOICE:EXPORT"
+          },
+          {
+            "id": "CONTRACT_INVOICE:APPROVAL"
+           }
         ]
       }
     ]

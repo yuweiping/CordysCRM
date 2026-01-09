@@ -6,11 +6,10 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.common.constants.ThirdConfigTypeConstants;
-import cn.cordys.common.constants.ThirdConstants;
+import cn.cordys.common.constants.ThirdDetailType;
 import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.JSON;
-import cn.cordys.common.util.LogUtils;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.system.constants.OrganizationConfigConstants;
 import cn.cordys.crm.system.domain.OrganizationConfig;
@@ -23,6 +22,7 @@ import cn.cordys.mybatis.BaseMapper;
 import jakarta.annotation.Resource;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 import java.util.Objects;
 
 @Service
+@Slf4j
 public class OrganizationConfigService {
 
     @Resource
@@ -102,8 +103,7 @@ public class OrganizationConfigService {
     }
 
     private OrganizationConfigDetail getOrganizationConfigDetail(String userId, OrganizationConfig organizationConfig, String jsonString) {
-        OrganizationConfigDetail organizationConfigDetail;
-        organizationConfigDetail = new OrganizationConfigDetail();
+        OrganizationConfigDetail organizationConfigDetail = new OrganizationConfigDetail();
         organizationConfigDetail.setId(IDGenerator.nextStr());
         organizationConfigDetail.setContent(jsonString.getBytes());
         organizationConfigDetail.setCreateTime(System.currentTimeMillis());
@@ -116,7 +116,7 @@ public class OrganizationConfigService {
 
     public void verifyEmailConnection(EmailDTO emailDTO) {
         try {
-            JavaMailSenderImpl javaMailSender = mailSender.getMailSender(emailDTO);
+            JavaMailSenderImpl javaMailSender = mailSender.buildMailSender(emailDTO);
             javaMailSender.testConnection();
 
             String recipient = emailDTO.getRecipient();
@@ -144,13 +144,13 @@ public class OrganizationConfigService {
             helper.setFrom(from);
             helper.setSubject("Cordys CRM 测试邮件");
 
-            LogUtils.info("收件人地址: {}", recipient);
+            log.info("收件人地址: {}", recipient);
             helper.setText("这是一封测试邮件，邮件发送成功", true);
             helper.setTo(recipient);
 
             javaMailSender.send(mimeMessage);
         } catch (Exception e) {
-            LogUtils.error("邮件发送或连接测试失败: ", e);
+            log.error("邮件发送或连接测试失败: ", e);
             throw new GenericException(Translator.get("email.connection.failed"));
         }
     }
@@ -160,6 +160,7 @@ public class OrganizationConfigService {
      * 当前组织的用户数据是否是第三方同步的
      *
      * @param organizationId 组织ID
+     *
      * @return true 是第三方同步的 false 不是第三方同步的
      */
     public boolean syncCheck(String organizationId) {
@@ -170,11 +171,11 @@ public class OrganizationConfigService {
             return false;
         }
         if (organizationConfig.getSyncResource().equals(ThirdConfigTypeConstants.WECOM.name())) {
-            type = ThirdConstants.ThirdDetailType.WECOM_SYNC.toString();
+            type = ThirdDetailType.WECOM_SYNC.name();
         } else if (organizationConfig.getSyncResource().equals(ThirdConfigTypeConstants.DINGTALK.name())) {
-            type = ThirdConstants.ThirdDetailType.DINGTALK_SYNC.toString();
+            type = ThirdDetailType.DINGTALK_SYNC.name();
         } else if (organizationConfig.getSyncResource().equals(ThirdConfigTypeConstants.LARK.name())) {
-            type = ThirdConstants.ThirdDetailType.LARK_SYNC.toString();
+            type = ThirdDetailType.LARK_SYNC.name();
         } else {
             return false;
         }

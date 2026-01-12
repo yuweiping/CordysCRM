@@ -13,7 +13,11 @@ COPY . /build
 COPY --from=frontend /frontend/packages/web/dist /build/frontend/packages/web/dist
 COPY --from=frontend /frontend/packages/mobile/dist /build/frontend/packages/mobile/dist
 
-RUN ./mvnw clean package -DskipTests -pl '!frontend' && \
+# 修复换行符并添加执行权限
+RUN apt-get update && apt-get install -y dos2unix && \
+    dos2unix ./mvnw && \
+    chmod +x ./mvnw && \
+    ./mvnw clean package -DskipTests -pl '!frontend' && \
     mkdir backend/app/target/dependency && \
     cd backend/app/target/dependency && \
     jar -xf ../*.jar

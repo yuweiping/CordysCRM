@@ -138,8 +138,6 @@ public class BusinessController {
         wrapper.eq(FollowUpPlan::getOwner, userId);
 
         wrapper.eq(FollowUpPlan::getStatus, "PREPARED");
-        // 添加过滤条件：estimatedTime大于当前时间
-        wrapper.gt(FollowUpPlan::getEstimatedTime, System.currentTimeMillis());
 
         List<FollowUpPlan> followUpPlans = followUpPlanMapper.selectListByLambda(wrapper);
         List<String> contactIds = followUpPlans.stream().map(FollowUpPlan::getContactId).toList();
@@ -167,6 +165,14 @@ public class BusinessController {
         }).toList();
 
         return list;
+    }
+
+    @PostMapping("/follow/plan/status/update")
+    @Operation(summary = "更新跟进计划状态")
+    public void updateStatus(@RequestBody FollowUpPlanStatusExtRequest request) {
+        UserDTO userDTO = userLoginService.authenticateUser(request.getOwnerPhone());
+        String sessionId = SessionUtils.getSessionId();
+        followUpPlanService.updateStatus(request, sessionId);
     }
 
     @GetMapping("/follow/plan/delete/{id}")

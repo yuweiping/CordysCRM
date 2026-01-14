@@ -1,5 +1,6 @@
 package cn.cordys.crm.biz.controller;
 
+import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.response.handler.ResultHolder;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.context.OrganizationContext;
@@ -12,6 +13,7 @@ import cn.cordys.crm.clue.service.ClueService;
 import cn.cordys.crm.customer.domain.CustomerContact;
 import cn.cordys.crm.customer.dto.request.ClueTransformRequest;
 import cn.cordys.crm.follow.domain.FollowUpPlan;
+import cn.cordys.crm.follow.service.FollowUpPlanFieldService;
 import cn.cordys.crm.follow.service.FollowUpPlanService;
 import cn.cordys.crm.system.service.UserLoginService;
 import cn.cordys.mybatis.BaseMapper;
@@ -51,6 +53,8 @@ public class BusinessController {
     private BaseMapper<FollowUpPlan> followUpPlanMapper;
     @Resource
     private BaseService baseService;
+    @Resource
+    private FollowUpPlanFieldService followUpPlanFieldService;
 
     @GetMapping("/contact/by-phone")
     @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
@@ -140,9 +144,15 @@ public class BusinessController {
         List<FollowUpPlan> followUpPlans = followUpPlanMapper.selectListByLambda(wrapper);
         List<String> contactIds = followUpPlans.stream().map(FollowUpPlan::getContactId).toList();
         Map<String, String> contactPhoneMap = baseService.getContactPhone(contactIds);
+        List<String> ids = followUpPlans.stream().map(FollowUpPlan::getId).toList();
+        Map<String, List<BaseModuleFieldValue>> resourceFieldMap = followUpPlanFieldService.getResourceFieldMap(ids, true);
+
         // 转换为FollowUpPlanListResponse列表
         List<FollowUpPlanListExtResponse> list = followUpPlans.stream().map(plan -> {
             FollowUpPlanListExtResponse response = new FollowUpPlanListExtResponse();
+            // 获取自定义字段
+            List<BaseModuleFieldValue> planCustomerFields = resourceFieldMap.get(plan.getId());
+            response.setModuleFields(planCustomerFields);
             // 复制基础字段
             response.setId(plan.getId());
             response.setCustomerId(plan.getCustomerId());

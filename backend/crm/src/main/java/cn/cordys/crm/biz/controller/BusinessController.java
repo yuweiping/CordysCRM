@@ -15,6 +15,8 @@ import cn.cordys.crm.customer.dto.request.ClueTransformRequest;
 import cn.cordys.crm.follow.domain.FollowUpPlan;
 import cn.cordys.crm.follow.service.FollowUpPlanFieldService;
 import cn.cordys.crm.follow.service.FollowUpPlanService;
+import cn.cordys.crm.system.dto.request.PoolReasonRequest;
+import cn.cordys.crm.system.dto.response.BatchAffectResponse;
 import cn.cordys.crm.system.service.UserLoginService;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -57,12 +59,21 @@ public class BusinessController {
     private FollowUpPlanFieldService followUpPlanFieldService;
 
     @GetMapping("/contact/by-phone")
-    @Operation(summary = "根据用户手机号查询要跟踪d线索信息")
+    @Operation(summary = "根据用户手机号查询要跟踪的线索信息")
     public List<ClueByPhoneResponse> getClueByUserPhone(
             @Parameter(description = "用户手机号", required = true) @RequestParam String phone) {
         return businessService.getClueByUserPhone(phone);
     }
 
+    @GetMapping("/clue/to-pool")
+    @Operation(summary = "移入线索池")
+    public BatchAffectResponse toPool(@Parameter(description = "用户手机号", required = true) @RequestParam String phone,
+                                      @Parameter(description = "线索ID列表", required = true) @RequestParam String clueId) {
+        UserDTO userDTO = login(phone);
+        PoolReasonRequest request = new PoolReasonRequest();
+        request.setId(clueId);
+        return clueService.toPool(request, userDTO.getId(), OrganizationContext.getOrganizationId());
+    }
 
     @PostMapping("/contact/sync-contacts")
     @Operation(summary = "同步WhatsApp联系人")

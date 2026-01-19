@@ -171,8 +171,7 @@ public class BusinessController {
     @Operation(summary = "更新跟进计划状态")
     public void updateStatus(@RequestBody FollowUpPlanStatusExtRequest request) {
         UserDTO userDTO = userLoginService.authenticateUser(request.getOwnerPhone());
-        String sessionId = SessionUtils.getSessionId();
-        followUpPlanService.updateStatus(request, sessionId);
+        followUpPlanService.updateStatus(request, userDTO.getId());
     }
 
     @GetMapping("/follow/plan/delete/{id}")

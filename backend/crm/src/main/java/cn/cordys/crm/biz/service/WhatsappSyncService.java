@@ -85,11 +85,11 @@ public class WhatsappSyncService {
         for (SyncContactsRequest.ContactItem item : request.getContacts()) {
             SyncContactsResponse.ContactResult result = new SyncContactsResponse.ContactResult();
             result.setContactPhone(item.getContactPhone());
-            result.setSuccess(false);
+            result.setSuccess(true);
 
             try {
                 if (item.getContactPhone() == null || item.getDate() == null) {
-                    result.setErrorMessage("联系人电话或日期不能为空");
+//                    result.setErrorMessage("联系人电话或日期不能为空");
                     results.add(result);
                     continue;
                 }
@@ -105,7 +105,7 @@ public class WhatsappSyncService {
                     // 如果有冲突，记录冲突信息
                     WhatsappOwnerConflict conflict = createConflictRecord(contactPhone, ownerPhone, conflictPhone);
                     conflicts.add(conflict);
-                    result.setErrorMessage("存在负责人冲突：" + conflictPhone);
+//                    result.setErrorMessage("存在负责人冲突：" + conflictPhone);
                     results.add(result);
                     continue;
                 }
@@ -197,6 +197,9 @@ public class WhatsappSyncService {
      */
     private String checkOwnerConflict(String contactPhone, String currentOwnerPhone) {
         try {
+            if (contactPhone.startsWith("86") || contactPhone.length() < 2) {
+                return null;
+            }
             // 查询当前联系人是否已经存在于同步记录中，并且负责人不同
             List<WhatsappSyncRecord> existingRecords = whatsappSyncRecordMapper.selectOwnerConflict(contactPhone, currentOwnerPhone);
             if (existingRecords != null && !existingRecords.isEmpty()) {

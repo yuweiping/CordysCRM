@@ -4,9 +4,12 @@
     :width="1000"
     no-padding
     :footer="false"
-    :title="detailInfo?.businessName ?? ''"
+    :title="detailInfo?.name ?? ''"
     @cancel="handleCancel"
   >
+    <template #titleLeft>
+      <CrmBusinessNamePrefix v-if="detailInfo?.type" :type="detailInfo?.type" />
+    </template>
     <template #titleRight>
       <CrmButtonGroup class="gap-[12px]" :list="buttonList" not-show-divider @select="handleButtonClick" />
     </template>
@@ -30,6 +33,11 @@
             </template>
           </CrmDescription>
         </div>
+        <businessTitleDrawer
+          v-model:visible="businessNameDrawerVisible"
+          :source-id="detailInfo?.id ?? ''"
+          @load="handleRefresh"
+        />
       </CrmCard>
     </div>
   </CrmDrawer>
@@ -48,6 +56,8 @@
   import CrmCard from '@/components/pure/crm-card/index.vue';
   import CrmDescription, { Description } from '@/components/pure/crm-description/index.vue';
   import CrmDrawer from '@/components/pure/crm-drawer/index.vue';
+  import CrmBusinessNamePrefix from '@/components/business/crm-business-name-prefix/index.vue';
+  import businessTitleDrawer from './businessTitleDrawer.vue';
 
   import {
     deleteBusinessTitle,
@@ -68,7 +78,6 @@
 
   const emit = defineEmits<{
     (e: 'load'): void;
-    (e: 'edit', id: string): void;
     (e: 'cancel'): void;
   }>();
 
@@ -82,7 +91,7 @@
     {
       key: 'edit',
       label: t('common.edit'),
-      permission: [],
+      permission: ['CONTRACT_BUSINESS_TITLE:UPDATE'],
       text: false,
       ghost: true,
       class: 'n-btn-outline-primary',
@@ -94,7 +103,7 @@
       ghost: true,
       danger: true,
       class: 'n-btn-outline-primary',
-      permission: [],
+      permission: ['CONTRACT_BUSINESS_TITLE:DELETE'],
     },
   ];
 
@@ -152,7 +161,7 @@
       const type = isInvoiceChecked ? 'default' : 'error';
       openModal({
         type,
-        title: t('common.deleteConfirmTitle', { name: characterLimit(detailInfo.value?.businessName) }),
+        title: t('common.deleteConfirmTitle', { name: characterLimit(detailInfo.value?.name) }),
         content,
         positiveText,
         negativeText: t('common.cancel'),
@@ -199,6 +208,7 @@
     }
   }
 
+  const businessNameDrawerVisible = ref(false);
   async function handleButtonClick(actionKey: string) {
     switch (actionKey) {
       case 'pass':
@@ -208,7 +218,7 @@
         handleApproval();
         break;
       case 'edit':
-        emit('edit', detailInfo.value.id);
+        businessNameDrawerVisible.value = true;
         break;
       case 'revoke':
         handleRevoke();
@@ -221,13 +231,19 @@
     }
   }
 
+  function handleRefresh() {
+    initDetail();
+    emit('load');
+  }
+
   watch(
     () => visible.value,
     (newVal) => {
       if (newVal) {
         initDetail();
       }
-    }
+    },
+    { immediate: true }
   );
 </script>
 

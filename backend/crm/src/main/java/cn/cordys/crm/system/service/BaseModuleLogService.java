@@ -10,11 +10,11 @@ import cn.cordys.common.util.CommonBeanFactory;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.clue.service.ClueService;
+import cn.cordys.crm.contract.service.BusinessTitleService;
 import cn.cordys.crm.contract.service.ContractService;
 import cn.cordys.crm.customer.service.CustomerContactService;
 import cn.cordys.crm.opportunity.service.OpportunityService;
 import cn.cordys.crm.product.domain.Product;
-import cn.cordys.crm.system.constants.FieldType;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.field.base.SubField;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
@@ -40,7 +40,7 @@ public abstract class BaseModuleLogService {
      */
     public static void translatorDifferInfo(JsonDifferenceDTO differ) {
         //主表字段
-        differ.setColumnName(Translator.get("log." + differ.getColumn()));
+        differ.setColumnName(Translator.get("log." + differ.getColumn(), differ.getColumn()));
         differ.setOldValueName(differ.getOldValue());
         differ.setNewValueName(differ.getNewValue());
     }
@@ -89,30 +89,38 @@ public abstract class BaseModuleLogService {
 
         List<JsonDifferenceDTO> modifiable = new ArrayList<>(differences);
         modifiable.removeIf(differ -> {
-            BaseField moduleField = moduleFieldMap.get(differ.getColumn());
-            return (moduleField != null && Strings.CI.equals(moduleField.getType(), FieldType.SERIAL_NUMBER.name())) || subFieldRemoveIds.contains(differ.getColumn());
+            return subFieldRemoveIds.contains(differ.getColumn());
         });
         differences = modifiable;
         // 记录选项字段的字段值
         List<BaseModuleFieldValue> optionFieldValues = new ArrayList<>();
         // 记录子表选项字段的字段值
         List<BaseModuleFieldValue> optionSubFieldValues = new ArrayList<>();
-
+        List<JsonDifferenceDTO> returnDifferences = new ArrayList<>();
         differences.forEach(differ -> {
+            boolean addDiffer = differ.getOldValue() != null && (differ.getOldValue() instanceof String ? !StringUtils.isBlank((String) differ.getOldValue()) && !Strings.CI.equals((String) differ.getOldValue(), "null") : !((List<?>) differ.getOldValue()).isEmpty());
+            if (differ.getNewValue() != null && (differ.getNewValue() instanceof String ? !StringUtils.isBlank((String) differ.getNewValue()) && !Strings.CI.equals((String) differ.getNewValue(), "null") : !((List<?>) differ.getNewValue()).isEmpty())) {
+                addDiffer = true;
+            }
+            if (addDiffer) {
+                returnDifferences.add(differ);
+            }
             BaseField moduleField = moduleFieldMap.get(differ.getColumn());
             if (moduleField != null && moduleField.hasSingleOptions()) {
-                if (differ.getOldValue() != null) {
+                if (differ.getOldValue() != null && (differ.getOldValue() instanceof String ? !StringUtils.isBlank((String) differ.getOldValue()) && !Strings.CI.equals((String) differ.getOldValue(), "null") : !((List<?>) differ.getOldValue()).isEmpty())) {
                     BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
                     fieldValue.setFieldId(differ.getColumn());
                     fieldValue.setFieldValue(differ.getOldValue());
                     optionFieldValues.add(fieldValue);
                 }
-                if (differ.getNewValue() != null) {
+                if (differ.getNewValue() != null && (differ.getNewValue() instanceof String ? !StringUtils.isBlank((String) differ.getNewValue()) && !Strings.CI.equals((String) differ.getNewValue(), "null") : !((List<?>) differ.getNewValue()).isEmpty())) {
                     BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
                     fieldValue.setFieldId(differ.getColumn());
                     fieldValue.setFieldValue(differ.getNewValue());
                     optionFieldValues.add(fieldValue);
+
                 }
+
             }
             subFieldMap.forEach((key, value) -> {
                 // 子表字段
@@ -125,13 +133,14 @@ public abstract class BaseModuleLogService {
                         differColumn = differ.getColumn().substring(differ.getColumn().lastIndexOf("-") + 1);
                     }
                     if (Strings.CS.equals(subBusinessKey, differColumn) || Strings.CS.equals(subFieldIdKey, differColumn)) {
-                        if (differ.getOldValue() != null) {
+                        //判断differ.getOldValue() 是否为空，如果是String 类型 不能为空字符串,不能为"null"，如果是List 类型 不能为空
+                        if (differ.getOldValue() != null && (differ.getOldValue() instanceof String ? !StringUtils.isBlank((String) differ.getOldValue()) && !Strings.CI.equals((String) differ.getOldValue(), "null") : !((List<?>) differ.getOldValue()).isEmpty())) {
                             BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
                             fieldValue.setFieldId(differColumn);
                             fieldValue.setFieldValue(differ.getOldValue());
                             optionSubFieldValues.add(fieldValue);
                         }
-                        if (differ.getNewValue() != null) {
+                        if (differ.getNewValue() != null && (differ.getNewValue() instanceof String ? !StringUtils.isBlank((String) differ.getNewValue()) && !Strings.CI.equals((String) differ.getNewValue(), "null") : !((List<?>) differ.getNewValue()).isEmpty())) {
                             BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
                             fieldValue.setFieldId(differColumn);
                             fieldValue.setFieldValue(differ.getNewValue());
@@ -149,7 +158,7 @@ public abstract class BaseModuleLogService {
                 .getOptionMap(formConfig, optionSubFieldValues);
 
         Set<String> subFieldIds = optionSubFieldValues.stream().map(BaseModuleFieldValue::getFieldId).collect(Collectors.toSet());
-        differences.forEach(differ -> {
+        returnDifferences.forEach(differ -> {
             String originDifferColumn = differ.getColumn();
             String differColumn = differ.getColumn();
             String prefix = differ.getColumn();
@@ -165,7 +174,7 @@ public abstract class BaseModuleLogService {
                 setColumnValueName(optionMap.get(differ.getColumn()), differ, moduleField);
             } else {
                 if (optionMap.containsKey(differ.getColumn())) {
-                    differ.setColumnName(Translator.get("log." + differ.getColumn()));
+                    differ.setColumnName(Translator.get("log." + differ.getColumn(), differ.getColumn()));
                     // 设置字段值名称
                     setColumnValueName(optionMap.get(differColumn), differ, moduleField);
                 } else if (subFieldIds.contains(differColumn)) {
@@ -190,7 +199,7 @@ public abstract class BaseModuleLogService {
                     } else {
                         //如果prefix = differ.column，则说明没有-符号，设置为Translator.get("log."+differ.getColumn()),否则设置为prefix
                         if (Strings.CS.equals(prefix, differ.getColumn())) {
-                            differ.setColumnName(Translator.get("log." + differ.getColumn()));
+                            differ.setColumnName(Translator.get("log." + differ.getColumn(), differ.getColumn()));
                         } else {
                             differ.setColumn(prefix);
                         }
@@ -209,7 +218,7 @@ public abstract class BaseModuleLogService {
             }
         });
 
-        return differences;
+        return returnDifferences;
     }
 
     private void setColumnValueName(List<OptionDTO> options, JsonDifferenceDTO differ, BaseField moduleField) {
@@ -261,10 +270,10 @@ public abstract class BaseModuleLogService {
     private void parseValue(BaseField moduleField, JsonDifferenceDTO differ) {
         if (moduleField != null) {
             if (differ.getOldValue() != null) {
-                differ.setOldValueName(transformFieldValue(moduleField, differ.getOldValue().toString()));
+                differ.setOldValueName(transformFieldValue(moduleField, differ.getOldValue()));
             }
             if (differ.getNewValue() != null) {
-                differ.setNewValueName(transformFieldValue(moduleField, differ.getNewValue().toString()));
+                differ.setNewValueName(transformFieldValue(moduleField, differ.getNewValue()));
             }
         } else {
             differ.setOldValueName(differ.getOldValue());
@@ -272,12 +281,12 @@ public abstract class BaseModuleLogService {
         }
     }
 
-    public void setFormatDataTimeFieldValueName(JsonDifferenceDTO differ) {
+    public void setFormatDataTimeFieldValueName(JsonDifferenceDTO differ, SimpleDateFormat simpleDateFormat) {
         if (differ.getOldValue() != null) {
-            differ.setOldValueName(formatDataTime(differ.getOldValue().toString()));
+            differ.setOldValueName(formatDataTime(differ.getOldValue().toString(), simpleDateFormat));
         }
         if (differ.getNewValue() != null) {
-            differ.setNewValueName(formatDataTime(differ.getNewValue().toString()));
+            differ.setNewValueName(formatDataTime(differ.getNewValue().toString(), simpleDateFormat));
         }
     }
 
@@ -287,11 +296,11 @@ public abstract class BaseModuleLogService {
         return customFieldResolver.transformToValue(field, value instanceof List ? JSON.toJSONString(value) : value.toString());
     }
 
-    private String formatDataTime(String value) {
+    private String formatDataTime(String value, SimpleDateFormat simpleDateFormat) {
         if (StringUtils.isBlank(value) || Strings.CI.equals(value, "null")) {
             return StringUtils.EMPTY;
         }
-        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Long.parseLong(value));
+        return simpleDateFormat.format(Long.parseLong(value));
     }
 
     protected void setUserFieldName(JsonDifferenceDTO differ) {
@@ -382,6 +391,27 @@ public abstract class BaseModuleLogService {
         }
     }
 
+    protected void setApprovalName(JsonDifferenceDTO differ) {
+        if (differ.getOldValue() != null) {
+            differ.setOldValueName(Translator.get("contract.approval_status." + differ.getOldValue().toString().toLowerCase()));
+        }
+        if (differ.getNewValue() != null) {
+            differ.setNewValueName(Translator.get("contract.approval_status." + differ.getNewValue().toString().toLowerCase()));
+        }
+    }
+
+    protected void setBusinessTitleName(JsonDifferenceDTO differ) {
+        BusinessTitleService businessTitleService = CommonBeanFactory.getBean(BusinessTitleService.class);
+        assert businessTitleService != null;
+        if (differ.getOldValue() != null) {
+            String customerName = businessTitleService.getBusinessTitleName(differ.getOldValue().toString());
+            differ.setOldValueName(customerName);
+        }
+        if (differ.getNewValue() != null) {
+            String userName = businessTitleService.getBusinessTitleName(differ.getNewValue().toString());
+            differ.setNewValueName(userName);
+        }
+    }
 
     /**
      * 产品

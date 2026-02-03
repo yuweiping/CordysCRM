@@ -3,17 +3,17 @@
     v-model:show="visible"
     resizable
     no-padding
-    :default-width="600"
+    :width="600"
     :ok-text="t('common.save')"
     :title="t('system.message.expirationTitle', { type: detail?.eventName })"
     @confirm="handleConfirm"
     @cancel="handleCancel"
   >
     <n-scrollbar content-class="p-[24px]">
-      <div v-if="props.showTimeSetting" class="bg-[var(--text-n9)] p-[16px]">
-        <div class="text-[var(--text-n1)]">
-          {{ formTitleName }}
-        </div>
+      <div v-if="props.showTimeSetting" class="mb-[16px] font-medium text-[var(--text-n1)]">
+        {{ t('system.message.timeSetting') }}
+      </div>
+      <div v-if="props.showTimeSetting" class="mb-[16px] bg-[var(--text-n9)] p-[16px]">
         <CrmBatchForm
           ref="batchFormRef"
           class="!p-0"
@@ -22,15 +22,15 @@
           :add-text="t('common.add')"
           validate-when-add
           :max-limit-length="10"
+          :need-init-form-row="false"
           :disabled-add-tooltip="t('system.message.maxLimit', { count: 10 })"
           @delete-row="handleDelete"
           @save-row="handleSave"
         />
       </div>
-      <div class="my-[16px] font-medium text-[var(--text-n1)]">{{ t('system.message.scopedSettings') }}</div>
+      <div class="mb-[16px] font-medium text-[var(--text-n1)]">{{ t('system.message.scopedSettings') }}</div>
       <n-form ref="formRef" :model="form" label-placement="left" label-width="auto">
         <n-form-item
-          :rule="[{ required: true, message: t('common.notNull', { value: `${t('system.message.noticePerson')}` }) }]"
           require-mark-placement="left"
           label-placement="left"
           path="userIds"
@@ -49,6 +49,16 @@
             </n-checkbox>
             <CrmInputNumber v-model:value="form.ownerLevel" max="10000" :precision="0" class="w-[80px]" :min="0" />
             {{ t('system.message.noticeOfDepartmentHead') }}
+            <n-tooltip placement="bottom">
+              <template #trigger>
+                <CrmIcon
+                  type="iconicon_help_circle"
+                  :size="16"
+                  class="cursor-pointer text-[var(--text-n4)] hover:text-[var(--primary-1)]"
+                />
+              </template>
+              {{ t('system.message.departmentHeadTooltip') }}
+            </n-tooltip>
           </div>
           <div class="flex flex-nowrap items-start gap-[8px]">
             <n-checkbox v-model:checked="form.roleEnable" class="mt-[4px]">
@@ -64,7 +74,12 @@
               path="roleIds"
               class="flex-1"
             >
-              <CrmUserTagSelector v-model:selected-list="form.roleIds" class="flex-1" :member-types="memberTypes" />
+              <CrmUserTagSelector
+                v-model:selected-list="form.roleIds"
+                :disabledList="form.roleIds"
+                class="flex-1"
+                :member-types="memberTypes"
+              />
             </n-form-item>
           </div>
         </div>
@@ -75,7 +90,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue';
-  import { FormInst, NCheckbox, NForm, NFormItem, NScrollbar, useMessage } from 'naive-ui';
+  import { FormInst, NCheckbox, NForm, NFormItem, NScrollbar, NTooltip, selectProps, useMessage } from 'naive-ui';
   import { cloneDeep } from 'lodash-es';
 
   import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
@@ -156,6 +171,9 @@
       inputProps: {
         maxlength: 255,
       },
+      selectProps: {
+        showArrow: false,
+      },
       rule: [
         {
           required: true,
@@ -198,8 +216,8 @@
                 };
               })
             : [],
-          userIds: form.value.userIds.map((e: any) => e.id),
-          roleIds: form.value.roleIds.map((e: any) => e.id),
+          userIds: form.value.userIds?.map((e: any) => e.id),
+          roleIds: form.value.roleIds?.map((e: any) => e.id),
         },
         ...props.detail?.messageTaskDetailDTOList.find((e) => e.event === props.detail?.event),
         module: props.detail?.module ?? '',

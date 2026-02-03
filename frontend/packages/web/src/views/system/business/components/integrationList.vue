@@ -433,8 +433,11 @@
             <div class="flex justify-between gap-[8px]">
               <div>
                 <span class="mr-[8px] font-medium">{{ item.title }}</span>
+                <CrmTag v-if="!item.hasConfig" theme="light" size="small" custom-class="px-[4px]">
+                  {{ t('system.business.notConfigured') }}
+                </CrmTag>
                 <CrmTag
-                  v-if="item.hasConfig && item.verify === false"
+                  v-else-if="item.hasConfig && item.verify === false"
                   theme="light"
                   type="error"
                   size="small"
@@ -465,7 +468,13 @@
                 >
                   {{ t('common.config') }}
                 </n-button>
-                <n-button size="small" type="default" class="outline--secondary px-[8px]" @click="testLink(item)">
+                <n-button
+                  :disabled="!item.hasConfig"
+                  size="small"
+                  type="default"
+                  class="outline--secondary px-[8px]"
+                  @click="testLink(item)"
+                >
                   {{ t('system.business.mailSettings.testLink') }}
                 </n-button>
               </div>
@@ -634,7 +643,7 @@
             ...item,
             ...result,
             verify: result?.verify ?? false,
-            hasConfig: Boolean(config?.appSecret),
+            hasConfig: !!config,
             config: {
               ...defaultThirdPartyConfigMap[item.type as CompanyTypeEnum],
               ...config,
@@ -777,7 +786,7 @@
   async function initThirdPartyResource() {
     try {
       await appStore.initThirdPartyResource();
-      activePlatformTab.value = appStore.activePlatformResource.syncResource;
+      activePlatformTab.value = appStore.activePlatformResource.syncResource ?? CompanyTypeEnum.WECOM;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.log(error);
@@ -818,8 +827,8 @@
   }
 
   onBeforeMount(() => {
-    initThirdPartyResource();
     initSyncList();
+    initThirdPartyResource();
   });
 </script>
 

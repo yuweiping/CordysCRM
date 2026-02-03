@@ -18,7 +18,7 @@ public class BusinessTitleExcelData {
      * 公司名称
      */
     @ExcelIgnore
-    private String businessName;
+    private String name;
     /**
      * 纳税人识别号
      */
@@ -30,7 +30,7 @@ public class BusinessTitleExcelData {
     @ExcelIgnore
     private String openingBank;
     /**
-     * 银行账号
+     * 银行账户
      */
     @ExcelIgnore
     private String bankAccount;
@@ -55,7 +55,7 @@ public class BusinessTitleExcelData {
     @ExcelIgnore
     private String companySize;
     /**
-     * 工商注册号
+     * 工商注册账号
      */
     @ExcelIgnore
     private String registrationNumber;

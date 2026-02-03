@@ -7,7 +7,14 @@ import { useI18n } from '../hooks/useI18n';
 
 export const linkAllAcceptTypes = [FieldTypeEnum.INPUT, FieldTypeEnum.TEXTAREA];
 export const dataSourceTypes = [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE];
-export const hiddenTypes = [FieldTypeEnum.DIVIDER, FieldTypeEnum.PICTURE, FieldTypeEnum.ATTACHMENT, FieldTypeEnum.LINK];
+export const hiddenTypes = [
+  FieldTypeEnum.DIVIDER,
+  FieldTypeEnum.PICTURE,
+  FieldTypeEnum.ATTACHMENT,
+  FieldTypeEnum.LINK,
+  FieldTypeEnum.SUB_PRICE,
+  FieldTypeEnum.SUB_PRODUCT,
+];
 export const needSameTypes = [
   FieldTypeEnum.PHONE,
   FieldTypeEnum.LOCATION,
@@ -30,6 +37,7 @@ export const specialBusinessKeyMap: Record<string, string> = {
   owner: 'ownerName',
   opportunityId: 'opportunityName',
   paymentPlanId: 'paymentPlanName',
+  businessTitleId: 'businessTitleName',
 };
 
 export function getRuleType(item: FormCreateField) {
@@ -49,7 +57,7 @@ export function getRuleType(item: FormCreateField) {
   if (item.type === FieldTypeEnum.DATE_TIME) {
     return 'date';
   }
-  if (item.type === FieldTypeEnum.INPUT_NUMBER) {
+  if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(item.type)) {
     return 'number';
   }
   return 'string';
@@ -98,6 +106,26 @@ export function formatNumberValue(value: string | number, item: FormCreateField)
   return '-';
 }
 
+/**
+ * 格式化数字显示为字符串
+ * @param value 数字
+ * @param item
+ */
+export function formatNumberValueToString(value: number, item: FormCreateField) {
+  if (value !== undefined && value !== null) {
+    if (item.numberFormat === 'percent') {
+      return item.precision ? `${Number(value).toFixed(item.precision)}%` : `${value}%`;
+    }
+    if (item.showThousandsSeparator) {
+      return item.precision
+        ? `${value.toLocaleString('en-US').split('.')[0]}.${value.toFixed(item.precision).split('.')[1]}`
+        : value.toLocaleString('en-US');
+    }
+    return item.precision ? Number(value).toFixed(item.precision) : value.toString();
+  }
+  return '-';
+}
+
 export function initFieldValue(field: FormCreateField, value: string | number | (string | number)[]) {
   if (
     [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(field.type) &&
@@ -109,7 +137,7 @@ export function initFieldValue(field: FormCreateField, value: string | number | 
 }
 
 export function parseModuleFieldValue(item: FormCreateField, fieldValue: string | string[], options?: any[]) {
-  if (fieldValue === undefined || fieldValue === null) {
+  if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
     return '-';
   }
   const { t } = useI18n();
@@ -127,6 +155,22 @@ export function parseModuleFieldValue(item: FormCreateField, fieldValue: string 
     } else {
       value = options.find((e) => e.id === fieldValue)?.name || t('common.optionNotExist');
     }
+  } else if (
+    [
+      FieldTypeEnum.DATA_SOURCE,
+      FieldTypeEnum.DATA_SOURCE_MULTIPLE,
+      FieldTypeEnum.MEMBER,
+      FieldTypeEnum.MEMBER_MULTIPLE,
+      FieldTypeEnum.DEPARTMENT,
+      FieldTypeEnum.DEPARTMENT_MULTIPLE,
+    ].includes(item.type)
+  ) {
+    // 数据源/成员/部门类型字段，且没有匹配到 options，则显示不存在
+    if (Array.isArray(fieldValue)) {
+      value = fieldValue.map(() => t('common.optionNotExist'));
+    } else {
+      value = t('common.optionNotExist');
+    }
   } else if (item.type === FieldTypeEnum.LOCATION) {
     const addressArr: string[] = (fieldValue as string)?.split('-')?.filter(Boolean) || [];
     if (!addressArr.length) {
@@ -139,7 +183,7 @@ export function parseModuleFieldValue(item: FormCreateField, fieldValue: string 
   } else if (item.type === FieldTypeEnum.INDUSTRY) {
     value = fieldValue ? getIndustryPath(fieldValue as string) : '-';
   } else if (item.type === FieldTypeEnum.INPUT_NUMBER) {
-    value = formatNumberValue(fieldValue as string, item);
+    value = formatNumberValueToString(fieldValue as unknown as number, item);
   } else if (item.type === FieldTypeEnum.DATE_TIME) {
     value = formatTimeValue(fieldValue as string, item.dateType);
   }
@@ -175,7 +219,7 @@ export function parseFormDetailValue(item: FormCreateField, form: FormDetail, so
       return formatTimeValue(name || form[item.businessKey], item.dateType);
     }
     if (item.type === FieldTypeEnum.INPUT_NUMBER) {
-      return formatNumberValue(name || form[item.businessKey], item);
+      return formatNumberValueToString(name || form[item.businessKey], item);
     }
     if (item.type === FieldTypeEnum.ATTACHMENT) {
       return form.attachmentMap?.[item.businessKey] || [];
@@ -218,6 +262,8 @@ export function transformData({
   const addressFieldIds: string[] = [];
   const industryFieldIds: string[] = [];
   const dataSourceFieldIds: string[] = [];
+  const memberFieldIds: string[] = [];
+  const departmentFieldIds: string[] = [];
   const timeFieldIds: string[] = [];
   let subTableFieldInfo: Record<string, any> = {};
 
@@ -227,8 +273,12 @@ export function transformData({
       addressFieldIds.push(fieldId);
     } else if (field.type === FieldTypeEnum.INDUSTRY) {
       industryFieldIds.push(fieldId);
-    } else if (field.type === FieldTypeEnum.DATA_SOURCE) {
+    } else if (field.type === FieldTypeEnum.DATA_SOURCE || field.type === FieldTypeEnum.DATA_SOURCE_MULTIPLE) {
       dataSourceFieldIds.push(fieldId);
+    } else if (field.type === FieldTypeEnum.MEMBER || field.type === FieldTypeEnum.MEMBER_MULTIPLE) {
+      memberFieldIds.push(fieldId);
+    } else if (field.type === FieldTypeEnum.DEPARTMENT || field.type === FieldTypeEnum.DEPARTMENT_MULTIPLE) {
+      departmentFieldIds.push(fieldId);
     } else if (field.type === FieldTypeEnum.DATE_TIME) {
       timeFieldIds.push(fieldId);
     } else if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(field.type) && needParseSubTable) {
@@ -257,7 +307,7 @@ export function transformData({
         }
       });
     }
-    if (field.businessKey) {
+    if (field.businessKey && !field.resourceFieldId) {
       const fieldId = field.businessKey;
       const options = originalData?.optionMap?.[fieldId]?.map((e: any) => ({
         ...e,
@@ -283,11 +333,13 @@ export function transformData({
         businessFieldAttr[fieldId] = formatTimeValue(item[fieldId], field.dateType);
       } else if (options && options.length > 0) {
         let name: string | string[] = '';
-        if (dataSourceFieldIds.includes(fieldId)) {
+        if (item[fieldId] === '') {
+          name = '-';
+        } else if (dataSourceFieldIds.includes(fieldId)) {
           // 处理数据源字段，需要赋值为数组
           if (typeof item[fieldId] === 'string' || typeof item[fieldId] === 'number') {
             // 单选
-            name = [options?.find((e) => e.id === item[fieldId])?.name || t('common.optionNotExist')];
+            name = options?.find((e) => e.id === item[fieldId])?.name || t('common.optionNotExist');
           } else {
             // 多选
             name = options?.filter((e) => item[fieldId]?.includes(e.id)).map((e) => e.name) || [
@@ -296,7 +348,7 @@ export function transformData({
           }
         } else if (typeof item[fieldId] === 'string' || typeof item[fieldId] === 'number') {
           // 若值是单个字符串/数字
-          name = options?.find((e) => e.id === item[fieldId])?.name;
+          name = options?.find((e) => e.id === item[fieldId])?.name || t('common.optionNotExist');
         } else {
           // 若值是数组
           name = options?.filter((e) => item[fieldId]?.includes(e.id)).map((e) => e.name) || [
@@ -307,7 +359,12 @@ export function transformData({
           }
         }
         if (!excludeFieldIds?.includes(field.businessKey)) {
-          businessFieldAttr[fieldId] = name || t('common.optionNotExist');
+          if (specialBusinessKeyMap[fieldId]) {
+            // 处理特殊业务 key 映射关系
+            businessFieldAttr[specialBusinessKeyMap[fieldId]] = name || t('common.optionNotExist');
+          } else {
+            businessFieldAttr[fieldId] = name || t('common.optionNotExist');
+          }
         }
         if (fieldId === 'owner') {
           businessFieldAttr.ownerId = item.owner;
@@ -358,19 +415,31 @@ export function transformData({
           name = [options.find((e) => e.id === field.fieldValue)?.name || t('common.optionNotExist')];
         } else {
           // 多选
-          name = options.filter((e) => field.fieldValue?.includes(e.id)).map((e) => e.name);
+          name = field.fieldValue?.map((e) => options.find((o) => o.id === e)?.name || t('common.optionNotExist'));
         }
       } else if (typeof field.fieldValue === 'string' || typeof field.fieldValue === 'number') {
         // 若值是单个字符串/数字
         name = options.find((e) => e.id === field.fieldValue)?.name || t('common.optionNotExist');
       } else {
         // 若值是数组
-        name = options.filter((e) => field.fieldValue?.includes(e.id)).map((e) => e.name);
+        name = field.fieldValue?.map((fv) => options.find((e) => e.id === fv)?.name || t('common.optionNotExist'));
         if (Array.isArray(name) && name.length === 0) {
           name = [t('common.optionNotExist')];
         }
       }
       customFieldAttr[field.fieldId] = name || [t('common.optionNotExist')];
+    } else if (
+      [...dataSourceFieldIds, ...memberFieldIds, ...departmentFieldIds].includes(field.fieldId) &&
+      (!options || options.length === 0)
+    ) {
+      // 处理匹配不到 optionsMap 的数据源/成员/部门字段
+      if (typeof field.fieldValue === 'string' || typeof field.fieldValue === 'number') {
+        // 单选
+        customFieldAttr[field.fieldId] = [t('common.optionNotExist')];
+      } else {
+        // 多选
+        customFieldAttr[field.fieldId] = field.fieldValue?.map((e) => t('common.optionNotExist'));
+      }
     } else {
       // 其他类型字段，直接赋值
       customFieldAttr[field.fieldId] = field.fieldValue;

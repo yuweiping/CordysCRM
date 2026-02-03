@@ -11,11 +11,13 @@ import cn.idev.excel.context.AnalysisContext;
 import cn.idev.excel.event.AnalysisEventListener;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.lang.reflect.Field;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -38,13 +40,16 @@ public class BusinessTitleCheckEventListener extends AnalysisEventListener<Map<I
     private final Map<String, Boolean> requiredFieldMap;
     private final Map<String, String> excelHeadToFieldNameDic = new HashMap<>();
     protected Map<Integer, String> headMap;
-    private final Map<String, Set<String>> excelValueCache = new ConcurrentHashMap<>();
+    private final List<List<String>> heads;
+    protected boolean atLeastOne = false;
+    private final Map<String, Boolean> excelValueCache = new ConcurrentHashMap<>();
 
-    public BusinessTitleCheckEventListener(Class<?> clazz, Map<String, Boolean> requiredFieldMap, String orgId) {
+    public BusinessTitleCheckEventListener(Class<?> clazz, Map<String, Boolean> requiredFieldMap, String orgId, List<List<String>> heads) {
         this.excelDataClass = clazz;
         this.requiredFieldMap = requiredFieldMap;
         this.orgId = orgId;
         this.commonMapper = CommonBeanFactory.getBean(CommonMapper.class);
+        this.heads = heads;
     }
 
     @Override
@@ -52,6 +57,16 @@ public class BusinessTitleCheckEventListener extends AnalysisEventListener<Map<I
         if (headMap == null) {
             throw new GenericException(Translator.get("user_import_table_header_missing"));
         }
+
+        List<String> headList = heads.stream().flatMap(List::stream).toList();
+
+        headList.forEach(head -> {
+            if (!headMap.containsValue(head)) {
+                throw new GenericException(Translator.getWithArgs("illegal_header", head));
+            }
+        });
+
+
         this.headMap = headMap;
         try {
             genExcelHeadToFieldNameDicAndGetNotRequiredFields();
@@ -64,22 +79,28 @@ public class BusinessTitleCheckEventListener extends AnalysisEventListener<Map<I
 
     @Override
     public void invoke(Map<Integer, String> data, AnalysisContext analysisContext) {
+        if (data == null) {
+            return;
+        }
+        atLeastOne = true;
         Integer rowIndex = analysisContext.readRowHolder().getRowIndex();
         validateRowData(rowIndex, data);
     }
 
     @Override
     public void doAfterAllAnalysed(AnalysisContext analysisContext) {
-
+        if (!atLeastOne) {
+            throw new GenericException(Translator.get("import.data.cannot_be_null"));
+        }
     }
 
 
     private void validateRowData(Integer rowIndex, Map<Integer, String> rowData) {
         StringBuilder errText = new StringBuilder();
         headMap.forEach((k, v) -> {
-            validateLenLimit(rowData.get(k), errText, v);
-            validateNameUniques(errText, v);
             validateRequired(rowData.get(k), errText, v);
+            validateLenLimit(rowData.get(k), errText, v);
+            validateNameUniques(rowData.get(k), errText, v);
         });
         if (StringUtils.isNotEmpty(errText)) {
             ExcelErrData excelErrData = new ExcelErrData(rowIndex,
@@ -93,23 +114,25 @@ public class BusinessTitleCheckEventListener extends AnalysisEventListener<Map<I
     }
 
     private void validateRequired(String data, StringBuilder errText, String v) {
-        String key = BusinessTitleImportFiled.fromHeader(v).name().toLowerCase();
-        if (requiredFieldMap.containsKey(key) && requiredFieldMap.get(key) && StringUtils.isBlank(data)) {
-            errText.append(v).append(Translator.get("required")).append(";");
+        if (BusinessTitleImportFiled.fromHeader(v) != null) {
+            String key = BusinessTitleImportFiled.fromHeader(v).name().toLowerCase();
+            if (requiredFieldMap.containsKey(key) && requiredFieldMap.get(key) && StringUtils.isBlank(data)) {
+                errText.append(v).append(Translator.get("required")).append(";");
+            }
         }
     }
 
-    private void validateNameUniques(StringBuilder errText, String v) {
-        if (BusinessTitleImportFiled.BUSINESS_NAME.equals(BusinessTitleImportFiled.fromHeader(v))) {
-            excelValueCache.putIfAbsent(v, ConcurrentHashMap.newKeySet());
-            Set<String> valueSet = excelValueCache.get(v);
-            if (!valueSet.add(v)) {
-                errText.append(v).append(Translator.get("business_title.exist")).append(";");
+    private void validateNameUniques(String data, StringBuilder errText, String v) {
+        if (data != null && BusinessTitleImportFiled.NAME.equals(BusinessTitleImportFiled.fromHeader(v))) {
+            Boolean existed = excelValueCache.putIfAbsent(data, true);
+            if (existed != null) {
+                errText.append(v).append(":").append(Translator.get("business_title.exist")).append(";");
+                return;
             }
 
-            List<String> valList = commonMapper.getCheckValList("business_title", BusinessTitleImportFiled.BUSINESS_NAME.name().toLowerCase(), orgId);
-            if (CollectionUtils.isNotEmpty(valList)) {
-                errText.append(v).append(Translator.get("business_title.exist")).append(";");
+            boolean repeat = commonMapper.checkAddExist("business_title", BusinessTitleImportFiled.NAME.name().toLowerCase(), data, orgId);
+            if (repeat) {
+                errText.append(v).append(":").append(Translator.get("business_title.exist")).append(";");
             }
         }
     }

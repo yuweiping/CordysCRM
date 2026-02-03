@@ -31,10 +31,12 @@
               }`"
               @click="goDetail(dim, defaultLeadData[dim])"
             >
-              {{ abbreviateNumber(defaultLeadData[dim].value, defaultLeadData[dim].unit).value }}
-              <span class="unit">
+              <div class="number">
+                {{ abbreviateNumber(defaultLeadData[dim].value, defaultLeadData[dim].unit).value }}
+              </div>
+              <div class="unit">
                 {{ abbreviateNumber(defaultLeadData[dim].value, defaultLeadData[dim].unit).unit }}
-              </span>
+              </div>
             </div>
           </countPopover>
         </div>
@@ -60,8 +62,10 @@
                 }`"
                 @click="goDetail(dim, item)"
               >
-                {{ abbreviateNumber(item.value, item.unit).value }}
-                <span class="unit">{{ abbreviateNumber(item.value, item.unit).unit }}</span>
+                <div class="number">
+                  {{ abbreviateNumber(item.value, item.unit).value }}
+                </div>
+                <div class="unit">{{ abbreviateNumber(item.value, item.unit).unit }}</div>
               </div>
             </countPopover>
           </div>
@@ -84,8 +88,10 @@
                 }`"
                 @click="goDetail(dim, item)"
               >
-                {{ abbreviateNumber(item.value, item.unit).value }}
-                <span class="unit">{{ abbreviateNumber(item.value, item.unit).unit }}</span>
+                <div class="number">
+                  {{ abbreviateNumber(item.value, item.unit).value }}
+                </div>
+                <div class="unit">{{ abbreviateNumber(item.value, item.unit).unit }}</div>
               </div>
             </countPopover>
             <div
@@ -105,7 +111,9 @@
                 :class="getPriorPeriodClass(item.priorPeriodCompareRate)"
               />
               <div :class="`${getPriorPeriodClass(item.priorPeriodCompareRate)} flex min-w-0`">
-                <div class="one-line-text">{{ periodCompareRateAbs(item.priorPeriodCompareRate) }}</div>
+                <div class="one-line-text !leading-[18px]">
+                  {{ periodCompareRateAbs(item.priorPeriodCompareRate) }}
+                </div>
                 <span v-if="typeof item.priorPeriodCompareRate === 'number'">％</span>
               </div>
             </div>
@@ -469,10 +477,14 @@
         @apply flex-1;
       }
       .count {
-        font-size: 18px;
-        @apply flex items-baseline font-semibold;
+        @apply flex items-center font-semibold;
+        .number {
+          font-size: 18px;
+          line-height: 29px;
+        }
         .unit {
           font-size: 14px;
+          line-height: 29px;
         }
       }
       .analytics-last-time {

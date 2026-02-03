@@ -174,6 +174,9 @@
   .n-data-table-empty {
     border-bottom: 1px solid var(--text-n8);
   }
+  .n-data-table-base-table-header {
+    overflow-y: hidden;
+  }
   .n-data-table-thead {
     .n-data-table-tr:not(.n-data-table-tr--summary):hover {
       background-color: var(--text-n10);
@@ -506,6 +509,9 @@
     padding-bottom: 0 !important;
   }
 }
+.n-base-select-option__content {
+  @apply w-full;
+}
 // 树
 .n-tree.n-tree--block-line .n-tree-node:not(.n-tree-node--disabled).n-tree-node--pending {
   @apply bg-transparent;
@@ -522,9 +528,6 @@
   word-break: break-all !important;
 }
 // 表单
-.n-form {
-  padding-top: 1px;
-}
 .n-form-item-blank {
   @apply flex-wrap;
 }

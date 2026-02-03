@@ -53,4 +53,6 @@ export default {
   'system.message.maxLimit': '最多可添加 {count} 条',
   'system.message.toHeadAbove': '向负责人及以上',
   'system.message.noticeOfDepartmentHead': '级部门负责人通知',
+  'system.message.departmentHeadTooltip': '0 代表直属上级',
+  'system.message.timeSetting': '时间配置',
 };

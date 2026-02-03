@@ -2,6 +2,7 @@ package cn.cordys.common.service;
 
 
 import cn.cordys.crm.clue.service.ClueService;
+import cn.cordys.crm.contract.service.BusinessTitleService;
 import cn.cordys.crm.contract.service.ContractService;
 import cn.cordys.crm.customer.service.CustomerContactService;
 import cn.cordys.crm.customer.service.CustomerService;
@@ -45,6 +46,8 @@ public class FieldSourceServiceProvider {
     private OpportunityQuotationService opportunityQuotationService;
     @Resource
     private ContractService contractService;
+    @Resource
+    private BusinessTitleService businessTitleService;
 
     @PostConstruct
     public void init() {
@@ -56,6 +59,7 @@ public class FieldSourceServiceProvider {
         SERVICE_MAP.put(FieldSourceType.PRICE, productPriceService);
         SERVICE_MAP.put(FieldSourceType.QUOTATION, opportunityQuotationService);
         SERVICE_MAP.put(FieldSourceType.CONTRACT, contractService);
+        SERVICE_MAP.put(FieldSourceType.BUSINESS_TITLE, businessTitleService);
     }
 
     /**
@@ -77,13 +81,13 @@ public class FieldSourceServiceProvider {
     public Object getById(FieldSourceType type, Object id) {
         Object service = getService(type);
         if (service == null || !(id instanceof String) || ((String) id).isEmpty()) {
-            log.error("数据源类型{}有误, 或参数值{}传递有误", new Object[]{type.name(), id});
+            log.error("数据源类型{}有误, 或参数值{}传递有误", type.name(), id);
             return null;
         }
         try {
             return service.getClass().getMethod("get", String.class).invoke(service, id.toString());
         } catch (Exception e) {
-            log.error("获取数据源详情异常：" + id, e);
+            log.error("获取数据源详情异常：{}", id, e);
             return null;
         }
     }

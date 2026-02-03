@@ -1,11 +1,17 @@
 <template>
   <n-form-item
+    ref="crmFormItemRef"
     :label="props.fieldConfig.name"
-    :show-label="props.fieldConfig.showLabel"
     :path="props.path"
     :rule="props.fieldConfig.rules"
     :required="props.fieldConfig.rules.some((rule) => rule.key === 'required')"
   >
+    <template #label>
+      <div v-if="props.fieldConfig.showLabel" class="flex h-[22px] items-center gap-[4px] whitespace-nowrap">
+        <div class="one-line-text">{{ props.fieldConfig.name }}</div>
+      </div>
+      <div v-else class="h-[22px]"></div>
+    </template>
     <div
       v-if="props.fieldConfig.description"
       class="crm-form-create-item-desc"
@@ -47,6 +53,7 @@
 
 <script setup lang="ts">
   import {
+    type FormItemInst,
     NFormItem,
     NUpload,
     NUploadDragger,
@@ -80,6 +87,7 @@
   });
   const fileList = ref<UploadFileInfo[]>([]);
   const fileKeysMap = ref<Record<string, string>>({});
+  const crmFormItemRef = ref<FormItemInst>();
 
   async function beforeUpload({
     file,
@@ -146,6 +154,7 @@
       onFinish();
       fileKeys.value.push(...res.data);
       [fileKeysMap.value[file.id]] = res.data;
+      crmFormItemRef.value?.validate();
       emit('change', fileKeys.value, fileList.value);
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -159,6 +168,7 @@
   function handleFileListChange(files: UploadFileInfo[]) {
     if (fileKeys.value.length > files.length) {
       fileKeys.value = fileKeys.value.filter((key) => files.some((file) => file.id === key));
+      crmFormItemRef.value?.validate();
       emit('change', fileKeys.value, fileList.value);
     }
   }

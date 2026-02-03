@@ -25,11 +25,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.annotation.Resource;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -265,9 +267,11 @@ public class BaseService {
         Map<String, Object> resourceLog = JSON.parseToMap(JSON.toJSONString(resource));
 
         if (moduleFields != null) {
-            moduleFields.forEach(field ->
-                    resourceLog.put(field.getFieldId(), field.getFieldValue())
-            );
+            moduleFields.stream()
+                    .filter(BaseModuleFieldValue::valid)
+                    .forEach(field ->
+                            resourceLog.put(field.getFieldId(), field.getFieldValue())
+                    );
         }
 
         writeAddLogContext(resource, resourceLog);
@@ -283,8 +287,11 @@ public class BaseService {
         Set<String> subRefKey = getSubTableRefIds(moduleFormConfigDTO);
         if (moduleFields != null) {
             Map<String, String> fieldNameMap = getFieldNameMap(moduleFields, moduleFormConfigDTO);
+            List<BaseModuleFieldValue> validFields = moduleFields.stream()
+                    .filter(BaseModuleFieldValue::valid)
+                    .toList();
             Map<String, String> subTableIdKeyMap = getSubTableIdKeyMap(moduleFormConfigDTO);
-            fillResourceLog(resourceLog, moduleFields, fieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey);
+            fillResourceLog(resourceLog, validFields, fieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey, moduleFormConfigDTO);
         }
 
         writeAddLogContext(resource, resourceLog);
@@ -321,9 +328,11 @@ public class BaseService {
 
         // 添加原始字段值
         if (originResourceFields != null) {
-            originResourceFields.forEach(field ->
-                    originResourceLog.put(field.getFieldId(), field.getFieldValue())
-            );
+            originResourceFields.stream()
+                    .filter(BaseModuleFieldValue::valid)
+                    .forEach(field ->
+                            originResourceLog.put(field.getFieldId(), field.getFieldValue())
+                    );
         }
 
         // 添加修改后的字段值（过滤无效字段）
@@ -365,8 +374,11 @@ public class BaseService {
         Set<String> subRefKey = getSubTableRefIds(moduleFormConfigDTO);
         if (originResourceFields != null) {
             Map<String, String> oldFieldNameMap = getFieldNameMap(originResourceFields, moduleFormConfigDTO);
+            List<BaseModuleFieldValue> validFields = originResourceFields.stream()
+                    .filter(BaseModuleFieldValue::valid)
+                    .toList();
             Map<String, String> subTableIdKeyMap = getSubTableIdKeyMap(moduleFormConfigDTO);
-            fillResourceLog(originResourceLog, originResourceFields, oldFieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey);
+            fillResourceLog(originResourceLog, validFields, oldFieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey, moduleFormConfigDTO);
         }
 
         if (modifiedResourceFields != null) {
@@ -375,7 +387,7 @@ public class BaseService {
                     .filter(BaseModuleFieldValue::valid)
                     .toList();
             Map<String, String> subTableIdKeyMap = getSubTableIdKeyMap(moduleFormConfigDTO);
-            fillResourceLog(modifiedResourceLog, validFields, newFieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey);
+            fillResourceLog(modifiedResourceLog, validFields, newFieldNameMap, subTableIdKeyMap, subTableKeyName, subRefKey, moduleFormConfigDTO);
         }
 
         try {
@@ -401,7 +413,8 @@ public class BaseService {
             Map<String, String> fieldNameMap,
             Map<String, String> subTableKeyMap,
             String subTableKeyName,
-            Set<String> subRefKey) {
+            Set<String> subRefKey,
+            ModuleFormConfigDTO moduleFormConfigDTO) {
         fields.forEach(field -> {
             String fieldId = field.getFieldId();
             // 普通字段
@@ -417,23 +430,34 @@ public class BaseService {
             if (CollectionUtils.isEmpty(subTableList)) {
                 return;
             }
+            AtomicReference<String> subTableName = new AtomicReference<>(moduleFormConfigDTO.getFields().stream().filter(BaseField::isSubField).filter(subField -> subField.getId().equals(fieldId)).findFirst().map(BaseField::getName).orElse(subTableKeyName));
+            if (Strings.CI.equals(fieldId, "products")) {
+                subTableKeyMap.forEach((key, value) -> {
+                    if (StringUtils.isNotBlank(value) && Strings.CI.equals(value, fieldId))
+                        subTableName.set(moduleFormConfigDTO.getFields().stream().filter(BaseField::isSubField).filter(subField -> subField.getId().equals(key)).findFirst().map(BaseField::getName).orElse(subTableKeyName));
+                });
+            }
+
+
             int size = subTableList.size();
             for (int i = 0; i < size; i++) {
                 Map<String, Object> row = subTableList.get(i);
                 if (size > 1) {
                     int finalI = i;
+                    String finalSubTableName1 = subTableName.get();
                     row.forEach((key, value) -> {
                         if (!fieldNameMap.containsKey(key) || subRefKey.contains(key)) {
                             return;
                         }
-                        resourceLog.put(subTableKeyName + "-" + fieldNameMap.get(key) + "-" + Translator.get("row") + (finalI + 1) + "-" + key, value);
+                        resourceLog.put(finalSubTableName1 + "-" + fieldNameMap.get(key) + "-" + Translator.get("row") + (finalI + 1) + "-" + key, value);
                     });
                 } else {
+                    String finalSubTableName = subTableName.get();
                     row.forEach((key, value) -> {
                         if (!fieldNameMap.containsKey(key) || subRefKey.contains(key)) {
                             return;
                         }
-                        resourceLog.put(subTableKeyName + "-" + fieldNameMap.get(key) + "-" + key, value);
+                        resourceLog.put(finalSubTableName + "-" + fieldNameMap.get(key) + "-" + key, value);
                     });
                 }
             }

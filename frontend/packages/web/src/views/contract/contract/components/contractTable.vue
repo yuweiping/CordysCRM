@@ -83,6 +83,7 @@
     :sourceId="activeSourceId"
     @refresh="searchData"
     @showCustomerDrawer="showCustomerDrawer"
+    @open-business-title-drawer="handleOpenBusinessTitleDrawer"
   />
   <ApprovalModal
     v-model:show="showApprovalModal"
@@ -91,6 +92,7 @@
     @refresh="handleApprovalSuccess"
   />
   <batchOperationResultModal v-model:visible="resultVisible" :result="batchResult" :name="batchOperationName" />
+  <businessTitleDrawer v-model:visible="showBusinessTitleDetailDrawer" :source-id="activeBusinessTitleSourceId" />
 </template>
 
 <script setup lang="ts">
@@ -98,7 +100,7 @@
   import { DataTableRowKey, NButton, NTooltip, useMessage } from 'naive-ui';
 
   import { ContractStatusEnum } from '@lib/shared/enums/contractEnum';
-  import { FieldTypeEnum, FormDesignKeyEnum, FormLinkScenarioEnum } from '@lib/shared/enums/formDesignEnum';
+  import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import useLocale from '@lib/shared/locale/useLocale';
@@ -120,6 +122,7 @@
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
   import CrmViewSelect from '@/components/business/crm-view-select/index.vue';
+  import businessTitleDrawer from '../../businessTitle/components/detail.vue';
   import DetailDrawer from './detail.vue';
   import VoidReasonModal from './voidReasonModal.vue';
   import ApprovalModal from '@/views/opportunity/components/quotation/approvalModal.vue';
@@ -266,6 +269,11 @@
       type: FieldTypeEnum.INPUT,
     },
     {
+      title: t('contract.alreadyPayAmount'),
+      dataIndex: 'alreadyPayAmount',
+      type: FieldTypeEnum.INPUT_NUMBER,
+    },
+    {
       title: t('opportunity.quotation.amount'),
       dataIndex: 'amount',
       type: FieldTypeEnum.INPUT_NUMBER,
@@ -307,11 +315,17 @@
     }
     if (row.approvalStatus === QuotationStatusEnum.APPROVED) {
       return [
-        {
-          label: t('contract.payment'),
-          key: 'paymentRecord',
-          permission: ['CONTRACT:PAYMENT'],
-        },
+        ...(row.stage !== ContractStatusEnum.VOID
+          ? [
+              {
+                label: t('contract.payment'),
+                key: 'paymentRecord',
+                permission: ['CONTRACT:PAYMENT'],
+                disabled: !row.amount || row.alreadyPayAmount >= row.amount,
+                tooltipContent: row.alreadyPayAmount >= row.amount ? t('contract.noPaymentRequired') : undefined,
+              },
+            ]
+          : []),
         {
           label: t('common.delete'),
           key: 'delete',
@@ -574,6 +588,13 @@
       searchData();
     }
   );
+
+  const showBusinessTitleDetailDrawer = ref(false);
+  const activeBusinessTitleSourceId = ref<string>('');
+  function handleOpenBusinessTitleDrawer(params: { id: string }) {
+    activeBusinessTitleSourceId.value = params.id;
+    showBusinessTitleDetailDrawer.value = true;
+  }
 
   // 先不上
   // function handleGeneratedChart(res: FilterResult, form: FilterForm) {

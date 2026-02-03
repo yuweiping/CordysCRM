@@ -1,6 +1,7 @@
 package cn.cordys.common.resolver.field;
 
 import cn.cordys.crm.system.dto.field.InputNumberField;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.poi.ss.formula.FormulaParseException;
@@ -39,6 +40,9 @@ public class NumberResolver extends AbstractModuleFieldResolver<InputNumberField
         if (Strings.CS.equals(field.getNumberFormat(), PERCENT_FORMAT)) {
             text = text.replace(PERCENT_SUFFIX, StringUtils.EMPTY);
         }
+		if (BooleanUtils.isTrue(field.getShowThousandsSeparator())) {
+			text = text.replace(",", StringUtils.EMPTY).replace("，", StringUtils.EMPTY);
+		}
         try {
 			BigDecimal bd = new BigDecimal(text);
 			boolean illegal = checkIllegalDecimal(bd);

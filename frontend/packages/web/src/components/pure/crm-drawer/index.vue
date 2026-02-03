@@ -19,7 +19,7 @@
     >
       <template #header>
         <slot name="header">
-          <div class="flex w-full items-center justify-between gap-[8px] overflow-hidden">
+          <div class="flex w-full items-center justify-between gap-[24px] overflow-hidden">
             <n-button v-if="props.showBack" text class="mr-[4px] w-[32px]" @click="handleCancel">
               <n-icon size="16">
                 <ChevronBackOutline />
@@ -30,7 +30,7 @@
               <slot name="title">
                 <n-tooltip trigger="hover" :delay="300" :disabled="!props.title">
                   <template #trigger>
-                    <span class="one-line-text">{{ props.title }}</span>
+                    <div class="one-line-text !leading-[20px]">{{ props.title }}</div>
                   </template>
                   {{ props.title }}
                 </n-tooltip>
@@ -62,8 +62,7 @@
         <slot name="footer">
           <div class="flex w-full items-center justify-between">
             <slot name="footerLeft"></slot>
-
-            <div class="flex gap-[8px]">
+            <div class="ml-auto flex gap-[8px]">
               <n-button :disabled="props.loading" secondary @click="handleCancel">
                 {{ t(props.cancelText || 'common.cancel') }}
               </n-button>
@@ -76,8 +75,8 @@
                 :disabled="okDisabled"
                 @click="handleContinue"
               >
-                {{ t(props.saveContinueText || 'common.saveAndContinue') }}</n-button
-              >
+                {{ t(props.saveContinueText || 'common.saveAndContinue') }}
+              </n-button>
               <n-button type="primary" :disabled="okDisabled" :loading="props.loading" @click="handleOk">
                 {{ t(props.okText || 'common.add') }}
               </n-button>

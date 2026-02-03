@@ -55,14 +55,19 @@
       </template>
       <template #[FieldDataSourceTypeEnum.CUSTOMER]="{ item }">
         <div class="field-line flex w-full items-center">
-          <div class="mr-[16px] text-[var(--text-n2)]" :style="{ width: props.labelWidth || '120px' }">
+          <div class="mr-[16px] leading-[24px] text-[var(--text-n2)]" :style="{ width: props.labelWidth || '120px' }">
             {{ item.label }}
           </div>
           <CrmTableButton
             v-if="
-              (!detail.inCustomerPool && hasAnyPermission(['CUSTOMER_MANAGEMENT:READ'])) ||
+              (item.value !== t('common.optionNotExist') &&
+                item.value !== '-' &&
+                !detail.inCustomerPool &&
+                hasAnyPermission(['CUSTOMER_MANAGEMENT:READ'])) ||
               (detail.inCustomerPool && hasAnyPermission(['CUSTOMER_MANAGEMENT_POOL:READ']))
             "
+            class="crm-form-description-link-button"
+            size="small"
             @click="openCustomerDetail(formDetail[item.fieldInfo.id])"
           >
             <template #trigger>
@@ -87,6 +92,7 @@
           </div>
           <CrmTableButton
             v-if="hasAnyPermission(['CONTRACT:READ'])"
+            class="crm-form-description-link-button"
             @click="openContractDetail(formDetail[item.fieldInfo.id])"
           >
             <template #trigger>
@@ -111,7 +117,33 @@
           </div>
           <CrmTableButton
             v-if="hasAnyPermission(['CONTRACT_PAYMENT_PLAN:READ'])"
+            class="crm-form-description-link-button"
             @click="openContractPaymentPlanDetail(formDetail[item.fieldInfo.id])"
+          >
+            <template #trigger>
+              {{ item.value }}
+            </template>
+            {{ item.value }}
+          </CrmTableButton>
+          <n-tooltip v-else :delay="300">
+            <template #trigger>
+              <div class="one-line-text">
+                {{ item.value }}
+              </div>
+            </template>
+            {{ item.value }}
+          </n-tooltip>
+        </div>
+      </template>
+      <template #[FieldDataSourceTypeEnum.BUSINESS_TITLE]="{ item }">
+        <div class="field-line flex w-full items-center">
+          <div class="mr-[16px] text-[var(--text-n2)]" :style="{ width: props.labelWidth || '120px' }">
+            {{ item.label }}
+          </div>
+          <CrmTableButton
+            v-if="hasAnyPermission(['CONTRACT_BUSINESS_TITLE:READ'])"
+            class="crm-form-description-link-button"
+            @click="openContractBusinessTitleDetail(formDetail[item.fieldInfo.id])"
           >
             <template #trigger>
               {{ item.value }}
@@ -196,6 +228,11 @@
     :files="activeFileList"
     @delete-file="handleDeleteFile"
   />
+  <businessTitleDrawer
+    v-if="isInitBusinessTitleDetail"
+    v-model:visible="showBusinessTitleDetail"
+    :source-id="activeBusinessTitleId"
+  />
 </template>
 
 <script setup lang="ts">
@@ -217,6 +254,10 @@
   import { hasAnyPermission } from '@/utils/permission';
 
   import { AttachmentInfo } from '../crm-form-create/types';
+
+  const businessTitleDrawer = defineAsyncComponent(
+    () => import('@/views/contract/businessTitle/components/detail.vue')
+  );
 
   const props = withDefaults(
     defineProps<{
@@ -343,6 +384,15 @@
     });
   }
 
+  const isInitBusinessTitleDetail = ref(false);
+  const showBusinessTitleDetail = ref(false);
+  const activeBusinessTitleId = ref<string>('');
+  function openContractBusinessTitleDetail(id: string | string[]) {
+    activeBusinessTitleId.value = Array.isArray(id) ? id[0] : id;
+    isInitBusinessTitleDetail.value = true;
+    showBusinessTitleDetail.value = true;
+  }
+
   // 打开链接
   function openLink(item: any) {
     if (item.fieldInfo.openMode === 'openInCurrent') {
@@ -394,6 +444,15 @@
     moduleFormConfig,
   });
 </script>
+
+<style lang="less">
+  .crm-description {
+    .crm-form-description-link-button {
+      height: 20px !important;
+      font-size: 14px !important;
+    }
+  }
+</style>
 
 <style lang="less" scoped>
   :deep(.n-form-item-feedback-wrapper) {

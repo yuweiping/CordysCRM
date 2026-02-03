@@ -93,11 +93,12 @@ export default {
   'crmFormDesign.dataSourceFilterTip':
     'After adding filter conditions, only data that meets the conditions will be displayed',
   'crmFormDesign.dataSourceDisplayField': 'Display Field',
+  'crmFormDesign.dataSourceFilterSetTip': '{count} filters set',
   'crmFormDesign.showFieldCount': '{count} display fields set',
   'crmFormDesign.serialNumber': 'Serial Number',
   'crmFormDesign.selectDataSource': 'Select {type}',
   'crmFormDesign.customer': 'Account',
-  'crmFormDesign.contract': 'Contact',
+  'crmFormDesign.contact': 'Contact',
   'crmFormDesign.opportunity': 'Opportunity',
   'crmFormDesign.product': 'Product',
   'crmFormDesign.clue': 'Lead',
@@ -181,8 +182,18 @@ export default {
   'crmFormDesign.formulaEquals': 'Formula =',
   'crmFormDesign.formulaPricing': 'Price',
   'crmFormDesign.formulaDiscount': 'Discount',
-  'crmFormDesign.formulaPlaceholder': 'Click the tag below to enter the operation symbol and edit the formula',
+  'crmFormDesign.formulaPlaceholder':
+    'Select the fields and functions below to configure the calculation formula. For example:',
   'crmFormDesign.formulaHasBeenSet': 'Formula has been set',
+  'crmFormDesign.formulaByNameSearchPlaceholder': 'Search by field name',
+  'crmFormDesign.formulaFunction': 'Common Functions',
+  'crmFormDesign.formulaUsage': 'Function Usage',
+  'crmFormDesign.formulaUsageMethods': 'Usage',
+  'crmFormDesign.formulaExampleEndTime': 'End Date',
+  'crmFormDesign.formulaExampleStartTime': 'Start Date',
+  'crmFormDesign.formulaSelectUsageTip': 'Please select a function from the left',
+  'crmFormDesign.formulaSUMDescription': 'Sum',
+  'crmFormDesign.formulaDAYSDescription': 'Calculate the difference in days between two dates',
   'crmFormDesign.amount': 'Amount',
   'crmFormDesign.CLUE_TO_CUSTOMER': 'Lead to Account',
   'crmFormDesign.CLUE_TO_OPPORTUNITY': 'Lead to Opportunity',
@@ -191,6 +202,7 @@ export default {
   'crmFormDesign.CUSTOMER_TO_RECORD': 'Write Record',
   'crmFormDesign.OPPORTUNITY_TO_RECORD': 'Write Record',
   'crmFormDesign.PLAN_TO_RECORD': 'Plan to Record',
+  'crmFormDesign.CONTRACT_TO_INVOICE': 'Add Invoice',
   'crmFormDesign.tip.CLUE_TO_CUSTOMER':
     'When converting a lead to an account, fill the lead form field content into the account form field',
   'crmFormDesign.tip.CLUE_TO_OPPORTUNITY':
@@ -205,6 +217,8 @@ export default {
     'When writing follow-up records in the opportunity module, fill the opportunity form field content into the record form fields',
   'crmFormDesign.tip.PLAN_TO_RECORD':
     'When performing plan to record operations, fill the plan form field content into the record form fields',
+  'crmFormDesign.tip.CONTRACT_TO_INVOICE':
+    'When creating an invoice in the contract details, fill the contract form fields into the invoice form fields',
   'crmFormDesign.productTable': 'Product Table',
   'crmFormDesign.quotationTable': 'Quotation Table',
   'crmFormDesign.sum': 'Sum',
@@ -213,4 +227,7 @@ export default {
   'crmFormDesign.fixedCols': 'Columns',
   'crmFormDesign.subTableField': 'Table Field',
   'crmFormDesign.addSubField': 'Add Subfield',
+  'crmFormDesign.quotingData': 'Reference other forms',
+  'crmFormDesign.currentFormField': 'Current Form Field',
+  'crmFormDesign.contract': 'Contract',
 };

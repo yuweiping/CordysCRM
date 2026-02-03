@@ -37,5 +37,13 @@ public enum FieldSourceType {
 	/**
 	 * 回款计划
 	 */
-	PAYMENT_PLAN
+	PAYMENT_PLAN,
+	/**
+	 * 工商抬头
+	 */
+	BUSINESS_TITLE,
+	/**
+	 * 回款记录
+	 */
+	CONTRACT_PAYMENT_RECORD
 }

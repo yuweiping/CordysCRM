@@ -46,8 +46,12 @@ public class SendModuleService {
             if (Strings.CI.equals(enabledModule, ModuleKey.CLUE.getKey())) {
                 modules.add(NotificationConstants.Module.CLUE);
             }
-
+            if (Strings.CI.equals(enabledModule, ModuleKey.CONTRACT.getKey())) {
+                modules.add(NotificationConstants.Module.CONTRACT);
+            }
         }
+        //这里是系统模块的通知，默认开启的
+        modules.add(NotificationConstants.Module.SYSTEM);
         return modules;
     }
 }

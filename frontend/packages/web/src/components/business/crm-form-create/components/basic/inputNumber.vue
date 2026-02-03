@@ -1,18 +1,18 @@
 <template>
   <n-form-item
     :label="props.fieldConfig.name"
-    :show-label="(props.fieldConfig.showLabel && !props.isSubTableRender) || props.isSubTableField"
     :path="props.path"
     :rule="props.fieldConfig.rules"
     :required="props.fieldConfig.rules.some((rule) => rule.key === 'required')"
     :label-placement="props.isSubTableField || props.isSubTableRender ? 'top' : props.formConfig?.labelPos"
+    :show-label="!props.isSubTableRender"
   >
     <template #label>
       <div v-if="props.fieldConfig.showLabel" class="flex h-[22px] items-center gap-[4px] whitespace-nowrap">
         <div class="one-line-text">{{ props.fieldConfig.name }}</div>
         <CrmIcon v-if="props.fieldConfig.resourceFieldId" type="iconicon_correlation" />
       </div>
-      <div v-else-if="props.isSubTableField || props.isSubTableRender" class="h-[22px]"></div>
+      <div v-else class="h-[22px]"></div>
     </template>
     <div
       v-if="props.fieldConfig.description && !props.isSubTableRender"
@@ -78,18 +78,21 @@
   );
 
   watch(
-    () => [props.fieldConfig.numberFormat, props.fieldConfig.showThousandsSeparator],
+    () => [props.fieldConfig.numberFormat, props.fieldConfig.precision, props.fieldConfig.showThousandsSeparator],
     () => {
       const temp = value.value;
       value.value = null;
       nextTick(() => {
         value.value = temp;
       });
+    },
+    {
+      deep: true,
     }
   );
 
   function parse(val: string) {
-    const nums = val.replace(/,/g, '').trim();
+    const nums = val.toString().replace(/,/g, '').trim();
     if ((!props.fieldConfig.showThousandsSeparator || /^\d+(\.(\d+)?)?$/.test(nums)) && nums !== '') {
       return Number(nums);
     }
@@ -100,12 +103,13 @@
     if (val === null) return '';
     if (
       (props.fieldConfig.numberFormat === 'number' && props.fieldConfig.showThousandsSeparator) ||
-      // TODO 下个版本再调整
-      (props.fieldConfig.type === FieldTypeEnum.FORMULA && props.fieldConfig.showThousandsSeparator)
+      props.fieldConfig.type === FieldTypeEnum.FORMULA
     ) {
-      return val.toLocaleString('en-US');
+      return props.fieldConfig.precision && props.fieldConfig.precision > 0
+        ? `${val.toLocaleString('en-US').split('.')[0]}.${val.toFixed(props.fieldConfig.precision).split('.')[1]}`
+        : val.toLocaleString('en-US');
     }
-    return val.toString();
+    return val.toFixed(props.fieldConfig.precision || 0);
   }
 </script>
 

@@ -18,9 +18,7 @@ import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.constants.BusinessTitleType;
 import cn.cordys.crm.contract.constants.ContractApprovalStatus;
-import cn.cordys.crm.contract.domain.BusinessTitle;
-import cn.cordys.crm.contract.domain.BusinessTitleConfig;
-import cn.cordys.crm.contract.domain.ContractInvoice;
+import cn.cordys.crm.contract.domain.*;
 import cn.cordys.crm.contract.dto.request.BusinessTitleAddRequest;
 import cn.cordys.crm.contract.dto.request.BusinessTitleApprovalRequest;
 import cn.cordys.crm.contract.dto.request.BusinessTitlePageRequest;
@@ -37,12 +35,16 @@ import cn.cordys.crm.integration.common.utils.HttpRequestUtil;
 import cn.cordys.crm.integration.qcc.constant.QccApiPaths;
 import cn.cordys.crm.integration.qcc.dto.*;
 import cn.cordys.crm.opportunity.constants.ApprovalState;
+import cn.cordys.crm.opportunity.domain.OpportunityQuotation;
 import cn.cordys.crm.system.constants.SheetKey;
+import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.ImportResponse;
+import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.excel.domain.UserExcelDataFactory;
 import cn.cordys.crm.system.excel.handler.CustomHeadColWidthStyleStrategy;
 import cn.cordys.crm.system.service.IntegrationConfigService;
 import cn.cordys.crm.system.service.LogService;
+import cn.cordys.crm.system.service.ModuleFormService;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -53,15 +55,13 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -84,6 +84,8 @@ public class BusinessTitleService {
     private BaseMapper<BusinessTitleConfig> businessTitleConfigMapper;
     @Resource
     private IntegrationConfigService integrationConfigService;
+    @Resource
+    private ModuleFormService moduleFormService;
 
 
     /**
@@ -94,9 +96,9 @@ public class BusinessTitleService {
      * @param orgId
      * @return
      */
-    @OperationLog(module = LogModule.BUSINESS_TITLE, type = LogType.ADD, resourceName = "{#request.businessName}")
+    @OperationLog(module = LogModule.CONTRACT_BUSINESS_TITLE, type = LogType.ADD, resourceName = "{#request.name}")
     public BusinessTitle add(BusinessTitleAddRequest request, String userId, String orgId) {
-        checkName(request.getBusinessName(), orgId, null);
+        checkName(request.getName(), orgId, null);
 
         BusinessTitle businessTitle = BeanUtils.copyBean(new BusinessTitle(), request);
         if (Strings.CI.equals(BusinessTitleType.CUSTOM.name(), businessTitle.getType())) {
@@ -115,7 +117,7 @@ public class BusinessTitleService {
         OperationLogContext.setContext(
                 LogContextInfo.builder()
                         .resourceId(businessTitle.getId())
-                        .resourceName(businessTitle.getBusinessName())
+                        .resourceName(businessTitle.getName())
                         .modifiedValue(businessTitle)
                         .build()
         );
@@ -145,9 +147,10 @@ public class BusinessTitleService {
      * @param orgId
      * @return
      */
-    @OperationLog(module = LogModule.BUSINESS_TITLE, type = LogType.UPDATE, resourceId = "{#request.id}")
+    @OperationLog(module = LogModule.CONTRACT_BUSINESS_TITLE, type = LogType.UPDATE, resourceId = "{#request.id}")
     public BusinessTitle update(BusinessTitleUpdateRequest request, String userId, String orgId) {
         BusinessTitle oldTitle = checkTitle(request.getId());
+        checkName(request.getName(), orgId, request.getId());
 
         BusinessTitle newTitle = BeanUtils.copyBean(new BusinessTitle(), request);
         if (Strings.CI.equals(BusinessTitleType.CUSTOM.name(), newTitle.getType())) {
@@ -161,7 +164,7 @@ public class BusinessTitleService {
 
         OperationLogContext.setContext(
                 LogContextInfo.builder()
-                        .resourceName(request.getBusinessName())
+                        .resourceName(request.getName())
                         .originalValue(oldTitle)
                         .modifiedValue(newTitle)
                         .build()
@@ -183,12 +186,12 @@ public class BusinessTitleService {
      *
      * @param id
      */
-    @OperationLog(module = LogModule.CONTRACT_INDEX, type = LogType.DELETE, resourceId = "{#id}")
+    @OperationLog(module = LogModule.CONTRACT_BUSINESS_TITLE, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id) {
         BusinessTitle businessTitle = checkTitle(id);
         if (!checkHasInvoice(id)) {
             businessTitleMapper.deleteByPrimaryKey(id);
-            OperationLogContext.setResourceName(businessTitle.getBusinessName());
+            OperationLogContext.setResourceName(businessTitle.getName());
         }
     }
 
@@ -253,13 +256,13 @@ public class BusinessTitleService {
         businessTitle.setUpdateUser(userId);
         businessTitleMapper.update(businessTitle);
         // 添加日志上下文
-        LogDTO logDTO = getApprovalLogDTO(orgId, request.getId(), userId, businessTitle.getBusinessName(), state, request.getApprovalStatus());
+        LogDTO logDTO = getApprovalLogDTO(orgId, request.getId(), userId, businessTitle.getName(), state, request.getApprovalStatus());
         logService.add(logDTO);
     }
 
 
     private LogDTO getApprovalLogDTO(String orgId, String id, String userId, String response, String state, String newState) {
-        LogDTO logDTO = new LogDTO(orgId, id, userId, LogType.APPROVAL, LogModule.BUSINESS_TITLE, response);
+        LogDTO logDTO = new LogDTO(orgId, id, userId, LogType.APPROVAL, LogModule.CONTRACT_BUSINESS_TITLE, response);
         Map<String, String> oldMap = new HashMap<>();
         oldMap.put("approvalStatus", Translator.get("contract.approval_status." + state.toLowerCase()));
         logDTO.setOriginalValue(oldMap);
@@ -290,7 +293,7 @@ public class BusinessTitleService {
 
 
         // 添加日志上下文
-        LogDTO logDTO = getApprovalLogDTO(orgId, id, userId, businessTitle.getBusinessName(), originApprovalStatus, ApprovalState.REVOKED.toString());
+        LogDTO logDTO = getApprovalLogDTO(orgId, id, userId, businessTitle.getName(), originApprovalStatus, ApprovalState.REVOKED.toString());
         logService.add(logDTO);
 
         return businessTitle.getApprovalStatus();
@@ -317,8 +320,7 @@ public class BusinessTitleService {
         LambdaQueryWrapper<BusinessTitleConfig> configWrapper = new LambdaQueryWrapper<>();
         configWrapper.eq(BusinessTitleConfig::getOrganizationId, orgId);
         List<BusinessTitleConfig> businessTitleConfigs = businessTitleConfigMapper.selectListByLambda(configWrapper);
-        Map<String, Boolean> map = businessTitleConfigs.stream().collect(Collectors.toMap(BusinessTitleConfig::getField, BusinessTitleConfig::getRequired));
-        return map;
+        return businessTitleConfigs.stream().collect(Collectors.toMap(BusinessTitleConfig::getField, BusinessTitleConfig::getRequired));
     }
 
     private List<List<String>> getTemplateHead() {
@@ -351,7 +353,7 @@ public class BusinessTitleService {
     private ImportResponse checkImportExcel(MultipartFile file, String orgId) {
         try {
             Class<?> clazz = new UserExcelDataFactory().getExcelDataByLocal();
-            BusinessTitleCheckEventListener eventListener = new BusinessTitleCheckEventListener(clazz, getBusinessTitleConfig(orgId), orgId);
+            BusinessTitleCheckEventListener eventListener = new BusinessTitleCheckEventListener(clazz, getBusinessTitleConfig(orgId), orgId, getTemplateHead());
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
@@ -380,12 +382,13 @@ public class BusinessTitleService {
                 List<LogDTO> logs = new ArrayList<>();
                 businessTitles.forEach(title -> {
                     title.setType(BusinessTitleType.CUSTOM.name());
-                    logs.add(new LogDTO(orgId, title.getId(), userId, LogType.ADD, LogModule.CUSTOMER_INDEX, title.getBusinessName()));
+                    title.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+                    logs.add(new LogDTO(orgId, title.getId(), userId, LogType.ADD, LogModule.CONTRACT_BUSINESS_TITLE, title.getName()));
                 });
                 businessTitleMapper.batchInsert(businessTitles);
                 logService.batchAdd(logs);
             };
-            BusinessTitleImportEventListener eventListener = new BusinessTitleImportEventListener(clazz, BusinessTitle.class, getBusinessTitleConfig(orgId), orgId, userId, afterDto);
+            var eventListener = new BusinessTitleImportEventListener(clazz, BusinessTitle.class, getBusinessTitleConfig(orgId), orgId, userId, afterDto, getTemplateHead());
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
@@ -435,12 +438,16 @@ public class BusinessTitleService {
         BusinessTitle businessTitle = new BusinessTitle();
         if (enterpriseInfo != null) {
             InfoData data = enterpriseInfo.getData();
-            businessTitle.setBusinessName(data.getName());
+            businessTitle.setName(data.getName());
             businessTitle.setIdentificationNumber(data.getTaxNo());
-            businessTitle.setOpeningBank(data.getBankInfo().getBank());
-            businessTitle.setBankAccount(data.getBankInfo().getBankAccount());
+            if (data.getBankInfo() != null) {
+                businessTitle.setOpeningBank(data.getBankInfo().getBank());
+                businessTitle.setBankAccount(data.getBankInfo().getBankAccount());
+            }
             businessTitle.setRegistrationAddress(data.getAddress());
-            businessTitle.setPhoneNumber(data.getContactInfo().getTel());
+            if (data.getContactInfo() != null) {
+                businessTitle.setPhoneNumber(data.getContactInfo().getTel());
+            }
             businessTitle.setRegisteredCapital(data.getRegisterCapi());
             businessTitle.setCompanySize(data.getPersonScope());
             businessTitle.setRegistrationNumber(data.getNo());
@@ -508,4 +515,52 @@ public class BusinessTitleService {
         return headers;
     }
 
+    public ModuleFormConfigDTO getBusinessFormConfig() {
+        ModuleFormConfigDTO moduleFormConfigDTO = new ModuleFormConfigDTO();
+        List<BaseField> fields = moduleFormService.initBusinessTitleFields();
+        moduleFormConfigDTO.setFields(fields);
+        return moduleFormConfigDTO;
+    }
+
+    public List<BusinessTitle> selectByIds(List<String> ids) {
+        return businessTitleMapper.selectByIds(ids);
+    }
+
+    public BusinessTitle selectById(String id) {
+        if (StringUtils.isBlank(id)) {
+            return null;
+        }
+        return businessTitleMapper.selectByPrimaryKey(id);
+    }
+
+    public String getBusinessTitleName(String string) {
+        BusinessTitle businessTitle = businessTitleMapper.selectByPrimaryKey(string);
+        return Optional.ofNullable(businessTitle).map(BusinessTitle::getName).orElse(null);
+    }
+
+	/**
+	 * 通过名称获取工商表头集合
+	 *
+	 * @param names 名称
+	 * @return 工商表头集合
+	 */
+	public List<BusinessTitle> getBusinessTitleListByNames(List<String> names) {
+		LambdaQueryWrapper<BusinessTitle> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+		lambdaQueryWrapper.in(BusinessTitle::getName, names);
+		return businessTitleMapper.selectListByLambda(lambdaQueryWrapper);
+	}
+
+	/**
+	 * 通过ID集合获取工商表头名称
+	 * @param ids id集合
+	 * @return 工商表头名称
+	 */
+	public String getTitleNameByIds(List<String> ids) {
+		List<BusinessTitle> titles = businessTitleMapper.selectByIds(ids);
+		if (CollectionUtils.isNotEmpty(titles)) {
+			List<String> names = titles.stream().map(BusinessTitle::getName).toList();
+			return String.join(",", names);
+		}
+		return StringUtils.EMPTY;
+	}
 }

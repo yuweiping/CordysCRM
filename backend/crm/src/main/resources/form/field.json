@@ -1370,7 +1370,7 @@
       "titleColor": "#323535"
     },
     {
-      "name": "报价单名称",
+      "name": "报价",
       "internalKey": "quotationName",
       "type": "INPUT",
       "showLabel": true,
@@ -1538,6 +1538,26 @@
           "showThousandsSeparator": true
         }
       ]
+    },
+    {
+      "name": "累计金额",
+      "internalKey": "quotationTotalAmount",
+      "type": "FORMULA",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        },
+        {
+          "key": "unique"
+        }
+      ],
+      "mobile": true,
+      "showThousandsSeparator": true,
+      "ext_ver": "1.5.1"
     }
   ],
   "contractPaymentPlan": [
@@ -1812,6 +1832,26 @@
       ],
       "mobile": true,
       "ext_ver": "1.5.0"
+    },
+    {
+      "name": "累计金额",
+      "internalKey": "contractTotalAmount",
+      "type": "FORMULA",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        },
+        {
+          "key": "unique"
+        }
+      ],
+      "mobile": true,
+      "showThousandsSeparator": true,
+      "ext_ver": "1.5.1"
     }
   ],
   "invoice": [
@@ -1827,21 +1867,6 @@
       "titleColor": "#323535"
     },
     {
-      "name": "合同",
-      "internalKey": "invoiceContract",
-      "type": "INPUT",
-      "showLabel": true,
-      "readable": true,
-      "editable": true,
-      "fieldWidth": 1,
-      "mobile": true,
-      "rules": [
-        {
-          "key": "required"
-        }
-      ]
-    },
-    {
       "name": "发票名称",
       "internalKey": "invoiceName",
       "type": "INPUT",
@@ -1855,6 +1880,49 @@
         }
       ],
       "mobile": true
+    },
+    {
+      "name": "合同信息",
+      "internalKey": "invoiceContractBasicInfo",
+      "type": "DIVIDER",
+      "showLabel": true,
+      "readable": true,
+      "fieldWidth": 1,
+      "dividerClass": "divider--normal",
+      "dividerColor": "#edf0f1",
+      "titleColor": "#323535"
+    },
+    {
+      "name": "合同名称",
+      "internalKey": "invoiceContract",
+      "type": "DATA_SOURCE",
+      "dataSourceType": "CONTRACT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "rules": [
+        {
+          "key": "required"
+        }
+      ],
+      "mobile": true,
+      "showFields": [
+        "contractCustomer",
+        "contractNo",
+        "contractTotalAmount"
+      ]
+    },
+    {
+      "name": "发票信息",
+      "internalKey": "invoiceBasicInfo",
+      "type": "DIVIDER",
+      "showLabel": true,
+      "readable": true,
+      "fieldWidth": 1,
+      "dividerClass": "divider--normal",
+      "dividerColor": "#edf0f1",
+      "titleColor": "#323535"
     },
     {
       "name": "开票类型",
@@ -1873,10 +1941,11 @@
         {
           "label": "普票",
           "value": "2"
-        },
+        }
+      ],
+      "rules": [
         {
-          "label": "制造业",
-          "value": "3"
+          "key": "required"
         }
       ]
     },
@@ -1902,6 +1971,11 @@
           "label": "产品3",
           "value": "3"
         }
+      ],
+      "rules": [
+        {
+          "key": "required"
+        }
       ]
     },
     {
@@ -1925,6 +1999,11 @@
         {
           "label": "sku3",
           "value": "3"
+        }
+      ],
+      "rules": [
+        {
+          "key": "required"
         }
       ]
     },
@@ -1950,6 +2029,11 @@
           "label": "年",
           "value": "3"
         }
+      ],
+      "rules": [
+        {
+          "key": "required"
+        }
       ]
     },
     {
@@ -1961,7 +2045,12 @@
       "editable": true,
       "fieldWidth": 1,
       "mobile": true,
-      "numberFormat": "number"
+      "numberFormat": "number",
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
     },
     {
       "name": "税率",
@@ -1973,8 +2062,11 @@
       "mobile": true,
       "fieldWidth": 1,
       "numberFormat": "percent",
-      "decimalPlaces": true,
-      "precision": 2
+      "rules": [
+        {
+          "key": "required"
+        }
+      ]
     },
     {
       "name": "工商抬头",
@@ -1990,10 +2082,13 @@
         {
           "key": "required"
         }
+      ],
+      "showFields": [
+        "identificationNumber"
       ]
     },
     {
-      "name": "金额",
+      "name": "发票金额",
       "internalKey": "invoiceAmount",
       "type": "INPUT_NUMBER",
       "showLabel": true,
@@ -2007,17 +2102,6 @@
           "key": "required"
         }
       ],
-      "mobile": true
-    },
-    {
-      "name": "开票时间",
-      "internalKey": "invoiceTime",
-      "type": "DATE_TIME",
-      "showLabel": true,
-      "readable": true,
-      "editable": true,
-      "fieldWidth": 1,
-      "dateType": "date",
       "mobile": true
     },
     {
@@ -2084,7 +2168,8 @@
       ],
       "readable": true,
       "editable": false,
-      "fieldWidth": 1
+      "fieldWidth": 1,
+      "mobile": true
     },
     {
       "name": "合同名称",
@@ -2205,7 +2290,8 @@
         {
           "key": "required"
         }
-      ]
+      ],
+      "mobile": true
     },
     {
       "name": "收款银行账号",
@@ -2215,12 +2301,26 @@
       "readable": true,
       "editable": true,
       "fieldWidth": 1,
-      "options": [],
+      "options": [
+        {
+          "label": "银行账号1",
+          "value": "1"
+        },
+        {
+          "label": "银行账号2",
+          "value": "2"
+        },
+        {
+          "label": "银行账号3",
+          "value": "3"
+        }
+      ],
       "rules": [
         {
           "key": "required"
         }
-      ]
+      ],
+      "mobile": true
     }
   ]
 }

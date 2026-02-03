@@ -32,11 +32,11 @@ public class OpportunityQuotationalLogService extends BaseModuleLogService {
             }
 
 
-            if (Strings.CS.equals(differ.getColumn(), BusinessModuleField.QUOTATION_PRODUCT_AMOUNT.getBusinessKey())) {
+            if (Strings.CS.equals(differ.getColumn(), BusinessModuleField.QUOTATION_TOTAL_AMOUNT.getBusinessKey())) {
                 differ.setColumnName(Translator.get("log.amount"));
             }
 
-            if (differ.getColumn().contains(Translator.get("products_info"))) {
+            if (differ.getColumn().contains("-")) {
                 differ.setColumnName(differ.getColumn());
 
             }

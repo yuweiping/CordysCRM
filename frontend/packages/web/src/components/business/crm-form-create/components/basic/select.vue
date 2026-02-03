@@ -1,18 +1,18 @@
 <template>
   <n-form-item
     :label="props.fieldConfig.name"
-    :show-label="(props.fieldConfig.showLabel && !props.isSubTableRender) || props.isSubTableField"
     :path="props.path"
     :rule="props.fieldConfig.rules"
     :required="props.fieldConfig.rules.some((rule) => rule.key === 'required')"
     :label-placement="props.isSubTableField || props.isSubTableRender ? 'top' : props.formConfig?.labelPos"
+    :show-label="!props.isSubTableRender"
   >
     <template #label>
       <div v-if="props.fieldConfig.showLabel" class="flex h-[22px] items-center gap-[4px] whitespace-nowrap">
         <div class="one-line-text">{{ props.fieldConfig.name }}</div>
         <CrmIcon v-if="props.fieldConfig.resourceFieldId" type="iconicon_correlation" />
       </div>
-      <div v-else-if="props.isSubTableField || props.isSubTableRender" class="h-[22px]"></div>
+      <div v-else class="h-[22px]"></div>
     </template>
     <div
       v-if="props.fieldConfig.description && !props.isSubTableRender"
@@ -64,7 +64,7 @@
     if (props.fieldConfig.linkRange) {
       return props.fieldConfig.options?.filter((option) => props.fieldConfig.linkRange?.includes(option.value)) || [];
     }
-    return props.fieldConfig.options;
+    return props.fieldConfig.options || [];
   });
 
   watch(

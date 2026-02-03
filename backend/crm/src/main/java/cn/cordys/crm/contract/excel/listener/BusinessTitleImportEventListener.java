@@ -39,8 +39,8 @@ public class BusinessTitleImportEventListener<T> extends BusinessTitleCheckEvent
      */
     private final Class<T> entityClass;
 
-    public BusinessTitleImportEventListener(Class<?> clazz, Class<T> entityClass, Map<String, Boolean> requiredFieldMap, String orgId, String userId, Consumer<List<T>> consumer) {
-        super(clazz, requiredFieldMap, orgId);
+    public BusinessTitleImportEventListener(Class<?> clazz, Class<T> entityClass, Map<String, Boolean> requiredFieldMap, String orgId, String userId, Consumer<List<T>> consumer, List<List<String>> heads) {
+        super(clazz, requiredFieldMap, orgId, heads);
         this.entityClass = entityClass;
         this.userId = userId;
         this.consumer = consumer;
@@ -69,6 +69,9 @@ public class BusinessTitleImportEventListener<T> extends BusinessTitleCheckEvent
             setInternal(t, rowKey);
             headMap.forEach((k, v) -> {
                 try {
+                    if (BusinessTitleImportFiled.fromHeader(v) == null) {
+                        return;
+                    }
                     setPropertyValue(t, data.get(k), BusinessTitleImportFiled.fromHeader(v).getValue());
                 } catch (Exception e) {
                     log.error("导入错误, 无法设置字段值. {}", e.getMessage());

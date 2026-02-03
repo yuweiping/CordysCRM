@@ -30,6 +30,7 @@ import cn.cordys.crm.contract.dto.response.ContractPaymentRecordGetResponse;
 import cn.cordys.crm.contract.dto.response.ContractPaymentRecordResponse;
 import cn.cordys.crm.contract.dto.response.CustomerPaymentRecordStatisticResponse;
 import cn.cordys.crm.contract.mapper.ExtContractPaymentRecordMapper;
+import cn.cordys.crm.opportunity.domain.OpportunityQuotation;
 import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.dto.field.SerialNumberField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
@@ -41,6 +42,7 @@ import cn.cordys.crm.system.excel.handler.CustomTemplateWriteHandler;
 import cn.cordys.crm.system.excel.listener.CustomFieldCheckEventListener;
 import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
 import cn.cordys.crm.system.service.LogService;
+import cn.cordys.crm.system.service.ModuleFieldExtService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
 import cn.cordys.excel.utils.EasyExcelExporter;
@@ -82,6 +84,8 @@ public class ContractPaymentRecordService {
 	private DataScopeService dataScopeService;
 	@Resource
 	private ModuleFormService moduleFormService;
+	@Resource
+	private ModuleFieldExtService moduleFieldExtService;
 	@Resource
 	private ModuleFormCacheService moduleFormCacheService;
 	@Resource
@@ -127,7 +131,7 @@ public class ContractPaymentRecordService {
 		if (StringUtils.isEmpty(paymentRecord.getOwner())) {
 			paymentRecord.setOwner(currentUser);
 		}
-		List<String> rules = moduleFormService.getSerialFieldRulesByKey(FormKey.CONTRACT_PAYMENT_RECORD.getKey(), currentOrg, BusinessModuleField.CONTRACT_PAYMENT_RECORD_NO.getKey());
+		List<String> rules = moduleFieldExtService.getSerialFieldRulesByKey(FormKey.CONTRACT_PAYMENT_RECORD.getKey(), currentOrg, BusinessModuleField.CONTRACT_PAYMENT_RECORD_NO.getKey());
 		if (CollectionUtils.isNotEmpty(rules)) {
 			paymentRecord.setNo(serialNumGenerator.generateByRules(rules, currentOrg, FormKey.CONTRACT_PAYMENT_RECORD.getKey()));
 		}
@@ -136,9 +140,9 @@ public class ContractPaymentRecordService {
 		paymentRecord.setUpdateUser(currentUser);
 		paymentRecord.setUpdateTime(System.currentTimeMillis());
 		paymentRecord.setOrganizationId(currentOrg);
-		contractPaymentRecordMapper.insert(paymentRecord);
-		// 保存自定义字段值
+		// 保存自定义字段值&回款记录
 		contractPaymentRecordFieldService.saveModuleField(paymentRecord, currentOrg, currentUser, request.getModuleFields(), false);
+		contractPaymentRecordMapper.insert(paymentRecord);
 		// 日志
 		baseService.handleAddLog(paymentRecord, request.getModuleFields());
 		return paymentRecord;
@@ -187,6 +191,7 @@ public class ContractPaymentRecordService {
 		ContractPaymentRecordGetResponse recordDetail = BeanUtils.copyBean(new ContractPaymentRecordGetResponse(), paymentRecord);
 		recordDetail = baseService.setCreateUpdateOwnerUserName(recordDetail);
 		Contract contract = contractMapper.selectByPrimaryKey(recordDetail.getContractId());
+		ContractPaymentPlan contractPaymentPlan = contractPaymentPlanMapper.selectByPrimaryKey(recordDetail.getPaymentPlanId());
 		// 自定义字段值 & 选项值
 		List<BaseModuleFieldValue> fvs = contractPaymentRecordFieldService.getModuleFieldValuesByResourceId(id);
 		fvs = contractPaymentRecordFieldService.setBusinessRefFieldValue(List.of(recordDetail),
@@ -199,6 +204,11 @@ public class ContractPaymentRecordService {
 			recordDetail.setContractName(contract.getName());
 			optionMap.put(BusinessModuleField.CONTRACT_PAYMENT_RECORD_CONTRACT.getBusinessKey(), moduleFormService.getBusinessFieldOption(List.of(recordDetail),
 					ContractPaymentRecordGetResponse::getContractId, ContractPaymentRecordGetResponse::getContractName));
+		}
+		if (contractPaymentPlan != null) {
+			recordDetail.setPaymentPlanName(contractPaymentPlan.getName());
+			optionMap.put(BusinessModuleField.CONTRACT_PAYMENT_RECORD_PLAN.getBusinessKey(), moduleFormService.getBusinessFieldOption(List.of(recordDetail),
+					ContractPaymentRecordGetResponse::getPaymentPlanId, ContractPaymentRecordGetResponse::getPaymentPlanName));
 		}
 		recordDetail.setModuleFields(fvs);
 		recordDetail.setOptionMap(optionMap);
@@ -263,7 +273,7 @@ public class ContractPaymentRecordService {
 			return ImportResponse.builder().errorMessages(eventListener.getErrList())
 					.successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
 		} catch (Exception e) {
-			log.error("Payment record import pre-check error: {}", e.getMessage());
+			log.error("Payment record import pre-check error", e);
 			throw new GenericException(e.getMessage());
 		}
 	}
@@ -302,7 +312,7 @@ public class ContractPaymentRecordService {
 			return ImportResponse.builder().errorMessages(eventListener.getErrList())
 					.successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
 		} catch (Exception e) {
-			log.error("Payment record import error: ", e);
+			log.error("Payment record import error", e);
 			throw new GenericException(e.getMessage());
 		}
 	}
@@ -398,13 +408,13 @@ public class ContractPaymentRecordService {
 	}
 
 	/**
-	 * 校验回款金额是否超出
+	 * 校验回款金额是否超出 && 大于0
 	 * @param contractId 	合同ID
 	 * @param payAmount 	回款金额
 	 */
 	private void checkContractPaymentAmount(String contractId, BigDecimal payAmount, String excludeRecordId) {
 		if (payAmount == null || payAmount.compareTo(BigDecimal.ZERO) <= 0) {
-			return;
+			throw new GenericException(Translator.getWithArgs("record.amount.illegal"));
 		}
 		LambdaQueryWrapper<ContractPaymentRecord> recordLambdaQueryWrapper = new LambdaQueryWrapper<>();
 		recordLambdaQueryWrapper.eq(ContractPaymentRecord::getContractId, contractId);
@@ -417,5 +427,44 @@ public class ContractPaymentRecordService {
 		if ((alreadyPay.add(payAmount)).compareTo(contract.getAmount()) > 0) {
 			throw new GenericException(Translator.getWithArgs("record.amount.exceed", contract.getAmount().subtract(alreadyPay)));
 		}
+	}
+
+	/**
+	 * 获取回款记录名称
+	 * @param id 	回款记录ID
+	 * @return 回款记录名称
+	 */
+	public String getRecordNameById(String id) {
+		ContractPaymentRecord record = contractPaymentRecordMapper.selectByPrimaryKey(id);
+		if (record != null) {
+			return record.getName();
+		}
+		return null;
+	}
+
+	/**
+	 * 通过名称获取回款记录集合
+	 *
+	 * @param names 名称集合
+	 * @return 回款记录集合
+	 */
+	public List<ContractPaymentRecord> getRecordListByNames(List<String> names) {
+		LambdaQueryWrapper<ContractPaymentRecord> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+		lambdaQueryWrapper.in(ContractPaymentRecord::getName, names);
+		return contractPaymentRecordMapper.selectListByLambda(lambdaQueryWrapper);
+	}
+
+	/**
+	 * 通过ID集合获取回款记录名称
+	 * @param ids id集合
+	 * @return 回款记录名称
+	 */
+	public String getRecordNameByIds(List<String> ids) {
+		List<ContractPaymentRecord> records = contractPaymentRecordMapper.selectByIds(ids);
+		if (CollectionUtils.isNotEmpty(records)) {
+			List<String> names = records.stream().map(ContractPaymentRecord::getName).toList();
+			return String.join(",", names);
+		}
+		return StringUtils.EMPTY;
 	}
 }

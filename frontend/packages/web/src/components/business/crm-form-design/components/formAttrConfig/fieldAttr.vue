@@ -53,7 +53,7 @@
         "
         class="crm-form-design-config-item"
       >
-        <div class="crm-form-design-config-item-title">
+        <div class="crm-form-design-config-item-title !justify-start">
           {{ t('crmFormDesign.placeholder') }}
           <n-tooltip trigger="hover">
             <template #trigger>
@@ -138,10 +138,13 @@
             v-model:value="fieldConfig.dataSourceType"
             :options="dataSourceOptions"
             :disabled="fieldConfig.disabledProps?.includes('dataSourceType') || !!fieldConfig.resourceFieldId"
-            @update-value="() => handleClearDataSourceDisplayField()"
+            @update-value="handleClearDataSourceTypeChange"
           />
         </div>
-        <div class="crm-form-design-config-item">
+        <div
+          v-if="fieldConfig.dataSourceType !== FieldDataSourceTypeEnum.BUSINESS_TITLE"
+          class="crm-form-design-config-item"
+        >
           <div class="crm-form-design-config-item-title">
             {{ t('crmFormDesign.dataSourceFilter') }}
           </div>
@@ -149,7 +152,11 @@
             :disabled="fieldConfig.disabledProps?.includes('dataSource') || !!fieldConfig.resourceFieldId"
             @click="handleDataSourceFilter"
           >
-            {{ t('common.setting') }}
+            {{
+              fieldConfig.combineSearch?.conditions.length
+                ? t('crmFormDesign.dataSourceFilterSetTip', { count: fieldConfig.combineSearch?.conditions.length })
+                : t('common.setting')
+            }}
           </n-button>
         </div>
         <!-- 显示字段 -->
@@ -269,6 +276,45 @@
         </n-button>
       </div>
       <!-- 字段联动 End -->
+      <!-- 单选数据源字段联动 -->
+      <div
+        v-if="
+          fieldConfig.type === FieldTypeEnum.DATA_SOURCE &&
+          !isSubTableField &&
+          fieldConfig.dataSourceType !== FieldDataSourceTypeEnum.BUSINESS_TITLE
+        "
+        class="crm-form-design-config-item"
+      >
+        <div class="crm-form-design-config-item-title">
+          {{ t('crmFormDesign.fieldLink') }}
+          <CrmPopConfirm
+            v-model:show="datasourceLinkClearPop"
+            :title="t('crmFormDesign.linkFieldSettingClearTip')"
+            icon-type="warning"
+            :content="t('crmFormDesign.linkFieldSettingClearTipContent')"
+            :positive-text="t('common.confirm')"
+            trigger="click"
+            :negative-text="t('common.cancel')"
+            placement="right-end"
+            @confirm="clearDatasourceLink"
+          >
+            <n-button type="primary" text :disabled="!fieldConfig.linkFields?.length || !!fieldConfig.resourceFieldId">
+              {{ t('common.clear') }}
+            </n-button>
+          </CrmPopConfirm>
+        </div>
+        <n-button
+          :disabled="fieldConfig.disabledProps?.includes('linkFields') || !!fieldConfig.resourceFieldId"
+          @click="showDatasourceLinkConfig"
+        >
+          {{
+            fieldConfig.linkFields?.length
+              ? t('crmFormDesign.linkSettingTip', { count: fieldConfig.linkFields.length })
+              : t('common.setting')
+          }}
+        </n-button>
+      </div>
+      <!-- 单选数据源字段联动 End -->
       <div v-if="fieldConfig.type === FieldTypeEnum.DIVIDER" class="crm-form-design-config-item">
         <div class="crm-form-design-config-item-title">
           {{ t('crmFormDesign.style') }}
@@ -660,7 +706,7 @@
             <n-button
               type="primary"
               text
-              :disabled="!fieldConfig.formula?.length || !!fieldConfig.resourceFieldId"
+              :disabled="!formulaConfig.source?.length || !!fieldConfig.resourceFieldId"
               @click="handleClearFormulaField"
             >
               {{ t('common.clear') }}
@@ -672,7 +718,7 @@
             :disabled="!!fieldConfig.resourceFieldId"
             @click="handleCalculateFormula"
           >
-            {{ fieldConfig.formula?.length ? t('crmFormDesign.formulaHasBeenSet') : t('common.setting') }}
+            {{ formulaConfig.source?.length ? t('crmFormDesign.formulaHasBeenSet') : t('common.setting') }}
           </n-button>
         </div>
       </template>
@@ -742,12 +788,14 @@
           />
           {{ t('crmFormDesign.loginUserDept') }}
         </div>
-        <CrmInputNumber
+        <CrmFormCreateInputNumber
           v-if="fieldConfig.type === FieldTypeEnum.INPUT_NUMBER"
           v-model:value="fieldConfig.defaultValue"
           :show-button="false"
           :min="0"
           :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
+          :fieldConfig="fieldConfig"
+          path=""
         />
         <template v-else-if="fieldConfig.type === FieldTypeEnum.DATE_TIME">
           <n-select
@@ -1030,7 +1078,13 @@
           <n-checkbox v-model:checked="showSumColumn">
             {{ t('crmFormDesign.show') }}
           </n-checkbox>
-          <n-select v-if="showSumColumn" v-model:value="fieldConfig.sumColumns" multiple :options="sumOptions" />
+          <n-select
+            v-if="showSumColumn"
+            v-model:value="fieldConfig.sumColumns"
+            multiple
+            :options="sumOptions"
+            :fallback-option="fallbackOption"
+          />
         </div>
         <div class="crm-form-design-config-item">
           <div class="crm-form-design-config-item-title">
@@ -1110,7 +1164,7 @@
     v-if="fieldConfig"
     v-model:visible="showDataSourceFilterModal"
     :field-config="fieldConfig"
-    :form-fields="list"
+    :form-fields="list.filter((field) => !field.resourceFieldId)"
     @save="handleDataSourceFilterSave"
   />
   <DataSourceDisplayFieldModal
@@ -1127,11 +1181,18 @@
     :form-fields="isSubTableField ? parentField?.subFields || [] : list"
     @save="handleLinkConfigSave"
   />
+  <datasourceLinkModal
+    v-if="fieldConfig"
+    v-model:visible="showDatasourceLinkConfigVisible"
+    :field-config="fieldConfig"
+    :form-fields="list"
+    @save="handleDatasourceLinkConfigSave"
+  />
   <formulaModal
     v-if="fieldConfig"
     v-model:visible="showCalculateFormulaModal"
     :field-config="fieldConfig"
-    :form-fields="formulaScopedFields"
+    :form-fields="list"
     :is-sub-table-field="isSubTableField"
     @save="handleCalculateFormulaConfigSave"
   />
@@ -1174,16 +1235,20 @@
   import CrmPopConfirm from '@/components/pure/crm-pop-confirm/index.vue';
   import CrmDataSource from '@/components/business/crm-data-source-select/index.vue';
   import Divider from '@/components/business/crm-form-create/components/basic/divider.vue';
-  import { rules, showRulesMap } from '@/components/business/crm-form-create/config';
+  import CrmFormCreateInputNumber from '@/components/business/crm-form-create/components/basic/inputNumber.vue';
+  import { fullFormSettingList, rules, showRulesMap } from '@/components/business/crm-form-create/config';
   import {
     DataSourceFilterCombine,
+    type DataSourceLinkField,
     FieldLinkProp,
     FormCreateField,
     FormCreateFieldRule,
     FormCreateFieldShowControlRule,
   } from '@/components/business/crm-form-create/types';
+  import { safeParseFormula } from '@/components/business/crm-formula-editor/utils';
   import CrmUserTagSelector from '@/components/business/crm-user-tag-selector/index.vue';
   import DataSourceDisplayFieldModal from './dataSourceDisplayFieldModal.vue';
+  import datasourceLinkModal from './datasourceLinkModal.vue';
   import fieldLinkDrawer from './fieldLinkDrawer.vue';
   import FilterModal from './filterModal.vue';
   import formulaModal from './formulaModal.vue';
@@ -1236,7 +1301,8 @@
     () => fieldConfig.value?.rules,
     (arr) => {
       checkedRules.value = arr?.map((e) => e.key);
-    }
+    },
+    { immediate: true }
   );
 
   const isSubTableField = computed(() => {
@@ -1257,23 +1323,16 @@
     return null;
   });
   const isNameRepeat = computed(() => {
-    const fieldNameSet = new Set<string>();
-    list.value.forEach((field) => {
-      if (field.id !== fieldConfig.value?.id) {
-        fieldNameSet.add(field.name);
-      }
-      if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(field.type)) {
-        field.subFields?.forEach((subField) => {
-          if (subField.id !== fieldConfig.value?.id) {
-            fieldNameSet.add(subField.name);
-          }
-        });
-      }
-    });
-    return fieldConfig.value ? fieldNameSet.has(fieldConfig.value.name) : false;
+    return isSubTableField.value
+      ? parentField.value?.subFields?.some(
+          (item) => item.id !== fieldConfig.value?.id && item.name === fieldConfig.value?.name
+        )
+      : list.value.some((item) => item.id !== fieldConfig.value?.id && item.name === fieldConfig.value?.name);
   });
 
-  const formulaScopedFields = computed(() => (isSubTableField.value ? parentField.value?.subFields ?? [] : list.value));
+  const formulaConfig = computed(() => {
+    return safeParseFormula(fieldConfig.value.formula);
+  });
 
   function handleRuleChange(val: (string | number)[]) {
     fieldConfig.value.rules = val
@@ -1406,53 +1465,9 @@
   });
 
   const dataSourceOptions = computed<SelectOption[]>(() => {
-    const fullList = [
-      {
-        label: t('crmFormDesign.customer'),
-        value: FieldDataSourceTypeEnum.CUSTOMER,
-        formKey: FormDesignKeyEnum.CUSTOMER,
-      },
-      {
-        label: t('crmFormDesign.contract'),
-        value: FieldDataSourceTypeEnum.CONTACT,
-        formKey: FormDesignKeyEnum.CONTACT,
-      },
-      {
-        label: t('crmFormDesign.opportunity'),
-        value: FieldDataSourceTypeEnum.BUSINESS,
-        formKey: FormDesignKeyEnum.BUSINESS,
-      },
-      {
-        label: t('crmFormDesign.product'),
-        value: FieldDataSourceTypeEnum.PRODUCT,
-        formKey: FormDesignKeyEnum.PRODUCT,
-      },
-      {
-        label: t('crmFormDesign.clue'),
-        value: FieldDataSourceTypeEnum.CLUE,
-        formKey: FormDesignKeyEnum.CLUE,
-      },
-      {
-        label: t('crmFormCreate.drawer.price'),
-        value: FieldDataSourceTypeEnum.PRICE,
-        formKey: FormDesignKeyEnum.PRICE,
-      },
-      {
-        label: t('crmFormCreate.drawer.quotation'),
-        value: FieldDataSourceTypeEnum.QUOTATION,
-        formKey: FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
-      },
-      {
-        label: t('module.contract'),
-        value: FieldDataSourceTypeEnum.CONTRACT,
-        formKey: FormDesignKeyEnum.CONTRACT,
-      },
-      {
-        label: t('module.paymentPlan'),
-        value: FieldDataSourceTypeEnum.CONTRACT_PAYMENT,
-        formKey: FormDesignKeyEnum.CONTRACT_PAYMENT,
-      },
-    ];
+    const fullList = fullFormSettingList
+      .filter((i) => i.dataSource)
+      .map((item) => ({ ...item, value: item.dataSource }));
     if (isSubTableField.value) {
       return parentField.value?.subFields?.some(
         (e) => e.dataSourceType === FieldDataSourceTypeEnum.PRICE && e.id !== fieldConfig.value?.id
@@ -1563,6 +1578,23 @@
     fieldConfig.value.linkProp = value;
   }
 
+  const showDatasourceLinkConfigVisible = ref(false);
+  const tempDataLinkFields = ref<DataSourceLinkField[]>([]);
+  const datasourceLinkClearPop = ref(false);
+
+  function clearDatasourceLink() {
+    fieldConfig.value.linkFields = [];
+    datasourceLinkClearPop.value = false;
+  }
+  function showDatasourceLinkConfig() {
+    tempDataLinkFields.value = fieldConfig.value.linkFields || [];
+    showDatasourceLinkConfigVisible.value = true;
+  }
+
+  function handleDatasourceLinkConfigSave(value: DataSourceLinkField[]) {
+    fieldConfig.value.linkFields = value;
+  }
+
   const showDataSourceFilterModal = ref(false);
 
   function handleDataSourceFilter() {
@@ -1583,6 +1615,7 @@
           0,
           ...selectedList.map((item) => ({
             ...item,
+            id: `${parentField.value?.id}_ref_${item.id}`,
             resourceFieldId: fieldConfig.value.id,
             description: '',
             editable: false,
@@ -1599,6 +1632,7 @@
             0,
             ...selectedList.map((item) => ({
               ...item,
+              id: `${fieldConfig.value.id}_ref_${item.id}`,
               resourceFieldId: fieldConfig.value.id,
               description: '',
               editable: false,
@@ -1619,6 +1653,13 @@
     }
   }
 
+  function handleClearDataSourceTypeChange(val: FieldDataSourceTypeEnum) {
+    handleClearDataSourceDisplayField();
+    if (val === FieldDataSourceTypeEnum.BUSINESS_TITLE) {
+      fieldConfig.value.linkFields = [];
+    }
+  }
+
   function handleDataSourceFilterSave(result: DataSourceFilterCombine) {
     fieldConfig.value.combineSearch = result;
     showDataSourceFilterModal.value = false;
@@ -1629,7 +1670,7 @@
     showCalculateFormulaModal.value = true;
   }
 
-  function handleCalculateFormulaConfigSave(astValue: string) {
+  function handleCalculateFormulaConfigSave(astValue?: string) {
     fieldConfig.value.formula = astValue;
     showCalculateFormulaModal.value = false;
   }
@@ -1706,6 +1747,13 @@
       }
     }
   );
+
+  function fallbackOption(val: string | number) {
+    return {
+      label: t('crmFormDesign.fieldNotExist'),
+      value: val,
+    };
+  }
 </script>
 
 <style lang="less" scoped>

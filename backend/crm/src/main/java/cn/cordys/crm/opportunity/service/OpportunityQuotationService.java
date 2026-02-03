@@ -60,9 +60,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -126,8 +126,8 @@ public class OpportunityQuotationService {
         opportunityQuotation.setUpdateUser(userId);
         opportunityQuotation.setCreateTime(System.currentTimeMillis());
         opportunityQuotation.setUpdateTime(System.currentTimeMillis());
-        //计算子产品总金额
-        setAmount(request.getProducts(), opportunityQuotation);
+        //判断总金额
+        setAmount(request.getAmount(), opportunityQuotation);
         // 设置子表格字段值
         moduleFields.add(new BaseModuleFieldValue("products", request.getProducts()));
 
@@ -147,19 +147,6 @@ public class OpportunityQuotationService {
 
         return opportunityQuotation;
 
-    }
-
-    /**
-     * 计算子产品总金额
-     *
-     * @param products             子产品列表
-     * @param opportunityQuotation 报价单实体
-     */
-    private void setAmount(List<Map<String, Object>> products, OpportunityQuotation opportunityQuotation) {
-        BigDecimal totalAmount = products.stream()
-                .map(product -> new BigDecimal(product.get("amount").toString()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        opportunityQuotation.setAmount(totalAmount.setScale(2, RoundingMode.HALF_UP));
     }
 
     /**
@@ -266,14 +253,26 @@ public class OpportunityQuotationService {
             response = JSON.parseObject(snapshot.getQuotationValue(), OpportunityQuotationGetResponse.class);
         }
         response.setApprovalStatus(opportunityQuotation.getApprovalStatus());
+        ModuleFormConfigDTO moduleFormConfigDTO = moduleFormCacheService.getBusinessFormConfig(FormKey.QUOTATION.getKey(), opportunityQuotation.getOrganizationId());
+        List<BaseModuleFieldValue> moduleFieldValues = opportunityQuotationFieldService.getModuleFieldValuesByResourceId(id);
+        List<BaseModuleFieldValue> resolveFieldValues = moduleFormService.resolveSnapshotFields(moduleFieldValues, moduleFormConfigDTO, opportunityQuotationFieldService, opportunityQuotation.getId());
+        List<BaseModuleFieldValue> fvs = opportunityQuotationFieldService.setBusinessRefFieldValue(List.of(response), moduleFormService.getFlattenFormFields(FormKey.QUOTATION.getKey(), opportunityQuotation.getOrganizationId()),
+                new HashMap<>(Map.of(response.getId(), resolveFieldValues))).get(response.getId());
+        response.setModuleFields(fvs);
+        Map<String, List<OptionDTO>> optionMap = moduleFormService.getOptionMap(moduleFormConfigDTO, fvs);
+        Opportunity opportunity = opportunityBaseMapper.selectByPrimaryKey(response.getOpportunityId());
+        if (opportunity != null) {
+            optionMap.put("opportunityId", List.of(new OptionDTO(opportunity.getId(), opportunity.getName())));
+            response.setOpportunityName(opportunity.getName());
+        }
+        response.setOptionMap(optionMap);
+        Map<String, List<Attachment>> attachmentMap = moduleFormService.getAttachmentMap(moduleFormConfigDTO, response.getModuleFields());
+        response.setAttachmentMap(attachmentMap);
+        baseService.setCreateAndUpdateUserName(response);
         UserDeptDTO userDeptDTO = baseService.getUserDeptMapByUserId(opportunityQuotation.getCreateUser(), opportunityQuotation.getOrganizationId());
         if (userDeptDTO != null) {
             response.setDepartmentId(userDeptDTO.getDeptId());
             response.setDepartmentName(userDeptDTO.getDeptName());
-        }
-        Opportunity opportunity = opportunityBaseMapper.selectByPrimaryKey(opportunityQuotation.getOpportunityId());
-        if (opportunity != null) {
-            response.setOpportunityName(opportunity.getName());
         }
         return response;
     }
@@ -517,7 +516,7 @@ public class OpportunityQuotationService {
     private List<OpportunityQuotationListResponse> buildList(List<OpportunityQuotationListResponse> listData, String organizationId) {
         // 查询列表数据的自定义字段
         Map<String, List<BaseModuleFieldValue>> dataFieldMap = opportunityQuotationFieldService.getResourceFieldMap(
-                listData.stream().map(OpportunityQuotationListResponse::getId).toList(), true);
+                listData.stream().map(OpportunityQuotationListResponse::getId).collect(Collectors.toList()), true);
         Map<String, List<BaseModuleFieldValue>> resolvefieldValueMap = opportunityQuotationFieldService.setBusinessRefFieldValue(listData,
                 moduleFormService.getFlattenFormFields(FormKey.QUOTATION.getKey(), organizationId), dataFieldMap);
 
@@ -562,7 +561,8 @@ public class OpportunityQuotationService {
         opportunityQuotation.setCreateTime(oldOpportunityQuotation.getCreateTime());
         opportunityQuotation.setCreateUser(oldOpportunityQuotation.getCreateUser());
         opportunityQuotation.setApprovalStatus(ApprovalState.APPROVING.toString());
-        setAmount(request.getProducts(), opportunityQuotation);
+        //判断总金额
+        setAmount(request.getAmount(), opportunityQuotation);
         // 设置子表格字段值
         moduleFields.add(new BaseModuleFieldValue("products", request.getProducts()));
         updateFields(moduleFields, opportunityQuotation, orgId, userId);
@@ -592,6 +592,14 @@ public class OpportunityQuotationService {
         return opportunityQuotationMapper.selectByPrimaryKey(id);
     }
 
+    private void setAmount(String amount, OpportunityQuotation opportunityQuotation) {
+        if (StringUtils.isNotBlank(amount)) {
+            opportunityQuotation.setAmount(new BigDecimal(amount));
+        } else {
+            opportunityQuotation.setAmount(BigDecimal.ZERO);
+        }
+    }
+
     /**
      * 检查报价单信息
      *
@@ -610,7 +618,7 @@ public class OpportunityQuotationService {
             throw new GenericException(Translator.get("opportunity.quotation.product.required"));
         }
         for (Map<String, Object> product : request) {
-            if (product.get("amount") == null) {
+            if (product.get("sumAmount") == null) {
                 throw new GenericException(Translator.get("opportunity.quotation.product.amount.invalid"));
             }
         }

@@ -11,7 +11,7 @@ import lombok.Data;
 public class BusinessTitle extends BaseModel {
 
     @Schema(description = "公司名称")
-    private String businessName;
+    private String name;
 
     @Schema(description = "来源类型")
     private String type;
@@ -22,7 +22,7 @@ public class BusinessTitle extends BaseModel {
     @Schema(description = "开户银行")
     private String openingBank;
 
-    @Schema(description = "银行账号")
+    @Schema(description = "银行账户")
     private String bankAccount;
 
     @Schema(description = "注册地址")
@@ -37,7 +37,7 @@ public class BusinessTitle extends BaseModel {
     @Schema(description = "公司规模")
     private String companySize;
 
-    @Schema(description = "工商注册号")
+    @Schema(description = "工商注册账号")
     private String registrationNumber;
 
     @Schema(description = "审核状态")

@@ -1,12 +1,13 @@
 package cn.cordys.crm.system.service;
 
+import cn.cordys.aspectj.constants.LogModule;
+import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.common.dto.JsonDifferenceDTO;
 import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JsonDifferenceUtils;
-
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.system.domain.OperationLog;
 import cn.cordys.crm.system.domain.OperationLogBlob;
@@ -99,6 +100,11 @@ public class SysOperationLogService {
      */
     public OperationLogDetailResponse getLogDetail(String id, String orgId) {
         OperationLog operationLog = operationLogMapper.selectByPrimaryKey(id);
+        if (operationLog == null) {
+            throw new GenericException(Translator.get("log.not_found"));
+        }
+
+        // 构建基础响应对象
         OperationLogDetailResponse logResponse = BeanUtils.copyBean(new OperationLogDetailResponse(), operationLog);
         logResponse.setOperator(operationLog.getCreateUser());
         logResponse.setOperatorName(baseService.getUserName(logResponse.getOperator()));
@@ -108,39 +114,56 @@ public class SysOperationLogService {
             return logResponse;
         }
 
-        String oldString = new String(
-                Optional.ofNullable(operationLogBlob.getOriginalValue()).orElse(new byte[0]),
-                StandardCharsets.UTF_8
-        );
-        String newString = new String(
-                Optional.ofNullable(operationLogBlob.getModifiedValue()).orElse(new byte[0]),
-                StandardCharsets.UTF_8
-        );
+        // 解析旧值和新值
+        String oldString = Optional.ofNullable(operationLogBlob.getOriginalValue())
+                .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+                .orElse("");
+        String newString = Optional.ofNullable(operationLogBlob.getModifiedValue())
+                .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+                .orElse("");
 
         try {
             List<JsonDifferenceDTO> differences = new ArrayList<>();
             JsonDifferenceUtils.compareJson(oldString, newString, differences);
-            // 过滤掉组织ID等字段
+
+            // 过滤掉不需要的字段
             differences = filterIgnoreFields(differences);
 
             if (CollectionUtils.isNotEmpty(differences)) {
-                OperationLog log = operationLogMapper.selectByPrimaryKey(id);
-                BaseModuleLogService moduleLogService = ModuleLogServiceFactory.getModuleLogService(log.getModule());
+                // 获取模块对应处理服务
+                BaseModuleLogService moduleLogService = ModuleLogServiceFactory.getModuleLogService(operationLog.getModule());
+
                 if (moduleLogService != null) {
                     differences = moduleLogService.handleLogField(differences, orgId);
                 } else {
-                    differences.forEach(BaseModuleLogService::translatorDifferInfo);
+                    handleDefaultDifferences(operationLog, differences);
                 }
-
             }
+
             logResponse.setDiffs(differences);
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            log.error("解析日志差异异常: {}", e.getMessage(), e);
             throw new GenericException(Translator.get("data_parsing_exception"));
         }
 
         return logResponse;
     }
+
+    // 默认差异处理逻辑
+    private void handleDefaultDifferences(OperationLog operationLog, List<JsonDifferenceDTO> differences) {
+        // 特殊处理合同业务更新字段
+        if (Strings.CI.equals(operationLog.getModule(), LogModule.CONTRACT_BUSINESS_TITLE)
+                && Strings.CI.equals(operationLog.getType(), LogType.UPDATE)) {
+            differences.forEach(diff -> {
+                if (Strings.CI.equals(diff.getColumn(), "name")) {
+                    diff.setColumn("companyName");
+                }
+            });
+        }
+        // 通用翻译
+        differences.forEach(BaseModuleLogService::translatorDifferInfo);
+    }
+
 
     /**
      * 过滤掉日志对比无需显示的字段
@@ -151,11 +174,11 @@ public class SysOperationLogService {
      * @return
      */
     private List<JsonDifferenceDTO> filterIgnoreFields(List<JsonDifferenceDTO> differences) {
-        differences = differences.stream()
-                .filter(differ -> {
-                    return !Strings.CS.equalsAny(differ.getColumn(),
-                            "organizationId", "createUser", "updateUser", "createTime", "updateTime", "departmentName", "supervisorName", "lastStage", "pos");
-                }).toList();
+        differences = differences
+                .stream()
+                .filter(differ -> !Strings.CS.equalsAny(differ.getColumn(),
+                        "organizationId", "createUser", "updateUser", "createTime", "updateTime", "departmentName", "supervisorName", "lastStage", "pos"))
+                .toList();
         return differences;
     }
 }

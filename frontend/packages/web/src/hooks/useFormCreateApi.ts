@@ -246,6 +246,10 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         title: t('opportunity.quotation.amount'),
         key: 'amount',
       },
+      {
+        title: t('contract.alreadyPayAmount'),
+        key: 'alreadyPayAmount',
+      },
     ],
     [FormDesignKeyEnum.CONTRACT_PAYMENT]: [
       {
@@ -279,9 +283,13 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     },
   ];
   // 用于快照保存表单配置
-  const needModuleFormConfigParamsType = [FormDesignKeyEnum.OPPORTUNITY_QUOTATION, FormDesignKeyEnum.CONTRACT];
+  const needModuleFormConfigParamsType = [
+    FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+    FormDesignKeyEnum.CONTRACT,
+    FormDesignKeyEnum.INVOICE,
+  ];
 
-  function initFormShowControl() {
+  function initFormShowControl(value?: any) {
     // 读取整个显隐控制映射
     Object.keys(fieldShowControlMap.value).forEach((fieldId) => {
       // 取出当前字段的所有规则
@@ -294,7 +302,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           const controlField = fieldList.value.find((f) => f.id === ruleId);
           if (controlField) {
             // 处理显示规则
-            if (fieldShowControlMap.value[fieldId][ruleId].includes(formDetail.value[controlField?.id])) {
+            if (fieldShowControlMap.value[fieldId][ruleId].includes(formDetail.value[controlField.id])) {
               field.show = true;
               break; // 满足显示规则就停止，因为只需要满足一个规则字段即显示
             } else {
@@ -366,9 +374,13 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     } else if (
       item.type === FieldTypeEnum.DATA_SOURCE &&
       item.dataSourceType === FieldDataSourceTypeEnum.CUSTOMER &&
-      [FormDesignKeyEnum.CLUE, FormDesignKeyEnum.BUSINESS, FormDesignKeyEnum.CONTRACT_SNAPSHOT].includes(
-        props.formKey.value
-      )
+      [
+        FormDesignKeyEnum.CLUE,
+        FormDesignKeyEnum.BUSINESS,
+        FormDesignKeyEnum.CONTRACT_SNAPSHOT,
+        FormDesignKeyEnum.INVOICE_SNAPSHOT,
+      ].includes(props.formKey.value) &&
+      !item.resourceFieldId
     ) {
       // 客户字段
       descriptions.value.push({
@@ -380,8 +392,26 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       });
     } else if (
       item.type === FieldTypeEnum.DATA_SOURCE &&
+      item.dataSourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE &&
+      !item.resourceFieldId
+    ) {
+      // 工商抬头字段
+      descriptions.value.push({
+        label: item.name,
+        value: parseFormDetailValue(item, form),
+        slotName: FieldDataSourceTypeEnum.BUSINESS_TITLE,
+        fieldInfo: item,
+        tooltipPosition: 'top-end',
+      });
+    } else if (
+      item.type === FieldTypeEnum.DATA_SOURCE &&
       item.dataSourceType === FieldDataSourceTypeEnum.CONTRACT &&
-      [FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD].includes(props.formKey.value)
+      [
+        FormDesignKeyEnum.CONTRACT_PAYMENT,
+        FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
+        FormDesignKeyEnum.INVOICE_SNAPSHOT,
+      ].includes(props.formKey.value) &&
+      !item.resourceFieldId
     ) {
       descriptions.value.push({
         label: item.name,
@@ -490,11 +520,14 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       collaborationType.value = form.collaborationType;
       formDescriptionShowControlRulesSet(form);
       fieldList.value.forEach((item) => {
+        const value = item.businessKey
+          ? form[item.businessKey]
+          : form.moduleFields?.find((mf) => mf.fieldId === item.id)?.fieldValue;
         if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type) && item.subFields?.length) {
-          if (item.show === false || !item.readable) return;
+          if (item.show === false || !item.readable || !value || value?.length === 0) return;
           descriptions.value.push({
             label: item.name,
-            value: form[item.businessKey || item.id],
+            value,
             slotName: item.type,
             fieldInfo: item,
             optionMap: form.optionMap,
@@ -990,6 +1023,21 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         };
       }
     }
+    if (props.formKey.value === FormDesignKeyEnum.INVOICE && props.sourceId?.value) {
+      // 合同下创建发票，自动带入合同信息
+      if (field.businessKey === 'contractId') {
+        specialInitialOptions.value = [
+          {
+            id: props.sourceId?.value,
+            name: sourceName.value || props.initialSourceName?.value,
+          },
+        ];
+        return {
+          defaultValue: initFieldValue(field, props.sourceId?.value || ''),
+          initialOptions: specialInitialOptions.value,
+        };
+      }
+    }
     if ([FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(field.type)) {
       // 数据源类型的字段，默认值需要转为数组
       return {
@@ -1119,7 +1167,12 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           staticRule.message = t(staticRule.message as string, { value: t(item.name) });
           staticRule.type = getRuleType(item);
           if (
-            [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE, FieldTypeEnum.PICTURE].includes(item.type)
+            [
+              FieldTypeEnum.DATA_SOURCE,
+              FieldTypeEnum.DATA_SOURCE_MULTIPLE,
+              FieldTypeEnum.PICTURE,
+              FieldTypeEnum.ATTACHMENT,
+            ].includes(item.type)
           ) {
             staticRule.trigger = 'none';
           }

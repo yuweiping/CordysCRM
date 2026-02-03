@@ -17,7 +17,7 @@ import cn.cordys.crm.contract.domain.Contract;
 import cn.cordys.crm.contract.dto.request.*;
 import cn.cordys.crm.contract.dto.response.*;
 import cn.cordys.crm.contract.service.*;
-import cn.cordys.crm.customer.dto.request.CustomerContractInvoicePageRequest;
+import cn.cordys.crm.customer.dto.request.ContractDetailInvoicePageRequest;
 import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.crm.system.dto.response.BatchAffectSkipResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
@@ -40,8 +40,6 @@ import java.util.List;
 @RequestMapping("/contract")
 public class ContractController {
     @Resource
-    private ModuleFormCacheService moduleFormCacheService;
-    @Resource
     private ContractService contractService;
     @Resource
     private ContractExportService contractExportService;
@@ -53,6 +51,8 @@ public class ContractController {
 	private ContractPaymentRecordService contractPaymentRecordService;
     @Resource
     private ContractInvoiceService contractInvoiceService;
+    @Resource
+    private ModuleFormCacheService moduleFormCacheService;
 
 
     @GetMapping("/module/form")
@@ -92,14 +92,19 @@ public class ContractController {
         contractService.delete(id);
     }
 
+    @GetMapping("/get/snapshot/{id}")
+    @RequiresPermissions(PermissionConstants.CONTRACT_READ)
+    @Operation(summary = "获取详情快照")
+    public ContractGetResponse getSnapshot(@PathVariable("id") String id) {
+        return contractService.getSnapshotWithDataPermissionCheck(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
+    }
 
     @GetMapping("/get/{id}")
     @RequiresPermissions(PermissionConstants.CONTRACT_READ)
     @Operation(summary = "详情")
-    public ContractResponse get(@PathVariable("id") String id) {
-        return contractService.get(id);
+    public ContractGetResponse get(@PathVariable("id") String id) {
+        return contractService.getWithDataPermissionCheck(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
-
 
     @GetMapping("/module/form/snapshot/{id}")
     @RequiresPermissions(PermissionConstants.CONTRACT_READ)
@@ -217,7 +222,7 @@ public class ContractController {
     @PostMapping("/invoice/page")
     @RequiresPermissions({PermissionConstants.CONTRACT_READ, PermissionConstants.CONTRACT_INVOICE_READ})
     @Operation(summary = "合同详情-发票列表")
-    public PagerWithOption<List<ContractInvoiceListResponse>> invoiceList(@Validated @RequestBody CustomerContractInvoicePageRequest request) {
+    public PagerWithOption<List<ContractInvoiceListResponse>> invoiceList(@Validated @RequestBody ContractDetailInvoicePageRequest request) {
         ConditionFilterUtils.parseCondition(request);
         request.setViewId(InternalUserView.ALL.name());
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
@@ -229,10 +234,8 @@ public class ContractController {
     @RequiresPermissions({PermissionConstants.CONTRACT_READ, PermissionConstants.CONTRACT_INVOICE_READ})
     @Operation(summary = "合同详情-发票列表统计")
     public CustomerInvoiceStatisticResponse calculateCustomerInvoiceStatistic(@PathVariable String contractId) {
-        DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
-                OrganizationContext.getOrganizationId(), PermissionConstants.CONTRACT_INVOICE_READ);
         BigDecimal invoiceAmount = contractInvoiceService.calculateContractInvoiceAmount(contractId, SessionUtils.getUserId(),
-                OrganizationContext.getOrganizationId(), deptDataPermission);
+                OrganizationContext.getOrganizationId());
 
         CustomerInvoiceStatisticResponse response = new CustomerInvoiceStatisticResponse();
         Contract contract = contractService.selectByPrimaryKey(contractId);

@@ -16,6 +16,7 @@
         ci.create_user,
         ci.create_time,
         ci.update_user,
+        ci.approval_status,
         ci.update_time
         FROM
         contract_invoice ci
@@ -93,6 +94,7 @@
         ci.tax_rate,
         ci.`owner`,
         ci.business_title_id,
+        ci.approval_status,
         ci.create_user,
         ci.create_time,
         ci.update_user,
@@ -253,6 +255,12 @@
                     <property name="column" value="ci.create_user"/>
                 </include>
             </when>
+            <when test="condition.name == 'approvalStatus'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="ci.approval_status"/>
+                </include>
+            </when>
             <otherwise>
                 <include refid="cn.cordys.common.mapper.CommonMapper.moduleFieldCondition">
                     <property name="condition" value="condition"/>
@@ -319,7 +327,7 @@
                         ci.`amount` ${sortType},  ci.id ASC
                     </when>
                     <when test="${sort}.name == 'invoice_type'">
-                        ci.`stage` ${sortType},  ci.id ASC
+                        ci.`invoice_type` ${sortType},  ci.id ASC
                     </when>
                     <when test="${sort}.name == 'create_time'">
                         ci.`create_time` ${sortType},  ci.id ASC
@@ -337,10 +345,13 @@
                         souc_sort.`id` ${sortType},  ci.id ASC
                     </when>
                     <when test="${sort}.name == 'tax_rate'">
-                        ci.`id` ${sortType},  ci.id ASC
+                        ci.`tax_rate` ${sortType},  ci.id ASC
                     </when>
                     <when test="${sort}.name == 'business_title_id'">
                         ci.`business_title_id` ${sortType},  ci.id ASC
+                    </when>
+                    <when test="${sort}.name == 'approval_status'">
+                        ci.`approval_status` ${sortType},  ci.id ASC
                     </when>
 
                     <otherwise>
@@ -391,7 +402,7 @@
 
     <select id="calculateCustomerInvoiceAmount" resultType="java.math.BigDecimal">
         select
-            IFNULL(SUM(c.amount), 0) as totalAmount
+            IFNULL(SUM(ci.amount), 0) as totalAmount
         from
             contract_invoice ci
         left join contract c on ci.contract_id = c.id
@@ -410,6 +421,30 @@
             contract_id = #{contractId}
             and organization_id = #{orgId}
             and approval_status = 'APPROVED'
+    </select>
+
+    <select id="calculateContractInvoiceValidAmount" resultType="java.math.BigDecimal">
+        select
+            IFNULL(SUM(amount), 0) as totalAmount
+        from
+            contract_invoice
+        where
+            contract_id = #{contractId}
+        and organization_id = #{orgId}
+        and (approval_status = 'APPROVED' or approval_status = 'APPROVING')
+        <if test="excludeId != null and excludeId != ''">
+            and id != #{excludeId}
+        </if>
+    </select>
+
+    <select id="hasContractInvoice" resultType="java.lang.Boolean">
+        select
+            CASE WHEN COUNT(1) > 0 THEN TRUE ELSE FALSE END
+        from
+            contract_invoice
+        where
+            contract_id = #{contractId}
+        limit 1;
     </select>
 
     <update id="updateStatus">

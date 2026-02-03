@@ -45,10 +45,12 @@
   import { transformData } from '@lib/shared/method/formCreate';
 
   import { FilterResult } from '@/components/pure/crm-advance-filter/type';
+  import CrmNameTooltip from '@/components/pure/crm-name-tooltip/index.vue';
   import CrmSearchInput from '@/components/pure/crm-search-input/index.vue';
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import useTable from '@/components/pure/crm-table/useTable';
+  import CrmBusinessNamePrefix from '@/components/business/crm-business-name-prefix/index.vue';
 
   import useFormCreateApi from '@/hooks/useFormCreateApi';
 
@@ -72,6 +74,7 @@
   );
 
   const emit = defineEmits<{
+    (e: 'initForm', fields: FormCreateField[]): void;
     (e: 'toggleFullScreen', value: boolean): void;
   }>();
 
@@ -103,6 +106,18 @@
       },
       resizable: false,
       fixed: 'left',
+      ...(props.sourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE
+        ? {
+            render: (row: RowData) =>
+              h(
+                CrmNameTooltip,
+                { text: row.name },
+                {
+                  prefix: () => h(CrmBusinessNamePrefix, { type: row.type }),
+                }
+              ),
+          }
+        : {}),
     },
   ]);
 
@@ -148,6 +163,9 @@
           ...columns.value.map((col) => {
             if (col.type === 'selection') {
               col.multiple = true;
+              col.disabled = (row: RowData) => {
+                return (!row[val] || row[val]?.length === 0) && !row.parentId;
+              };
               return col;
             }
             if (col.key === 'name') {
@@ -179,7 +197,10 @@
                           {
                             default: () =>
                               row[field.businessKey || field.id]?.length
-                                ? (row[field.businessKey || field.id] || []).map((_key: string) =>
+                                ? (Array.isArray(row[field.businessKey || field.id])
+                                    ? row[field.businessKey || field.id]
+                                    : []
+                                  ).map((_key: string) =>
                                     h(NImage, {
                                       class: 'h-[40px] w-[40px] mr-[4px]',
                                       src: `${PreviewPictureUrl}/${_key}`,
@@ -264,6 +285,7 @@
 
   onBeforeMount(async () => {
     await initFormConfig();
+    emit('initForm', fieldList.value);
     searchData();
   });
 

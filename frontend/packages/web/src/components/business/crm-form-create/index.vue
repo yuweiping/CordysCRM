@@ -25,7 +25,7 @@
               :path="item.id"
               :need-init-detail="needInitDetail"
               :form-config="formConfig"
-              @change="(value: any, source: Record<string, any>[]) => handleFieldChange(value, source, item)"
+              @change="(value: any, source: Record<string, any>[], dataSourceFormFields?: FormCreateField[]) => handleFieldChange(value, source, item, dataSourceFormFields)"
             />
           </div>
         </template>
@@ -215,10 +215,111 @@
     }
   }
 
-  function handleFieldChange(value: any, source: Record<string, any>[], item: FormCreateField) {
+  function applyDatasourceFieldLink(
+    value: any,
+    item: FormCreateField,
+    currentSource?: Record<string, any>,
+    dataSourceFormFields?: FormCreateField[]
+  ) {
+    item.linkFields?.forEach((linkField) => {
+      if (linkField.enable === false) {
+        return;
+      }
+      const targetField = fieldList.value.find((f) => f.id === linkField.current);
+      // 如果联动字段是当前字段本身，则直接赋值；若是当前字段内的其他字段，则赋值对应的值
+      if (targetField && (item.id === linkField.link || item.businessKey === linkField.link)) {
+        // 暂时只有这一种联动
+        if (linkField.method === 'fill') {
+          // 处理多选/单选数据源
+          if (targetField.dataSourceType !== item.dataSourceType) {
+            // 不同数据源类型不填充
+            return;
+          }
+          formDetail.value[targetField.id] = value;
+          if (!targetField.initialOptions) {
+            targetField.initialOptions = [
+              {
+                id: Array.isArray(value) ? value[0] : value,
+                name: currentSource?.name,
+              },
+            ];
+          } else {
+            targetField.initialOptions.push({
+              id: Array.isArray(value) ? value[0] : value,
+              name: currentSource?.name,
+            });
+          }
+        }
+      } else {
+        // 获取目标数据源表单的目标字段，用来读取业务 key 值
+        const currentDatasourceFormField = dataSourceFormFields?.find((f) => f.id === linkField.link);
+        if (targetField && currentDatasourceFormField) {
+          if (linkField.method === 'fill') {
+            // 暂时只有这一种联动
+            if (targetField.dataSourceType !== currentDatasourceFormField.dataSourceType) {
+              // 不同数据源类型不填充
+              return;
+            }
+            const currentSourceValue = currentDatasourceFormField.businessKey
+              ? currentSource?.[currentDatasourceFormField.businessKey]
+              : currentSource?.moduleFields?.find((e: any) => e.fieldId === currentDatasourceFormField.id)?.fieldValue;
+            if (currentSourceValue === undefined || currentSourceValue === null) {
+              return;
+            }
+            // 如果有业务 key，则取业务 key 的值（specialBusinessKeyMap读取特殊业务字段值），否则取字段值
+            const currentSourceName = currentDatasourceFormField.businessKey
+              ? currentSource?.[
+                  specialBusinessKeyMap[currentDatasourceFormField.businessKey] ||
+                    currentDatasourceFormField.businessKey
+                ]
+              : currentSource?.[linkField.link];
+            // 处理多选/单选数据源
+            formDetail.value[targetField.id] = Array.isArray(currentSourceValue)
+              ? currentSourceValue
+              : [currentSourceValue];
+            if (!targetField.initialOptions) {
+              targetField.initialOptions = Array.isArray(currentSourceValue)
+                ? currentSourceValue.map((e, i) => ({
+                    name: currentSourceName[i],
+                    id: e,
+                  }))
+                : [
+                    {
+                      name: Array.isArray(currentSourceName) ? currentSourceName[0] : currentSourceName,
+                      id: currentSourceValue,
+                    },
+                  ];
+            } else if (Array.isArray(currentSourceValue)) {
+              // 多选数据源
+              targetField.initialOptions.push(
+                ...currentSourceValue.map((e, i) => ({
+                  name: currentSourceName[i],
+                  id: e,
+                }))
+              );
+            } else {
+              targetField.initialOptions = [
+                {
+                  name: Array.isArray(currentSourceName) ? currentSourceName[0] : currentSourceName,
+                  id: currentSourceValue,
+                },
+              ];
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function handleFieldChange(
+    value: any,
+    source: Record<string, any>[],
+    item: FormCreateField,
+    dataSourceFormFields?: FormCreateField[]
+  ) {
     // 控制显示规则
     if (item.showControlRules?.length) {
-      initFormShowControl();
+      initFormShowControl(value);
       nextTick(() => {
         const labelNodes = Array.from(document.querySelectorAll('.n-form-item-label'));
         const noWidthLabelNodes = labelNodes.filter((e) => (e as HTMLElement).style.width === '');
@@ -234,8 +335,14 @@
     if (item.linkProp?.targetField && item.linkProp?.linkOptions.length) {
       applyFieldLink(item);
     }
-    if (item.type === FieldTypeEnum.ATTACHMENT) {
-      formRef.value?.validate();
+    // 单选数据源字段联动
+    if (item.linkFields?.length && value && value.length) {
+      applyDatasourceFieldLink(
+        value,
+        item,
+        source.find((s) => s.id === value[0]), // 当前选中的数据源对象，因为本身字段只能是单选数据源
+        dataSourceFormFields
+      );
     }
     if (item.type === FieldTypeEnum.DATA_SOURCE && item.showFields?.length) {
       // 数据源显示字段联动

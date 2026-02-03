@@ -12,7 +12,10 @@ import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
 import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.uid.SerialNumGenerator;
-import cn.cordys.common.util.*;
+import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.CommonBeanFactory;
+import cn.cordys.common.util.JSON;
+import cn.cordys.common.util.Translator;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.domain.ModuleField;
@@ -26,6 +29,7 @@ import cn.cordys.crm.system.service.AttachmentService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
 import cn.cordys.mybatis.BaseMapper;
+import cn.cordys.mybatis.EntityTableMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -271,14 +275,14 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         for (Map<String, Object> subValue : subValues) {
             String bizId = IDGenerator.nextStr();
             for (Map.Entry<String, Object> kv : subValue.entrySet()) {
-				if (Strings.CS.equals(kv.getKey(), PRICE_SUB_ROW_KEY) && kv.getValue() != null) {
-					T t = supplyNewResource(this::newResourceField, resourceId, kv.getKey(), kv.getValue().toString());
-					setResourceFieldValue(t, "rowId", String.valueOf(rowId));
-					setResourceFieldValue(t, "refSubId", subField.getId());
-					setResourceFieldValue(t, "bizId", bizId);
-					fields.add(t);
-					continue;
-				}
+                if (Strings.CS.equals(kv.getKey(), PRICE_SUB_ROW_KEY) && kv.getValue() != null) {
+                    T t = supplyNewResource(this::newResourceField, resourceId, kv.getKey(), kv.getValue().toString());
+                    setResourceFieldValue(t, "rowId", String.valueOf(rowId));
+                    setResourceFieldValue(t, "refSubId", subField.getId());
+                    setResourceFieldValue(t, "bizId", bizId);
+                    fields.add(t);
+                    continue;
+                }
                 BaseField field = subFieldMap.get(kv.getKey());
                 if (field == null) {
                     continue;
@@ -404,7 +408,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
     @SuppressWarnings({"unchecked", "rawtypes"})
     public Map<String, List<BaseModuleFieldValue>> getResourceFieldMap(List<String> resourceIds, boolean withBlob) {
         if (CollectionUtils.isEmpty(resourceIds)) {
-            return Map.of();
+            return new HashMap<>();
         }
         SourceDetailResolveContext.start();
         try {
@@ -479,7 +483,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
             return resourceMap;
         } catch (Exception e) {
             log.error(e.getMessage(), e);
-            return Map.of();
+            return new HashMap<>();
         } finally {
             SourceDetailResolveContext.end();
         }
@@ -514,7 +518,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                     FieldSourceType sourceType = FieldSourceType.valueOf(sourceField.getDataSourceType());
                     try {
                         Object sourceObj = fieldSourceServiceProvider.safeGetById(sourceType, val.toString());
-                        if (detail != null) {
+                        if (sourceObj != null) {
                             SourceDetailResolveContext.put(val.toString(), JSON.MAPPER.convertValue(sourceObj, Map.class));
                         }
                     } catch (Exception e) {
@@ -533,7 +537,10 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                     }
                     String resourceId = detailMap.get(SOURCE_DETAIL_ID).toString();
                     resourceFieldMap.putIfAbsent(resourceId, new ArrayList<>());
-                    resourceFieldMap.get(resourceId).add(new BaseModuleFieldValue(id, getFieldValueOfDetailMap(showFieldConfig, sourceDetail)));
+                    Object showFieldValue = getFieldValueOfDetailMap(showFieldConfig, sourceDetail);
+                    if (showFieldValue != null) {
+                        resourceFieldMap.get(resourceId).add(new BaseModuleFieldValue(id, showFieldValue));
+                    }
                 });
             });
         });
@@ -573,7 +580,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
      * @param targetId     显示的子字段
      * @param sourceDetail 来源详情
      * @param subKey       子表格业务Key
-     * @param rowKey 	   行Key
+     * @param rowKey       行Key
      *
      * @return 匹配值
      */
@@ -851,24 +858,25 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                     .filter(r -> refSubSet.contains(((BaseResourceSubField) r).getRefSubId()))
                     .collect(Collectors.groupingBy(BaseResourceField::getResourceId));
             subResourceMap.forEach((resourceId, subResources) -> {
-				subResources.sort(Comparator.comparing(resource -> Strings.CS.equals(resource.getFieldId(), PRICE_SUB_ROW_KEY) ? 0 : 1));
+                subResources.sort(Comparator.comparingInt(resource -> Integer.parseInt(((BaseResourceSubField) resource).getRowId()))
+						.thenComparing(resource -> Strings.CS.equals(((BaseResourceSubField) resource).getFieldId(), PRICE_SUB_ROW_KEY) ? 0 : 1));
                 Map<String, List<Map<String, Object>>> subFieldValueMap = new HashMap<>(8);
                 subResources.forEach(resource -> {
                     if (resource.getFieldValue() != null) {
-						BaseResourceSubField subResource = (BaseResourceSubField) resource;
-						subFieldValueMap.putIfAbsent(subResource.getRefSubId(), new ArrayList<>());
-						int rowIndex = Integer.parseInt(subResource.getRowId()) - 1;
-						if (subFieldValueMap.get(subResource.getRefSubId()).size() <= rowIndex) {
-							Map<String, Object> initRowMap = new HashMap<>(8) {{
-								put(ROW_BIZ_ID, subResource.getBizId());
-							}};
-							subFieldValueMap.get(subResource.getRefSubId()).add(initRowMap);
-						}
-						Map<String, Object> rowMap = subFieldValueMap.get(subResource.getRefSubId()).get(rowIndex);
-						if (Strings.CS.equals(resource.getFieldId(), PRICE_SUB_ROW_KEY)) {
-							rowMap.put(subResource.getFieldId(), resource.getFieldValue());
-							return;
-						}
+                        BaseResourceSubField subResource = (BaseResourceSubField) resource;
+                        subFieldValueMap.putIfAbsent(subResource.getRefSubId(), new ArrayList<>());
+                        int rowIndex = Integer.parseInt(subResource.getRowId()) - 1;
+                        if (subFieldValueMap.get(subResource.getRefSubId()).size() <= rowIndex) {
+                            Map<String, Object> initRowMap = new HashMap<>(8) {{
+                                put(ROW_BIZ_ID, subResource.getBizId());
+                            }};
+                            subFieldValueMap.get(subResource.getRefSubId()).add(initRowMap);
+                        }
+                        Map<String, Object> rowMap = subFieldValueMap.get(subResource.getRefSubId()).get(rowIndex);
+                        if (Strings.CS.equals(resource.getFieldId(), PRICE_SUB_ROW_KEY)) {
+                            rowMap.put(subResource.getFieldId(), resource.getFieldValue());
+                            return;
+                        }
                         BaseField fieldConfig = subFieldConfigMap.get(resource.getFieldId());
                         if (fieldConfig == null) {
                             return;
@@ -892,7 +900,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                                 }
                                 if (StringUtils.isNotEmpty(showFieldConfig.getSubTableFieldId()) && rowMap.containsKey(PRICE_SUB_ROW_KEY)) {
                                     Object matchVal = matchSubFieldValueOfDetailMap(showFieldConfig.idOrBusinessKey(), detailMap, BusinessModuleField.PRICE_PRODUCT_TABLE.getBusinessKey(),
-											rowMap.get(PRICE_SUB_ROW_KEY).toString());
+                                            rowMap.get(PRICE_SUB_ROW_KEY).toString());
                                     if (matchVal != null) {
                                         rowMap.put(showFieldConfig.getId(), matchVal);
                                     }
@@ -925,26 +933,38 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
      */
     @SuppressWarnings("unchecked")
     private void getSourceDetailMapByIds(List<BaseField> flattenFields, List<T> resourceFields) {
-        Map<String, String> sourceIdType = flattenFields.stream().filter(sf -> sf instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()))
-                .collect(Collectors.toMap(BaseField::idOrBusinessKey, f -> ((DatasourceField) f).getDataSourceType(), (prev, next) -> next));
-        resourceFields.stream().filter(rf -> sourceIdType.containsKey(rf.getFieldId()) && rf.getFieldValue() != null).forEach(rf -> {
-            if (SourceDetailResolveContext.contains(rf.getFieldValue().toString())) {
-                return;
-            }
-            SourceDetailResolveContext.putPlaceholder(rf.getFieldValue().toString());
-            try {
-                FieldSourceType sourceType = FieldSourceType.valueOf(sourceIdType.get(rf.getFieldId()));
-                Object detail = fieldSourceServiceProvider.safeGetById(sourceType, rf.getFieldValue().toString());
-                if (detail == null) {
-                    SourceDetailResolveContext.remove(rf.getFieldValue().toString());
-                } else {
-                    SourceDetailResolveContext.put(rf.getFieldValue().toString(), JSON.MAPPER.convertValue(detail, Map.class));
-                }
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-                SourceDetailResolveContext.remove(rf.getFieldValue().toString());
-            }
-        });
+
+        var sourceIdType = flattenFields.stream()
+                .filter(f -> f instanceof DatasourceField ds && CollectionUtils.isNotEmpty(ds.getShowFields()))
+                .collect(Collectors.toMap(
+                        BaseField::idOrBusinessKey,
+                        f -> ((DatasourceField) f).getDataSourceType(),
+                        (prev, next) -> next
+                ));
+
+        resourceFields.stream()
+                .filter(rf -> sourceIdType.containsKey(rf.getFieldId()) && rf.getFieldValue() != null)
+                .forEach(rf -> {
+                    var value = rf.getFieldValue().toString();
+                    if (SourceDetailResolveContext.contains(value)) {
+                        return;
+                    }
+
+                    SourceDetailResolveContext.putPlaceholder(value);
+                    try {
+                        var sourceType = FieldSourceType.valueOf(sourceIdType.get(rf.getFieldId()));
+                        var detail = fieldSourceServiceProvider.safeGetById(sourceType, value);
+
+                        if (detail == null) {
+                            SourceDetailResolveContext.remove(value);
+                        } else {
+                            SourceDetailResolveContext.put(value, JSON.MAPPER.convertValue(detail, Map.class));
+                        }
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                        SourceDetailResolveContext.remove(value);
+                    }
+                });
     }
 
     /**
@@ -1174,7 +1194,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
             return;
         }
         Class<?> clazz = resource.getClass();
-        String tableName = CaseFormatUtils.camelToUnderscore(clazz.getSimpleName());
+        String tableName = EntityTableMapper.generateTableName(clazz);
         Object fieldValue = getResourceFieldValue(resource, fieldName);
         if (isNotBlank(fieldValue)) {
             boolean repeat;

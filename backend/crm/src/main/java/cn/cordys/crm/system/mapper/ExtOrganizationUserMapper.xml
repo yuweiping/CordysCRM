@@ -203,6 +203,9 @@
             <if test="request.workCity != null">
                 work_city = #{request.workCity},
             </if>
+            <if test="request.onboardingDate != null">
+                onboarding_date = #{request.onboardingDate},
+            </if>
             update_time = UNIX_TIMESTAMP() * 1000,
             update_user = #{operatorId}
         </set>
@@ -324,7 +327,7 @@
     </select>
 
     <select id="selectByIds" resultType="cn.cordys.crm.system.dto.response.UserResponse">
-        select su.name as userName, sou.user_id, sou.department_id, sou.supervisor_id, sou.work_city
+        select su.name as userName, sou.user_id, sou.department_id, sou.supervisor_id, sou.work_city, sou.onboarding_date
         from sys_organization_user sou
         inner join sys_user su on sou.user_id = su.id
         where sou.id in

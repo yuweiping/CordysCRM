@@ -75,7 +75,7 @@
     :initial-source-name="initialSourceName"
     :link-form-key="FormDesignKeyEnum.CONTRACT"
     :link-form-info="linkFormInfo"
-    @saved="() => searchData()"
+    @saved="() => handleSaved()"
   />
   <CrmTableExportModal
     v-model:show="showExportModal"
@@ -147,6 +147,7 @@
   const emit = defineEmits<{
     (e: 'openContractDrawer', params: { id: string }): void;
     (e: 'openPaymentPlanDrawer', params: { id: string }): void;
+    (e: 'refresh'): void;
   }>();
 
   const activeTab = ref();
@@ -277,6 +278,7 @@
           await deletePaymentRecord(row.id);
           Message.success(t('common.deleteSuccess'));
           tableRefreshId.value += 1;
+          emit('refresh');
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -371,7 +373,7 @@
             );
       },
       paymentPlanId: (row: PaymentRecordItem) => {
-        return !hasAnyPermission(['CONTRACT_PAYMENT_PLAN:READ'])
+        return props.isContractTab || !hasAnyPermission(['CONTRACT_PAYMENT_PLAN:READ'])
           ? h(
               CrmNameTooltip,
               { text: row.paymentPlanName },
@@ -426,6 +428,11 @@
     crmTableRef.value?.scrollTo({ top: 0 });
   }
 
+  function handleSaved() {
+    searchData();
+    emit('refresh');
+  }
+
   watch(
     () => tableRefreshId.value,
     () => {
@@ -438,8 +445,8 @@
     if (props.isContractTab) {
       searchData();
     }
-    if (route.query.id) {
-      activeSourceId.value = route.query.id as string;
+    if (route.query.recordId) {
+      activeSourceId.value = route.query.recordId as string;
       showDetailDrawer.value = true;
     }
   });

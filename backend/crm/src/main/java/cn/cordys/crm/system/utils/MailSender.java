@@ -1,8 +1,6 @@
 package cn.cordys.crm.system.utils;
 
-import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.util.JSON;
-import cn.cordys.common.util.Translator;
 import cn.cordys.crm.system.constants.OrganizationConfigConstants;
 import cn.cordys.crm.system.domain.OrganizationConfig;
 import cn.cordys.crm.system.domain.OrganizationConfigDetail;
@@ -47,13 +45,13 @@ public class MailSender {
         );
         if (config == null) {
             log.error("邮件配置不存在");
-            throw new GenericException(Translator.get("email.config.not.exist.text"));
+            return;
         }
 
         OrganizationConfigDetail detail = extOrganizationConfigDetailMapper.getOrganizationConfigDetail(config.getId());
         if (detail == null) {
             log.error("邮件配置内容为空");
-            throw new GenericException(Translator.get("email.config.is.null"));
+            return;
         }
 
         EmailDTO emailDTO = JSON.parseObject(
@@ -78,13 +76,18 @@ public class MailSender {
                 mailSender.send(message);
             } else {
                 for (String user : users) {
+                    log.info("正在发送邮件给: {}", user);
+                    //检查user 是否符合邮箱格式
+                    if (StringUtils.isBlank(user) || !user.contains("@")) {
+                        log.warn("用户 {} 不符合邮箱格式，或者用户为空，将跳过", user);
+                        continue;
+                    }
                     helper.setTo(user);
                     mailSender.send(message);
                 }
             }
         } catch (Exception e) {
             log.error("发送邮件失败", e);
-            throw new GenericException(Translator.get("email_setting_send_error"), e);
         }
     }
 

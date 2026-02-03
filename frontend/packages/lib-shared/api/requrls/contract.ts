@@ -4,6 +4,7 @@ export const ContractAddUrl = '/contract/add'; // 添加合同
 export const ContractUpdateUrl = '/contract/update'; // 更新合同
 export const ContractDeleteUrl = '/contract/delete'; // 删除合同
 export const GetContractDetailUrl = '/contract/get'; // 获取合同详情
+export const GetContractDetailSnapshotUrl = '/contract/get/snapshot'; // 获取合同详情快照
 export const GetContractFormConfigUrl = '/contract/module/form'; // 合同表单配置
 export const GetContractFormSnapshotConfigUrl = '/contract/module/form/snapshot'; // 合同表单配置
 export const GetContractTabUrl = '/contract/tab'; // 合同tab显隐
@@ -99,3 +100,36 @@ export const BusinessTitleDeleteUrl = '/contract/business-title/delete';
 export const BusinessTitleRevokeUrl = '/contract/business-title/revoke';
 export const GetBusinessTitleDetailUrl = '/contract/business-title/get';
 export const GetBusinessTitleInvoiceCheckUrl = '/contract/business-title/invoice/check';
+export const GetBusinessTitleThirdQueryUrl = '/contract/business-title/third-query';
+export const GetBusinessTitleThirdQueryOptionUrl = '/contract/business-title/third-query/option';
+
+// 工商抬头表单校验
+export const BusinessTitleConfigUrl = '/business-title/config/get'; // 获取表单配置校验
+export const BusinessTitleFormConfigSwitchUrl = '/business-title/config/switch'; // 表单配置切换
+export const BusinessTitleModuleFormUrl = '/contract/business-title/module/form'; // 表单字段
+// 发票
+export const ContractInvoicedUpdateUrl = '/invoice/update'; // 发票更新
+export const ContractInvoicedPageUrl = '/invoice/page'; // 发票列表
+export const ContractInvoicedInContractPageUrl = '/contract/invoice/page'; // 合同下的发票列表
+export const ContractInvoicedExportSelectedUrl = '/invoice/export-select'; // 发票导出选中
+export const ContractInvoicedExportAllUrl = '/invoice/export-all'; // 发票导出全量
+export const ContractInvoicedBatchDeleteUrl = '/invoice/batch/delete'; // 发票批量删除
+export const ContractInvoicedApprovalUrl = '/invoice/approval'; // 发票审批
+export const ContractInvoicedAddUrl = '/invoice/add'; // 发票添加
+export const ContractInvoicedFormConfigUrl = '/invoice/module/form'; // 发票表单配置
+export const ContractInvoicedFormConfigSnapshotUrl = '/invoice/module/form/snapshot'; // 发票表单配置快照
+export const ContractInvoicedDetailUrl = '/invoice/get'; // 发票详情
+export const ContractInvoicedDetailSnapshotUrl = '/invoice/get/snapshot'; // 发票详情快照
+export const ContractInvoicedDeleteUrl = '/invoice/delete'; // 发票删除
+export const ContractInvoicedRevokeUrl = '/invoice/revoke'; // 发票撤回
+export const ContractInvoicedTabUrl = '/invoice/tab'; // 发票tab显隐
+
+// 发票视图
+export const UpdateContractInvoicedViewUrl = '/invoice/view/update'; // 更新发票视图
+export const DragContractInvoicedViewUrl = '/invoice/view/edit/pos'; // 拖拽发票视图排序
+export const AddContractInvoicedViewUrl = '/invoice/view/add'; // 添加发票视图
+export const ListContractInvoicedViewUrl = '/invoice/view/list'; // 发票视图列表
+export const FixedContractInvoicedViewUrl = '/invoice/view/fixed'; // 固定发票视图
+export const EnableContractInvoicedViewUrl = '/invoice/view/enable'; // 启用/禁用发票视图
+export const GetContractInvoicedViewDetailUrl = '/invoice/view/detail'; // 发票视图详情
+export const DeleteContractInvoicedViewUrl = '/invoice/view/delete'; // 发票视图删除

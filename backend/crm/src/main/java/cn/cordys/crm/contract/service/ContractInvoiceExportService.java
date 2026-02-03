@@ -1,5 +1,6 @@
 package cn.cordys.crm.contract.service;
 
+import cn.cordys.common.constants.BusinessModuleField;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.dto.ExportDTO;
 import cn.cordys.common.dto.ExportHeadDTO;
@@ -9,11 +10,13 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.dto.request.ContractInvoicePageRequest;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceListResponse;
 import cn.cordys.crm.contract.mapper.ExtContractInvoiceMapper;
+import cn.cordys.crm.system.dto.field.SelectField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.registry.ExportThreadRegistry;
 import com.github.pagehelper.PageHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.Strings;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +46,7 @@ public class ContractInvoiceExportService extends BaseExportService {
         String orgId = exportDTO.getOrgId();
         PageHelper.startPage(pageRequest.getCurrent(), pageRequest.getPageSize());
         //获取数据
-        List<ContractInvoiceListResponse> allList = extContractInvoiceMapper.list(pageRequest, exportDTO.getUserId(), orgId, exportDTO.getDeptDataPermission());
+        List<ContractInvoiceListResponse> allList = extContractInvoiceMapper.list(pageRequest, orgId,  exportDTO.getUserId(), exportDTO.getDeptDataPermission());
         List<ContractInvoiceListResponse> dataList = contractInvoiceService.buildList(allList, orgId);
         Map<String, BaseField> fieldConfigMap = getFieldConfigMap(FormKey.INVOICE.getKey(), orgId);
 
@@ -61,17 +64,17 @@ public class ContractInvoiceExportService extends BaseExportService {
         return data;
     }
 
-    private List<Object> buildData(List<ExportHeadDTO> headList, ContractInvoiceListResponse data, Map<String, BaseField> fieldConfigMap) {
-        List<Object> dataList = new ArrayList<>();
+    private List<Object> buildData(List<ExportHeadDTO> headList, ContractInvoiceListResponse data,
+                                   Map<String, BaseField> fieldConfigMap) {
         //固定字段map
-        LinkedHashMap<String, Object> systemFiledMap = getSystemFieldMap(data);
+        LinkedHashMap<String, Object> systemFiledMap = getSystemFieldMap(data, fieldConfigMap);
         //自定义字段map
         Map<String, Object> moduleFieldMap = getFieldIdValueMap(data.getModuleFields());
         //处理数据转换
-        return transModuleFieldValue(headList, systemFiledMap, moduleFieldMap, dataList, fieldConfigMap);
+        return transModuleFieldValue(headList, systemFiledMap, moduleFieldMap, new ArrayList<>(), fieldConfigMap);
     }
 
-    public LinkedHashMap<String, Object> getSystemFieldMap(ContractInvoiceListResponse data) {
+    public LinkedHashMap<String, Object> getSystemFieldMap(ContractInvoiceListResponse data, Map<String, BaseField> fieldConfigMap) {
         LinkedHashMap<String, Object> systemFiledMap = new LinkedHashMap<>();
         systemFiledMap.put("contractId", data.getContractName());
         systemFiledMap.put("owner", data.getOwnerName());
@@ -80,12 +83,20 @@ public class ContractInvoiceExportService extends BaseExportService {
         systemFiledMap.put("amount", data.getAmount());
         systemFiledMap.put("taxRate", data.getTaxRate());
         systemFiledMap.put("businessTitleId", data.getBusinessTitleId());
-        systemFiledMap.put("approvalStatus", Translator.get("contract.approval_status." + data.getApprovalStatus().toLowerCase()));
+        systemFiledMap.put("approvalStatus", data.getApprovalStatus() == null ? null : Translator.get("contract.approval_status." + data.getApprovalStatus().toLowerCase()));
+
+        for (BaseField field : fieldConfigMap.values()) {
+            if (Strings.CS.equals(BusinessModuleField.INVOICE_INVOICE_TYPE.getBusinessKey(), field.getBusinessKey())
+                && field instanceof SelectField invoiceTypeField) {
+                String invoiceTypeName = getOptionLabel(data.getInvoiceType(), invoiceTypeField.getOptions());
+                systemFiledMap.put("invoiceType", invoiceTypeName);
+            }
+        }
 
         systemFiledMap.put("createUser", data.getCreateUserName());
-        systemFiledMap.put("createTime", TimeUtils.getDataTimeStr(data.getCreateTime()));
+        systemFiledMap.put("createTime", TimeUtils.getDateTimeStr(data.getCreateTime()));
         systemFiledMap.put("updateUser", data.getUpdateUserName());
-        systemFiledMap.put("updateTime", TimeUtils.getDataTimeStr(data.getUpdateTime()));
+        systemFiledMap.put("updateTime", TimeUtils.getDateTimeStr(data.getUpdateTime()));
         return systemFiledMap;
     }
 

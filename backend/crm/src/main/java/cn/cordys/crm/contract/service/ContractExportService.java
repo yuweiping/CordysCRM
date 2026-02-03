@@ -54,8 +54,7 @@ public class ContractExportService extends BaseExportService {
         List<ContractListResponse> dataList = contractService.buildList(exportList, orgId);
         List<BaseModuleFieldValue> moduleFieldValues = moduleFormService.getBaseModuleFieldValues(dataList, ContractListResponse::getModuleFields);
         ExportFieldParam exportFieldParam = exportParam.getExportFieldParam();
-        Map<String, List<OptionDTO>> optionMap = moduleFormService.getOptionMap(exportFieldParam.getFormConfig(), moduleFieldValues);
-        // 构建导出数据
+		// 构建导出数据
         List<List<Object>> data = new ArrayList<>();
         List<int[]> mergeRegions = new ArrayList<>();
         int offset = 0;
@@ -85,6 +84,7 @@ public class ContractExportService extends BaseExportService {
         systemFiledMap.put("departmentId", data.getDepartmentName());
         systemFiledMap.put("customerId", data.getCustomerName());
         systemFiledMap.put("amount", data.getAmount());
+		systemFiledMap.put("alreadyPayAmount", data.getAlreadyPayAmount());
         systemFiledMap.put("number", data.getNumber());
         if (StringUtils.isNotBlank(data.getApprovalStatus())) {
             systemFiledMap.put("approvalStatus", Translator.get("contract.approval_status." + data.getApprovalStatus().toLowerCase()));
@@ -93,9 +93,9 @@ public class ContractExportService extends BaseExportService {
             systemFiledMap.put("stage", Translator.get("contract.stage." + data.getStage().toLowerCase()));
         }
         systemFiledMap.put("createUser", data.getCreateUserName());
-        systemFiledMap.put("createTime", TimeUtils.getDataTimeStr(data.getCreateTime()));
+        systemFiledMap.put("createTime", TimeUtils.getDateTimeStr(data.getCreateTime()));
         systemFiledMap.put("updateUser", data.getUpdateUserName());
-        systemFiledMap.put("updateTime", TimeUtils.getDataTimeStr(data.getUpdateTime()));
+        systemFiledMap.put("updateTime", TimeUtils.getDateTimeStr(data.getUpdateTime()));
         systemFiledMap.put("voidReason", data.getVoidReason());
         return systemFiledMap;
     }

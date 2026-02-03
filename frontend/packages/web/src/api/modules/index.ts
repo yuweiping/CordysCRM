@@ -375,6 +375,8 @@ export const {
   getAccountPaymentStatistic,
   getAccountPaymentRecord,
   getAccountPaymentRecordStatistic,
+  getCustomerInvoiceList,
+  getCustomerInvoiceStatistic,
 } = customerApi;
 
 export const {
@@ -452,6 +454,35 @@ export const {
   getBusinessTitleInvoiceCheck,
   exportBusinessTitleAll,
   exportBusinessTitleSelected,
+  getBusinessTitleThirdQuery,
+  getBusinessTitleThirdQueryOption,
+  getBusinessTitleConfig,
+  switchBusinessTitleFormConfig,
+  getBusinessTitleModuleForm,
+  addInvoiced,
+  updateInvoiced,
+  deleteInvoiced,
+  getInvoicedList,
+  getInvoicedDetail,
+  getInvoicedFormConfig,
+  getInvoicedFormSnapshotConfig,
+  exportInvoicedAll,
+  exportInvoicedSelected,
+  revokeInvoiced,
+  approvalInvoiced,
+  batchDeleteInvoiced,
+  addContractInvoicedView,
+  updateContractInvoicedView,
+  getContractInvoicedViewList,
+  getContractInvoicedViewDetail,
+  fixedContractInvoicedView,
+  enableContractInvoicedView,
+  deleteContractInvoicedView,
+  dragContractInvoicedView,
+  getInvoicedTab,
+  getInvoicedInContractList,
+  getContractDetailSnapshot,
+  getInvoicedDetailSnapshot,
 } = contractApi;
 
 export const {
@@ -539,6 +570,7 @@ export const {
   getFieldClueList,
   getFieldContractList,
   getFieldContractPaymentPlanList,
+  getFieldContractPaymentRecordList,
   deleteReasonItem,
   deleteAttachment,
   moduleNavListSort,
@@ -546,6 +578,8 @@ export const {
   deleteOpportunity,
   resetSearchConfig,
   setTopNavListSort,
+  setDisplayAdvanced,
+  getAdvancedSwitch,
   previewAttachment,
   addOpportunityRule,
   updateCustomerPool,
@@ -577,6 +611,7 @@ export const {
   getFieldPriceList,
   getFieldQuotationList,
   getFieldDisplayList,
+  getFieldBusinessTitleList,
 } = moduleApi;
 
 export const {
@@ -601,6 +636,7 @@ export const {
   updateOrgUserName,
   importUserPreCheck,
   getOrgDepartmentUser,
+  checkSync,
   batchToggleStatusUser,
   checkDeleteDepartment,
   batchResetUserPassword,

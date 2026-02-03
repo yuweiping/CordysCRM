@@ -1,7 +1,7 @@
 <template>
   <n-data-table
     :columns="realColumns"
-    :data="data"
+    :data="data || []"
     :paging="false"
     :pagination="false"
     :scroll-x="scrollXWidth"
@@ -23,7 +23,7 @@
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { formatTimeValue, getCityPath, getIndustryPath } from '@lib/shared/method';
-  import { formatNumberValue, normalizeNumber } from '@lib/shared/method/formCreate';
+  import { formatNumberValue, formatNumberValueToString, normalizeNumber } from '@lib/shared/method/formCreate';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -58,6 +58,7 @@
 
   const data = defineModel<Record<string, any>[]>('value', {
     required: true,
+    default: () => [],
   });
 
   function makeTitle(field: FormCreateField) {
@@ -127,7 +128,7 @@
     }
     switch (field.type) {
       case FieldTypeEnum.INPUT_NUMBER:
-        return formatNumberValue(value, field);
+        return formatNumberValueToString(value, field);
       case FieldTypeEnum.DATE_TIME:
         return formatTimeValue(value, field.dateType);
       case FieldTypeEnum.LOCATION:
@@ -232,7 +233,7 @@
         if (Array.isArray(fieldVal)) {
           row[sf.id] = fieldVal.join(',');
         } else if (sf.type === FieldTypeEnum.INPUT_NUMBER && typeof fieldVal === 'number') {
-          row[sf.id] = formatNumberValue(fieldVal, sf) ?? null;
+          row[sf.id] = formatNumberValueToString(fieldVal, sf) ?? null;
         } else {
           row[sf.id] = fieldVal;
         }
@@ -313,21 +314,27 @@
       } else {
         // 单选行只有一个父级
         row.price_sub = children[0]?.id;
-        row[key] = val.sort((a, b) => {
-          // 保证父项在前，子项在后
-          if (a === children[0].parentId) {
-            return -1;
-          }
-          if (b === children[0].parentId) {
-            return 1;
-          }
-          return 0;
-        });
+        row[key] = val
+          .filter((e) => children.some((p) => p.parentId === e))
+          .sort((a, b) => {
+            // 保证父项在前，子项在后
+            if (a === children[0].parentId) {
+              return -1;
+            }
+            if (b === children[0].parentId) {
+              return 1;
+            }
+            return 0;
+          });
         applyDataSourceShowFields(field, row[key], row, source, row.price_sub);
       }
     } else {
       row[key] = val.filter((e) => parents.some((p) => p.id === e)).length > 0 ? val : [];
       applyDataSourceShowFields(field, val, row, source, row.price_sub);
+      if (row[key].length === 0) {
+        // 清空时把行号也清理
+        row.price_sub = '';
+      }
     }
     sumInitialOptions.value = sumInitialOptions.value.concat(
       ...source.filter((s) => !sumInitialOptions.value.some((io) => io.id === s.id))
@@ -352,7 +359,7 @@
             title: field.showLabel ? field.name : '',
             width:
               maxPictureCountMap.value[field.id] > 0 && field.type === FieldTypeEnum.PICTURE
-                ? maxPictureCountMap.value[field.id] * 110
+                ? maxPictureCountMap.value[field.id] * 112
                 : 120,
             key,
             fieldId: key,
@@ -546,14 +553,14 @@
           let finalPictureColWidth = 0;
           if (maxPictureCountMap.value[field.id]) {
             if (field.uploadLimit && maxPictureCountMap.value[field.id] >= field.uploadLimit) {
-              finalPictureColWidth = field.uploadLimit * 110;
+              finalPictureColWidth = field.uploadLimit * 112;
             } else {
-              finalPictureColWidth = maxPictureCountMap.value[field.id] * 110 + 32;
+              finalPictureColWidth = maxPictureCountMap.value[field.id] * 112 + 32;
             }
           }
           return {
             title,
-            width: finalPictureColWidth || 150, // 每个卡片 100px + 8px间距 + 2px 冗余 + 上传按钮宽度 32px
+            width: finalPictureColWidth || 150, // 每个卡片 100px + 10px间距 + 2px 冗余 + 上传按钮宽度 32px
             key,
             fieldId: key,
             render: (row: any, rowIndex: number) =>
@@ -668,7 +675,7 @@
                   [FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(col.filedType as FieldTypeEnum) &&
                   col.fieldConfig
                 ) {
-                  return formatNumberValue(sum, col.fieldConfig);
+                  return formatNumberValueToString(sum, col.fieldConfig);
                 }
                 return sum;
               },
@@ -679,6 +686,18 @@
     });
     return summaryRes;
   };
+
+  watch(
+    () => data.value,
+    (val) => {
+      if (val === null || val === undefined) {
+        data.value = [];
+      }
+    },
+    {
+      immediate: true,
+    }
+  );
 </script>
 
 <style lang="less">
@@ -698,6 +717,8 @@
     }
     .n-data-table-td {
       padding: 8px 4px;
+      line-height: normal;
+      vertical-align: middle;
     }
     .n-form-item-blank--error + .n-form-item-feedback-wrapper {
       @apply block;

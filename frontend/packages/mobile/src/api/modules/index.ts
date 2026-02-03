@@ -291,6 +291,20 @@ export const {
   getBusinessTitleInvoiceCheck,
   exportBusinessTitleAll,
   exportBusinessTitleSelected,
+  getBusinessTitleThirdQuery,
+  getBusinessTitleThirdQueryOption,
+  getBusinessTitleConfig,
+  switchBusinessTitleFormConfig,
+  getInvoicedDetail,
+  getInvoicedFormConfig,
+  getInvoicedFormSnapshotConfig,
+  addInvoiced,
+  updateInvoiced,
+  getInvoicedList,
+  getBusinessTitleModuleForm,
+  getInvoicedInContractList,
+  getContractDetailSnapshot,
+  getInvoicedDetailSnapshot,
 } = contractApi;
 
 export const {
@@ -345,6 +359,8 @@ export const {
   getFieldPriceList,
   getFieldQuotationList,
   getFieldContractPaymentPlanList,
+  getFieldContractPaymentRecordList,
+  getFieldBusinessTitleList,
 } = moduleApi;
 
 export const {

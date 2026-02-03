@@ -19,7 +19,6 @@ import cn.cordys.crm.contract.service.ContractInvoiceExportService;
 import cn.cordys.crm.contract.service.ContractInvoiceService;
 import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
-import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.security.SessionUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,8 +37,6 @@ import java.util.List;
 @RequestMapping("/invoice")
 public class ContractInvoiceController {
     @Resource
-    private ModuleFormCacheService moduleFormCacheService;
-    @Resource
     private ContractInvoiceService contractInvoiceService;
     @Resource
     private ContractInvoiceExportService contractInvoiceExportService;
@@ -50,7 +47,7 @@ public class ContractInvoiceController {
     @RequiresPermissions(PermissionConstants.CONTRACT_INVOICE_READ)
     @Operation(summary = "获取表单配置")
     public ModuleFormConfigDTO getModuleFormConfig() {
-        return moduleFormCacheService.getBusinessFormConfig(FormKey.INVOICE.getKey(), OrganizationContext.getOrganizationId());
+        return contractInvoiceService.getBusinessFormConfig(OrganizationContext.getOrganizationId());
     }
 
     @PostMapping("/page")
@@ -61,6 +58,13 @@ public class ContractInvoiceController {
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
                 OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_INVOICE_READ);
         return contractInvoiceService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+    }
+
+    @GetMapping("/get/snapshot/{id}")
+    @RequiresPermissions(PermissionConstants.CONTRACT_INVOICE_READ)
+    @Operation(summary = "获取详情快照")
+    public ContractInvoiceGetResponse getSnapshot(@PathVariable("id") String id) {
+        return contractInvoiceService.getSnapshotWithDataPermissionCheck(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 
     @GetMapping("/get/{id}")
@@ -106,7 +110,7 @@ public class ContractInvoiceController {
     }
 
     @PostMapping("/export-select")
-    @Operation(summary = "导出选中合同")
+    @Operation(summary = "导出选中发票")
     @RequiresPermissions(PermissionConstants.CONTRACT_INVOICE_EXPORT)
     public String exportSelect(@Validated @RequestBody ExportSelectRequest request) {
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
@@ -122,9 +126,9 @@ public class ContractInvoiceController {
                 .deptDataPermission(deptDataPermission)
                 .selectIds(request.getIds())
                 .selectRequest(request)
-                .formKey(FormKey.CONTRACT.getKey())
+                .formKey(FormKey.INVOICE.getKey())
                 .build();
-        return contractInvoiceExportService.exportSelectWithMergeStrategy(exportDTO);
+        return contractInvoiceExportService.exportSelect(exportDTO);
     }
 
     @PostMapping("/export-all")
@@ -146,7 +150,7 @@ public class ContractInvoiceController {
                 .pageRequest(request)
                 .formKey(FormKey.INVOICE.getKey())
                 .build();
-        return contractInvoiceExportService.exportAllWithMergeStrategy(exportDTO);
+        return contractInvoiceExportService.export(exportDTO);
     }
 
     @PostMapping("/batch/delete")

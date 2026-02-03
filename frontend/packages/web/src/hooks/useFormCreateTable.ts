@@ -6,7 +6,7 @@ import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEn
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
 import { SpecialColumnEnum, TableKeyEnum } from '@lib/shared/enums/tableEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
-import { formatNumberValue, transformData } from '@lib/shared/method/formCreate';
+import { formatNumberValue, formatNumberValueToString, transformData } from '@lib/shared/method/formCreate';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
 
 import type { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -18,7 +18,11 @@ import {
 } from '@/components/business/crm-form-create/config';
 import type { FormCreateField } from '@/components/business/crm-form-create/types';
 
-import { contractPaymentPlanStatusOptions, contractStatusOptions } from '@/config/contract';
+import {
+  contractInvoiceStatusOptions,
+  contractPaymentPlanStatusOptions,
+  contractStatusOptions,
+} from '@/config/contract';
 import { quotationStatusOptions } from '@/config/opportunity';
 import useFormCreateAdvanceFilter from '@/hooks/useFormCreateAdvanceFilter';
 import useReasonConfig from '@/hooks/useReasonConfig';
@@ -48,7 +52,9 @@ export type FormKey =
   | FormDesignKeyEnum.CONTRACT_PAYMENT
   | FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT
   | FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD
-  | FormDesignKeyEnum.PRICE;
+  | FormDesignKeyEnum.PRICE
+  | FormDesignKeyEnum.INVOICE
+  | FormDesignKeyEnum.CONTRACT_INVOICE;
 
 export interface FormCreateTableProps {
   formKey: FormKey;
@@ -102,6 +108,8 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     [FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT]: TableKeyEnum.CONTRACT_PAYMENT,
     [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: TableKeyEnum.CONTRACT_PAYMENT_RECORD,
     [FormDesignKeyEnum.PRICE]: TableKeyEnum.PRICE,
+    [FormDesignKeyEnum.INVOICE]: TableKeyEnum.INVOICE,
+    [FormDesignKeyEnum.CONTRACT_INVOICE]: TableKeyEnum.CONTRACT_INVOICE,
   };
   const noPaginationKey = [FormDesignKeyEnum.CUSTOMER_CONTACT];
   // 存储地址类型字段集合
@@ -406,6 +414,30 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
       sorter: true,
       filter: true,
       render: props.specialRender?.status,
+    },
+  ];
+
+  const invoiceInternalColumns: CrmDataTableColumn[] = [
+    {
+      title: t('contract.businessTitle.status'),
+      width: 120,
+      key: 'approvalStatus',
+      filterOptions: contractInvoiceStatusOptions,
+      sortOrder: false,
+      sorter: true,
+      filter: true,
+      render: props.specialRender?.approvalStatus,
+    },
+    {
+      title: t('org.department'),
+      width: 120,
+      key: 'departmentId',
+      ellipsis: {
+        tooltip: true,
+      },
+      sortOrder: false,
+      sorter: 'default',
+      render: (row: any) => row.departmentName || '-',
     },
   ];
 
@@ -766,6 +798,13 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         sorter: true,
       },
       {
+        title: t('contract.alreadyPayAmount'),
+        width: 120,
+        key: 'alreadyPayAmount',
+        sortOrder: false,
+        sorter: true,
+      },
+      {
         title: t('contract.approvalStatus'),
         width: 120,
         key: 'approvalStatus',
@@ -792,6 +831,8 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
       },
     ],
     [FormDesignKeyEnum.PRICE]: [],
+    [FormDesignKeyEnum.INVOICE]: invoiceInternalColumns,
+    [FormDesignKeyEnum.CONTRACT_INVOICE]: invoiceInternalColumns,
   };
   const staticColumns: CrmDataTableColumn[] = [
     {
@@ -928,6 +969,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               filedType: FieldTypeEnum.PICTURE,
+              resourceFieldId: field.resourceFieldId,
               render: (row: any) =>
                 h(
                   'div',
@@ -990,6 +1032,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               sorter: !noSorterType.includes(field.type) && !field.resourceFieldId,
               filterMultipleValue: multipleValueTypeList.includes(field.type),
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
           if (
@@ -1008,6 +1051,20 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               columnSelectorDisabled: true,
               filedType: field.type,
               render: props.specialRender?.[field.businessKey],
+              resourceFieldId: field.resourceFieldId,
+            };
+          }
+          if (field.businessKey === 'businessTitleId' && !field.resourceFieldId) {
+            return {
+              title: field.name,
+              width: 200,
+              key,
+              fieldId: field.id,
+              sortOrder: false,
+              sorter,
+              filedType: field.type,
+              render: props.specialRender?.[field.businessKey],
+              resourceFieldId: field.resourceFieldId,
             };
           }
           if (
@@ -1017,6 +1074,8 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                 FormDesignKeyEnum.CONTRACT_PAYMENT,
                 FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT,
                 FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
+                FormDesignKeyEnum.INVOICE,
+                FormDesignKeyEnum.CONTRACT_INVOICE,
               ].includes(props.formKey) &&
                 field.businessKey === 'contractId') ||
               field.businessKey === 'paymentPlanId')
@@ -1030,6 +1089,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               sorter,
               filedType: field.type,
               render: props.specialRender?.[field.businessKey],
+              resourceFieldId: field.resourceFieldId,
             };
           }
 
@@ -1046,6 +1106,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                 tooltip: true,
               },
               render: (row: any) => row.opportunityName ?? '-',
+              resourceFieldId: field.resourceFieldId,
             };
           }
 
@@ -1065,6 +1126,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                 tooltip: true,
               },
               render: props.specialRender?.[field.businessKey],
+              resourceFieldId: field.resourceFieldId,
             };
           }
 
@@ -1080,7 +1142,25 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                 tooltip: true,
               },
               filedType: field.type,
-              render: props.specialRender?.[field.businessKey],
+              render: (row: any) => row.ownerName || '-',
+              resourceFieldId: field.resourceFieldId,
+            };
+          }
+
+          if (field.businessKey === 'contactId') {
+            return {
+              title: field.name,
+              width: 200,
+              key,
+              fieldId: field.id,
+              sortOrder: false,
+              sorter,
+              ellipsis: {
+                tooltip: true,
+              },
+              filedType: field.type,
+              render: (row: any) => row.contactName || '-',
+              resourceFieldId: field.resourceFieldId,
             };
           }
 
@@ -1099,6 +1179,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               filterOptions: [],
               remoteFilterApiKey: field.businessKey,
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
 
@@ -1117,6 +1198,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               fieldId: field.id,
               isTag: true,
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
           if (field.type === FieldTypeEnum.DATE_TIME) {
@@ -1132,6 +1214,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               sortOrder: false,
               sorter,
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
           if (field.type === FieldTypeEnum.INPUT_NUMBER) {
@@ -1140,10 +1223,11 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               width: 150,
               key,
               fieldId: field.id,
-              render: (row: any) => formatNumberValue(row[key], field),
+              render: (row: any) => formatNumberValueToString(row[key], field),
               sortOrder: false,
               sorter,
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
           if ([FieldTypeEnum.MEMBER, FieldTypeEnum.DEPARTMENT].includes(field.type)) {
@@ -1158,6 +1242,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               sortOrder: false,
               sorter: !noSorterType.includes(field.type) && !field.resourceFieldId,
               filedType: field.type,
+              resourceFieldId: field.resourceFieldId,
             };
           }
           return {
@@ -1171,6 +1256,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
             sortOrder: false,
             sorter: !noSorterType.includes(field.type) && !field.resourceFieldId ? sorter : false,
             filedType: field.type,
+            resourceFieldId: field.resourceFieldId,
           };
         });
 

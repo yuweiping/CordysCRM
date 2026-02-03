@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
   import { NScrollbar } from 'naive-ui';
+  import { cloneDeep } from 'lodash-es';
   import { VueDraggable } from 'vue-draggable-plus';
 
   import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
@@ -93,12 +94,13 @@
 
   function getFieldDisable(item: FormCreateField) {
     if (item.type === FieldTypeEnum.SERIAL_NUMBER) {
-      return props.fieldList.some((e) => e.type === FieldTypeEnum.SERIAL_NUMBER);
+      return props.fieldList.some((e) => e.type === FieldTypeEnum.SERIAL_NUMBER && !e.resourceFieldId);
     }
-    if (item.type === FieldTypeEnum.SUB_PRICE) {
-      return props.fieldList.some((e) => e.type === FieldTypeEnum.SUB_PRICE);
-    }
-    if (item.type === FieldTypeEnum.SUB_PRODUCT) {
+    if (
+      item.type === FieldTypeEnum.SUB_PRODUCT &&
+      ![FormDesignKeyEnum.OPPORTUNITY_QUOTATION, FormDesignKeyEnum.CONTRACT].includes(props.formKey)
+    ) {
+      // 报价单/合同支持多个子表格
       return props.fieldList.some((e) => e.type === FieldTypeEnum.SUB_PRODUCT);
     }
     return false;
@@ -147,8 +149,9 @@
           value: getGenerateId(),
         },
       ];
+      res.customOptions = [...res.options];
     }
-    return res;
+    return cloneDeep(res);
   }
 
   function handleFieldClick(field: FormCreateField) {

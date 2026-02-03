@@ -19,3 +19,10 @@ export enum ContractBusinessTitleStatusEnum {
   APPROVING = 'APPROVING', // 提审中
   REVOKED = 'REVOKED', // 撤销
 }
+
+export enum ContractInvoiceStatusEnum {
+  APPROVED = 'APPROVED', // 通过
+  UNAPPROVED = 'UNAPPROVED', // 未通过
+  APPROVING = 'APPROVING', // 提审中
+  REVOKED = 'REVOKED', // 撤销
+}

@@ -15,15 +15,17 @@
   >
     <template #actionLeft>
       <div class="flex items-center gap-[12px]">
-        <n-button type="primary" @click="handleNewClick">
-          {{ t('common.newCreate') }}
+        <n-button v-permission="['CONTRACT_BUSINESS_TITLE:ADD']" type="primary" @click="handleNewClick">
+          {{ t('contract.businessTitle.add') }}
         </n-button>
         <CrmImportButton
+          v-if="hasAnyPermission(['CONTRACT_BUSINESS_TITLE:IMPORT'])"
           :api-type="ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_TITLE_IMPORT"
           :title="t('module.businessTitle')"
           @import-success="() => searchData()"
         />
         <n-button
+          v-permission="['CONTRACT_BUSINESS_TITLE:EXPORT']"
           type="primary"
           ghost
           class="n-btn-outline-primary"
@@ -50,7 +52,12 @@
     @load="() => searchData()"
     @cancel="handleCancel"
   />
-  <detail v-model:visible="showDetailDrawer" :source-id="activeSourceId" @edit="handleEdit" @cancel="handleCancel" />
+  <detail
+    v-model:visible="showDetailDrawer"
+    :source-id="activeSourceId"
+    @cancel="handleCancel"
+    @load="() => searchData()"
+  />
   <CrmTableExportModal
     v-model:show="showExportModal"
     :params="exportParams"
@@ -73,16 +80,15 @@
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { BusinessTitleItem } from '@lib/shared/models/contract';
 
-  import { COMMON_SELECTION_OPERATORS } from '@/components/pure/crm-advance-filter/index';
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
-  import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import CrmNameTooltip from '@/components/pure/crm-name-tooltip/index.vue';
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import { BatchActionConfig, CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import useTable from '@/components/pure/crm-table/useTable';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
+  import CrmBusinessNamePrefix from '@/components/business/crm-business-name-prefix/index.vue';
   import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
@@ -98,6 +104,7 @@
   import { baseFilterConfigList } from '@/config/clue';
   import useModal from '@/hooks/useModal';
   import { getExportColumns } from '@/utils/export';
+  import { hasAnyPermission } from '@/utils/permission';
 
   const props = defineProps<{
     sourceId?: string;
@@ -133,7 +140,7 @@
       const type = isInvoiceChecked ? 'default' : 'error';
       openModal({
         type,
-        title: t('common.deleteConfirmTitle', { name: characterLimit(row.businessName) }),
+        title: t('common.deleteConfirmTitle', { name: characterLimit(row.name) }),
         content,
         positiveText,
         negativeText: t('common.cancel'),
@@ -212,34 +219,48 @@
     },
     {
       title: t('contract.businessTitle.companyName'),
-      key: 'businessName',
+      key: 'name',
       sortOrder: false,
       sorter: true,
-      ellipsis: {
-        tooltip: true,
-      },
       width: 200,
+      fixed: 'left',
       columnSelectorDisabled: true,
       render: (row: BusinessTitleItem) => {
-        const createNameButton = () => [
-          // todo xinxinwu
-          row.type === 'thirdParty'
-            ? h(CrmIcon, {
-                type: 'iconicon_enterprise',
-                size: 16,
-                class: 'mr-[8px] text-[var(--primary-8)]',
-              })
-            : null,
+        const createNameButton = () =>
           h(
-            CrmTableButton,
+            'div',
+            { class: 'flex items-center gap-[8px] one-line-text' },
             {
-              onClick: () => showDetail(row),
-            },
-            { default: () => row.businessName, trigger: () => row.businessName }
-          ),
-        ];
+              default: () => {
+                return [
+                  h(CrmBusinessNamePrefix, { type: row.type }),
+                  h(
+                    CrmTableButton,
+                    {
+                      class: '!max-w-[calc(100%-24px)]',
+                      onClick: () => showDetail(row),
+                    },
+                    {
+                      default: () => row.name,
+                      trigger: () => row.name,
+                    }
+                  ),
+                ];
+              },
+            }
+          );
 
-        return props.readonly ? h(CrmNameTooltip, { text: row.businessName }) : createNameButton();
+        return props.readonly
+          ? h(
+              CrmNameTooltip,
+              {
+                text: row.name,
+              },
+              {
+                prefix: () => h(CrmBusinessNamePrefix, { type: row.type }),
+              }
+            )
+          : createNameButton();
       },
     },
     {
@@ -251,21 +272,6 @@
         tooltip: true,
       },
       width: 200,
-    },
-    {
-      title: t('contract.businessTitle.dataSource'),
-      key: 'type',
-      sortOrder: false,
-      sorter: true,
-      ellipsis: {
-        tooltip: true,
-      },
-      width: 200,
-      render: (row: BusinessTitleItem) => {
-        return row.type === 'thirdParty'
-          ? t('contract.businessTitle.addMethodThird')
-          : t('contract.businessTitle.addMethodCustom');
-      },
     },
     {
       title: t('contract.businessTitle.taxpayerNumber'),
@@ -384,8 +390,8 @@
       render: (row: BusinessTitleItem) =>
         h(CrmOperationButton, {
           groupList: [
-            { label: t('common.edit'), key: 'edit', permission: [] },
-            { label: t('common.delete'), key: 'delete', permission: [] },
+            { label: t('common.edit'), key: 'edit', permission: ['CONTRACT_BUSINESS_TITLE:UPDATE'] },
+            { label: t('common.delete'), key: 'delete', permission: ['CONTRACT_BUSINESS_TITLE:DELETE'] },
           ],
           onSelect: (key: string) => handleActionSelect(row, key),
         }),
@@ -397,7 +403,7 @@
       {
         label: t('common.exportChecked'),
         key: 'exportChecked',
-        permission: [],
+        permission: ['CONTRACT_BUSINESS_TITLE:EXPORT'],
       },
     ],
   };
@@ -422,6 +428,7 @@
       showSetting: true,
       columns,
       containerClass: '.crm-business-title-list-table',
+      permission: ['CONTRACT_BUSINESS_TITLE:EXPORT'],
     }
   );
 
@@ -458,7 +465,7 @@
   const filterConfigList = computed<FilterFormItem[]>(() => [
     {
       title: t('contract.businessTitle.companyName'),
-      dataIndex: 'companyName',
+      dataIndex: 'name',
       type: FieldTypeEnum.INPUT,
     },
     {
@@ -467,19 +474,7 @@
       type: FieldTypeEnum.INPUT,
     },
     {
-      title: t('contract.businessTitle.dataSource'),
-      dataIndex: 'type',
-      type: FieldTypeEnum.SELECT_MULTIPLE,
-      operatorOption: COMMON_SELECTION_OPERATORS,
-      selectProps: {
-        options: [
-          { label: t('contract.businessTitle.addMethodThird'), value: 'thirdParty' },
-          { label: t('contract.businessTitle.addMethodCustom'), value: 'custom' },
-        ],
-      },
-    },
-    {
-      title: t('contract.businessTitle.bankAccount'),
+      title: t('contract.businessTitle.taxpayerNumber'),
       dataIndex: 'identificationNumber',
       type: FieldTypeEnum.INPUT,
     },
@@ -496,7 +491,7 @@
     {
       title: t('contract.businessTitle.capital'),
       dataIndex: 'registeredCapital',
-      type: FieldTypeEnum.INPUT_NUMBER,
+      type: FieldTypeEnum.INPUT,
     },
     {
       title: t('contract.businessTitle.address'),
@@ -529,4 +524,16 @@
   });
 </script>
 
-<style scoped></style>
+<style scoped lang="less">
+  :deep(.business-title-icon) {
+    width: 16px;
+    height: 16px;
+    font-size: 12px;
+    border: 1px solid var(--text-n7);
+    border-radius: 50%;
+    color: var(--text-n4);
+    background: var(--text-n9);
+    line-height: 16px;
+    @apply flex flex-shrink-0 items-center justify-center;
+  }
+</style>

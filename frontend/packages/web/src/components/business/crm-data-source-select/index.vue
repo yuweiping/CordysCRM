@@ -32,6 +32,7 @@
       :fullscreen-target-ref="fullscreenTargetRef"
       :fieldConfig="props.fieldConfig"
       :isSubTableRender="props.hideChildTag"
+      @init-form="handleFormInit"
       @toggle-full-screen="(val) => (fullScreenModal = val)"
     />
   </CrmModal>
@@ -66,14 +67,19 @@
     multiple: true,
   });
   const emit = defineEmits<{
-    (e: 'change', value: (string | number)[], source: Record<string, any>[]): void;
+    (
+      e: 'change',
+      value: (string | number)[],
+      source: Record<string, any>[],
+      dataSourceFormFields: FormCreateField[]
+    ): void;
   }>();
 
   const { t } = useI18n();
 
   const typeLocaleMap = {
     [FieldDataSourceTypeEnum.CUSTOMER]: 'crmFormDesign.customer',
-    [FieldDataSourceTypeEnum.CONTACT]: 'crmFormDesign.contract',
+    [FieldDataSourceTypeEnum.CONTACT]: 'crmFormDesign.contact',
     [FieldDataSourceTypeEnum.BUSINESS]: 'crmFormDesign.opportunity',
     [FieldDataSourceTypeEnum.PRODUCT]: 'crmFormDesign.product',
     [FieldDataSourceTypeEnum.CLUE]: 'crmFormDesign.clue',
@@ -83,6 +89,8 @@
     [FieldDataSourceTypeEnum.CONTRACT]: 'crmFormCreate.drawer.contract',
     [FieldDataSourceTypeEnum.QUOTATION]: 'crmFormCreate.drawer.quotation',
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: 'crmFormCreate.drawer.contractPaymentPlan',
+    [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: 'crmFormCreate.drawer.contractPaymentRecord',
+    [FieldDataSourceTypeEnum.BUSINESS_TITLE]: 'crmFormCreate.drawer.businessTitle',
   };
 
   const value = defineModel<DataTableRowKey[]>('value', {
@@ -97,13 +105,18 @@
   const selectedKeys = ref<DataTableRowKey[]>(value.value);
 
   const dataSourcesModalVisible = ref(false);
+  const dataSourceFormFields = ref<FormCreateField[]>([]);
+
+  function handleFormInit(fields: FormCreateField[]) {
+    dataSourceFormFields.value = fields;
+  }
 
   function handleDataSourceConfirm() {
     const newRows = selectedRows.value;
     rows.value = newRows;
     value.value = newRows.map((e) => e.id) as RowKey[];
     nextTick(() => {
-      emit('change', value.value, newRows);
+      emit('change', value.value, newRows, dataSourceFormFields.value);
     });
     dataSourcesModalVisible.value = false;
   }
@@ -114,8 +127,8 @@
   }
 
   const renderTag = ({ option, handleClose }: { option: SelectOption; handleClose: () => void }) => {
-    const row = rows.value.find((item) => item.id === option.value);
-    return props.hideChildTag && row?.parentId
+    const _row = (rows.value || []).find((item) => item?.id === option.value);
+    return props.hideChildTag && _row?.parentId
       ? null
       : h(
           CrmTag,
@@ -125,16 +138,22 @@
             closable: !props.disabled,
             onClose: () => {
               handleClose();
-              rows.value = rows.value.filter((item) => item.id !== option.value);
-              value.value = value.value.filter((key) => key !== option.value);
+              if (props.hideChildTag) {
+                // 价格表关闭标签需要清理子项和父项
+                rows.value = [];
+                value.value = [];
+              } else {
+                rows.value = rows.value.filter((item) => item.id !== option.value);
+                value.value = value.value.filter((key) => key !== option.value);
+              }
               nextTick(() => {
-                emit('change', value.value, rows.value);
+                emit('change', value.value, rows.value, dataSourceFormFields.value);
               });
             },
           },
           {
             default: () => {
-              return (rows.value || []).find((item) => item?.id === option.value)?.name || t('common.optionNotExist');
+              return _row?.name || t('common.optionNotExist');
             },
           }
         );

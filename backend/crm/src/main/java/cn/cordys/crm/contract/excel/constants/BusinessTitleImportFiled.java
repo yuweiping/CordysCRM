@@ -12,15 +12,15 @@ import java.util.function.Function;
 
 public enum BusinessTitleImportFiled {
 
-    BUSINESS_NAME("businessName", "公司名称", "Business name", BusinessTitleExcelData::getBusinessName),
+    NAME("name", "公司名称", "Name", BusinessTitleExcelData::getName),
     IDENTIFICATION_NUMBER("identificationNumber", "纳税人识别号", "Identification number", BusinessTitleExcelData::getIdentificationNumber),
     OPENING_BANK("openingBank", "开户银行", "Opening bank", BusinessTitleExcelData::getOpeningBank),
-    BANK_ACCOUNT("bankAccount", "银行账号", "Bank account", BusinessTitleExcelData::getBankAccount),
+    BANK_ACCOUNT("bankAccount", "银行账户", "Bank account", BusinessTitleExcelData::getBankAccount),
     REGISTRATION_ADDRESS("registrationAddress", "注册地址", "Registration address", BusinessTitleExcelData::getRegistrationAddress),
     PHONE_NUMBER("phoneNumber", "注册电话", "Phone number", BusinessTitleExcelData::getPhoneNumber),
     REGISTERED_CAPITAL("registeredCapital", "注册资本", "Registered capital", BusinessTitleExcelData::getRegisteredCapital),
     COMPANY_SIZE("companySize", "公司规模", "Customer size", BusinessTitleExcelData::getCompanySize),
-    registration_number("registrationNumber", "工商注册号", "Registration number", BusinessTitleExcelData::getRegistrationNumber);
+    registration_number("registrationNumber", "工商注册账号", "Registration number", BusinessTitleExcelData::getRegistrationNumber);
 
     @Getter
     private final Map<Locale, String> filedLangMap;

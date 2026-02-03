@@ -51,16 +51,31 @@
               detailInfo?.stage === ContractStatusEnum.VOID ||
               detailInfo?.approvalStatus === QuotationStatusEnum.APPROVING
             "
+            @refresh="handleSaved()"
           />
         </template>
+        <InvoiceTable
+          v-if="activeTab === 'invoice'"
+          :sourceId="props.sourceId"
+          :sourceName="title"
+          is-contract-tab
+          :readonly="
+            detailInfo?.stage === ContractStatusEnum.VOID ||
+            detailInfo?.stage === ContractStatusEnum.ARCHIVED ||
+            detailInfo?.approvalStatus !== QuotationStatusEnum.APPROVED
+          "
+          @open-business-title-drawer="showBusinessTitleDetail"
+        />
       </CrmCard>
     </div>
     <CrmFormCreateDrawer
       v-model:visible="formCreateDrawerVisible"
-      :form-key="FormDesignKeyEnum.CONTRACT"
-      :source-id="props.sourceId"
-      need-init-detail
+      :source-id="activeSourceId"
+      :form-key="activeFormKey"
+      :need-init-detail="needInitDetail"
+      :initial-source-name="initialSourceName"
       :link-form-key="FormDesignKeyEnum.CONTRACT"
+      :link-form-info="linkFormInfo"
       @saved="() => handleSaved()"
     />
   </CrmDrawer>
@@ -85,9 +100,11 @@
   import CrmFormDescription from '@/components/business/crm-form-description/index.vue';
   import PaymentTable from '@/views/contract/contractPaymentPlan/components/paymentTable.vue';
   import PaymentRecordTable from '@/views/contract/contractPaymentRecord/components/paymentTable.vue';
+  import InvoiceTable from '@/views/contract/invoice/components/invoiceTable.vue';
 
   import { approvalContract, deleteContract, revokeContract } from '@/api/modules';
   import { contractStatusOptions } from '@/config/contract';
+  import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useModal from '@/hooks/useModal';
   import { useUserStore } from '@/store';
   import { hasAnyPermission } from '@/utils/permission';
@@ -98,6 +115,7 @@
   const emit = defineEmits<{
     (e: 'refresh'): void;
     (e: 'showCustomerDrawer', params: { customerId: string; inCustomerPool: boolean; poolId: string }): void;
+    (e: 'openBusinessTitleDrawer', params: { id: string }): void;
   }>();
 
   const visible = defineModel<boolean>('visible', {
@@ -133,6 +151,11 @@
         name: 'paymentRecord',
         tab: t('module.paymentRecord'),
         permission: ['CONTRACT_PAYMENT_RECORD:READ'],
+      },
+      {
+        name: 'invoice',
+        tab: t('module.invoice'),
+        permission: ['CONTRACT_INVOICE:READ'],
       },
     ].filter((item) => hasAnyPermission(item.permission))
   );
@@ -181,6 +204,21 @@
     }
     if (detailInfo.value?.approvalStatus === QuotationStatusEnum.APPROVED) {
       return [
+        ...(detailInfo.value?.stage !== ContractStatusEnum.VOID
+          ? [
+              {
+                label: t('contract.payment'),
+                key: 'paymentRecord',
+                permission: ['CONTRACT:PAYMENT'],
+                text: false,
+                ghost: true,
+                class: 'n-btn-outline-primary',
+                disabled: !detailInfo.value?.amount || detailInfo.value?.alreadyPayAmount >= detailInfo.value?.amount,
+                tooltipContent:
+                  detailInfo.value?.alreadyPayAmount >= detailInfo.value?.amount ? t('contract.noPaymentRequired') : '',
+              },
+            ]
+          : []),
         {
           label: t('common.delete'),
           key: 'delete',
@@ -219,7 +257,16 @@
   }
 
   const formCreateDrawerVisible = ref(false);
+  const needInitDetail = ref(true);
+  const initialSourceName = ref('');
+  const activeFormKey = ref(FormDesignKeyEnum.CONTRACT);
+  const activeSourceId = ref('');
+
   function handleEdit() {
+    needInitDetail.value = true;
+    initialSourceName.value = '';
+    activeFormKey.value = FormDesignKeyEnum.CONTRACT;
+    activeSourceId.value = props.sourceId;
     formCreateDrawerVisible.value = true;
   }
 
@@ -276,6 +323,23 @@
     }
   }
 
+  // 回款
+  const linkFormInfo = ref();
+  const { initFormDetail, initFormConfig, linkFormFieldMap } = useFormCreateApi({
+    formKey: ref(FormDesignKeyEnum.CONTRACT),
+    sourceId: activeSourceId,
+  });
+  async function handlePaymentRecord(row: ContractItem) {
+    activeSourceId.value = row.id;
+    initialSourceName.value = row.name;
+    needInitDetail.value = false;
+    activeFormKey.value = FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD;
+    await initFormConfig();
+    await initFormDetail(false, true);
+    linkFormInfo.value = linkFormFieldMap.value;
+    formCreateDrawerVisible.value = true;
+  }
+
   async function handleButtonClick(actionKey: string) {
     switch (actionKey) {
       case 'pass':
@@ -290,11 +354,18 @@
       case 'revoke':
         handleRevoke();
         break;
+      case 'paymentRecord':
+        handlePaymentRecord(detailInfo.value);
+        break;
       case 'delete':
         handleDelete(detailInfo.value);
         break;
       default:
         break;
     }
+  }
+
+  function showBusinessTitleDetail(params: { id: string }) {
+    emit('openBusinessTitleDrawer', params);
   }
 </script>

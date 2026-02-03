@@ -23,9 +23,13 @@ export enum FormDesignKeyEnum {
   CONTRACT_PAYMENT = 'contractPaymentPlan', // 回款计划
   CONTRACT_CONTRACT_PAYMENT = 'contractContractPayment', // 合同下的回款计划
   CONTRACT_PAYMENT_RECORD = 'contractPaymentRecord', // 回款记录
+  INVOICE = 'invoice', // 发票
+  INVOICE_SNAPSHOT = 'invoiceSnapshot', // 发票快照
+  CONTRACT_INVOICE = 'contractInvoice', // 合同下的发票
   PRICE = 'price', // 价格表
   OPPORTUNITY_QUOTATION = 'quotation', // 商机报价单
   OPPORTUNITY_QUOTATION_SNAPSHOT = 'quotationSnapshot', // 商机快照报价单
+  BUSINESS_TITLE = 'businessTitle', // 工商抬头(数据源，无表单配置入口)
   // 全局搜索
   SEARCH_ADVANCED_CLUE = 'searchAdvancedClue', // 线索
   SEARCH_ADVANCED_CUSTOMER = 'searchAdvancedCustomer', // 客户
@@ -88,6 +92,8 @@ export enum FieldDataSourceTypeEnum {
   CONTRACT = 'CONTRACT',
   QUOTATION = 'QUOTATION', // 报价单
   CONTRACT_PAYMENT = 'PAYMENT_PLAN',
+  CONTRACT_PAYMENT_RECORD = 'CONTRACT_PAYMENT_RECORD', // 回款记录
+  BUSINESS_TITLE = 'BUSINESS_TITLE', // 工商抬头
 }
 
 export enum FormLinkScenarioEnum {
@@ -98,4 +104,5 @@ export enum FormLinkScenarioEnum {
   CUSTOMER_TO_RECORD = 'CUSTOMER_TO_RECORD', // 客户转跟进记录
   OPPORTUNITY_TO_RECORD = 'OPPORTUNITY_TO_RECORD', // 商机转跟进记录
   PLAN_TO_RECORD = 'PLAN_TO_RECORD', // 跟进计划转跟进记录
+  CONTRACT_TO_INVOICE = 'CONTRACT_TO_INVOICE', // 合同开票
 }

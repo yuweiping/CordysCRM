@@ -65,6 +65,13 @@ public class BusinessController {
         return businessService.getClueByUserPhone(phone);
     }
 
+    @GetMapping("/contact/check-phone")
+    @Operation(summary = "根据手机号是否已经存在客户联系记录")
+    public ResultHolder checkPhone(
+            @Parameter(description = "手机号", required = true) @RequestParam String phone) {
+        return whatsappSyncService.checkPhone(phone);
+    }
+
     @GetMapping("/clue/to-pool")
     @Operation(summary = "移入线索池")
     public BatchAffectResponse toPool(@Parameter(description = "用户手机号", required = true) @RequestParam String phone,

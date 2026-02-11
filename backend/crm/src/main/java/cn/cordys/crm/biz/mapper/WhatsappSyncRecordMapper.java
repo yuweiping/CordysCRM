@@ -13,8 +13,12 @@ public interface WhatsappSyncRecordMapper {
     void insertBatchIgnore(@Param("list") List<WhatsappSyncRecord> records);
 
     /**
-     * 根据 ownerPhone 和 contactId 查询最新记录（可选，供后续扩展）
+     * 根据 contactPhone 查询最新记录
      */
+    WhatsappSyncRecord selectByContact(
+            @Param("contactPhone") String contactPhone
+    );
+
     WhatsappSyncRecord selectByOwnerAndContact(
             @Param("ownerPhone") String ownerPhone,
             @Param("contactPhone") String contactPhone

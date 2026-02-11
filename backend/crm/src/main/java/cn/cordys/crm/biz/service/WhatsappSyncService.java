@@ -1,5 +1,6 @@
 package cn.cordys.crm.biz.service;
 
+import cn.cordys.common.response.handler.ResultHolder;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.crm.biz.domain.WhatsappOwnerConflict;
 import cn.cordys.crm.biz.domain.WhatsappSyncRecord;
@@ -14,7 +15,6 @@ import cn.cordys.crm.clue.service.ClueService;
 import cn.cordys.crm.clue.service.PoolClueService;
 import cn.cordys.crm.follow.dto.request.FollowUpRecordAddRequest;
 import cn.cordys.crm.follow.service.FollowUpRecordService;
-import cn.cordys.crm.system.mapper.ExtUserMapper;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import cn.cordys.security.UserDTO;
@@ -48,16 +48,22 @@ public class WhatsappSyncService {
     private FollowUpRecordService followUpRecordService;
 
     @Resource
-    private BusinessService businessService;
-
-    @Resource
-    private ExtUserMapper extUserMapper;
-
-    @Resource
     private BaseMapper<Clue> clueMapper;
 
     @Resource
     private PoolClueService poolClueService;
+
+
+    /**
+     * 根据手机号是否已经存在客户联系记录
+     *
+     * @param phone 手机号
+     * @return 是否存在客户联系记录
+     */
+    public ResultHolder checkPhone(String phone) {
+        WhatsappSyncRecord record = whatsappSyncRecordMapper.selectByContact(phone);
+        return ResultHolder.success(record);
+    }
 
     /**
      * 同步WhatsApp联系人

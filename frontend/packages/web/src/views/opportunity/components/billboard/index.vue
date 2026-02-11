@@ -21,6 +21,8 @@
       :fail-id="stageConfig?.stageConfigList.slice(-1)[0].id"
       @fail="handleFailItem"
       @change="refreshList"
+      @open-detail="(type, item) => emit('openDetail', type, item)"
+      @init="(total) => handleListInit(item.id, total)"
     />
   </n-scrollbar>
   <CrmModal
@@ -46,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-  import { FormInst, NForm, NFormItem, NScrollbar, NSelect } from 'naive-ui';
+  import { NForm, NFormItem, NScrollbar, NSelect } from 'naive-ui';
 
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { ReasonTypeEnum } from '@lib/shared/enums/moduleEnum';
@@ -65,6 +67,11 @@
     advanceFilter?: FilterResult;
     viewId?: string;
     keyword?: string;
+  }>();
+  const emit = defineEmits<{
+    (e: 'change'): void;
+    (e: 'init', total: number): void;
+    (e: 'openDetail', type: 'customer' | 'opportunity', item: any): void;
   }>();
 
   const { t } = useI18n();
@@ -94,12 +101,23 @@
   function refreshList(stage: string) {
     const index = stageConfig.value?.stageConfigList.findIndex((item) => item.id === stage) || 0;
     listRef.value?.[index].refreshList();
+    emit('change');
+  }
+
+  const totalMap = ref<Record<string, number>>({});
+  const sumTotal = computed(() => {
+    return Object.values(totalMap.value).reduce((acc, curr) => acc + curr, 0);
+  });
+  function handleListInit(id: string, total: number) {
+    totalMap.value[id] = total;
+    nextTick(() => {
+      emit('init', sumTotal.value);
+    });
   }
 
   const form = ref({
     failureReason: null,
   });
-  const formRef = ref<FormInst | null>(null);
   const updateStatusModal = ref<boolean>(false);
   const updateStageLoading = ref(false);
   const updateOptItem = ref<any>({});

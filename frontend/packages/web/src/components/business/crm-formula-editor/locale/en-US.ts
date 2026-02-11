@@ -1,0 +1,27 @@
+export default {
+  'formulaEditor.diagnostics.emptyParams': 'Parameter count cannot be empty',
+  'formulaEditor.diagnostics.duplicateSeparator': 'There are extra separators at the end of the function parameters',
+  'formulaEditor.diagnostics.duplicateSeparatorOfCenter': 'There are extra separators in the function parameters',
+  'formulaEditor.diagnostics.missingSeparator': 'Syntax error, missing separator',
+  'formulaEditor.diagnostics.duplicateOperator': 'Consecutive operators',
+  'formulaEditor.diagnostics.illegalCharacter': 'Illegal character present',
+  'formulaEditor.diagnostics.duplicateSeparatorOfBeginning': 'Please do not use consecutive separators',
+  'formulaEditor.diagnostics.argCountErrorOfDAYS': 'Parameter count error, must be two parameters',
+  'formulaEditor.function.argFirst': 'Parameter 1',
+  'formulaEditor.function.argSecond': 'Parameter 2',
+  'formulaEditor.diagnostics.expressionNotComplete': 'Incomplete parameter expression',
+  'formulaEditor.diagnostics.operatorLeftMissingExpression': 'Operator is missing an expression on the left side',
+  'formulaEditor.diagnostics.operatorRightMissingExpression': 'Operator is missing an expression on the right side',
+  'formulaEditor.diagnostics.unexpectedCommaAtEnd': 'Comma cannot appear at the end of the expression',
+  'formulaEditor.diagnostics.unexpectedOperatorAtBeginning':
+    'Operator cannot appear at the beginning of the expression',
+  'formulaEditor.diagnostics.unexpectedTokenAtBeginning': 'Unexpected token at the beginning of the expression',
+  'formulaEditor.diagnostics.unexpectedTokenAtEnd': 'Unexpected token at the end of the expression',
+  'formulaEditor.diagnostics.missingRightParen': 'Missing right parenthesis',
+  'formulaEditor.diagnostics.unexpectedRightParen': 'Unexpected right parenthesis',
+  'formulaEditor.diagnostics.invalidFunctionCall': 'Invalid function call: expression cannot be called again',
+  'formulaEditor.diagnostics.missingOperator': 'Missing operator',
+  'formulaEditor.diagnostics.invalidArgOfDAYS':
+    'The {index}th parameter type error, parameter must be of number or date type',
+  'c': 'Commas cannot be used between fields, please use operators',
+};

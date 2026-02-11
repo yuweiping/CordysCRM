@@ -2,32 +2,47 @@ import { IRNode, ResolveContext } from '@/components/business/crm-formula/formul
 
 import { ASTNode, FunctionNode } from '../types';
 
+function wrapColumnIfNeeded(node: IRNode): IRNode {
+  // 已经是标量，直接返回
+  if (node.type !== 'field') return node;
+
+  // 不是子表字段
+  if (!node.fieldId.includes('.')) return node;
+
+  // SUM(column)
+  return {
+    type: 'function',
+    name: 'SUM',
+    args: [node],
+  };
+}
+
 function resolveNode(node: ASTNode, ctx: ResolveContext): IRNode {
   switch (node.type) {
     case 'number':
       return node as IRNode;
 
     case 'field': {
-      const isColumn = node.fieldId.includes('.');
-      if (isColumn && !ctx.allowColumn) {
-        throw new Error(`field ${node.fieldId} can only be used in SUM function`);
-      }
-      return node;
+      const ir: IRNode = node;
+      return ctx.expectScalar ? wrapColumnIfNeeded(ir) : ir;
     }
 
     case 'binary':
       return {
         type: 'binary',
         operator: node.operator,
-        left: resolveNode(node.left, { allowColumn: false }),
-        right: resolveNode(node.right, { allowColumn: false }),
+        left: resolveNode(node.left, { expectScalar: true }),
+        right: resolveNode(node.right, { expectScalar: true }),
       };
 
     case 'function':
       // eslint-disable-next-line no-use-before-define
       return resolveFunction(node, ctx);
     default:
-      throw new Error('unknown node type');
+      return {
+        type: 'invalid',
+        reason: `unknown node type`,
+      };
   }
 }
 function resolveFunction(node: FunctionNode, _ctx: ResolveContext): IRNode {
@@ -36,24 +51,33 @@ function resolveFunction(node: FunctionNode, _ctx: ResolveContext): IRNode {
       return {
         type: 'function',
         name: 'SUM',
-        args: node.args.map((arg) => resolveNode(arg, { allowColumn: true })),
+        args: node.args.map((arg) => resolveNode(arg, { expectScalar: false })),
       };
 
     case 'DAYS':
       if (node.args.length !== 2) {
-        throw new Error('DAYS function must have 2 arguments');
+        return {
+          type: 'invalid',
+          reason: 'DAYS function must have 2 arguments',
+        };
       }
       return {
         type: 'function',
         name: 'DAYS',
-        args: node.args.map((arg) => resolveNode(arg, { allowColumn: false })),
+        args: node.args.map((arg) => resolveNode(arg, { expectScalar: true })),
       };
 
     default:
-      throw new Error(`unknown function ${node.name}`);
+      return {
+        type: 'invalid',
+        reason: `unknown function ${node.name}`,
+      };
   }
 }
 
-export default function resolveASTToIR(ast: ASTNode): IRNode {
-  return resolveNode(ast, { allowColumn: false });
+// 解析 AST -> IR,用于运行执行器计算
+export default function resolveASTToIR(ast: ASTNode): IRNode | null {
+  if (!ast) return null;
+
+  return resolveNode(ast, { expectScalar: true });
 }

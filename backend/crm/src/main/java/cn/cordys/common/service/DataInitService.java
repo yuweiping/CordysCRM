@@ -59,11 +59,14 @@ public class DataInitService {
             initOneTime(moduleFormService::initUpgradeForm, "init.upgrade.form.v1.4.0");
             initOneTime(moduleFormService::initUpgradeForm, "init.upgrade.form.v1.5.0");
             initOneTime(moduleFormService::initUpgradeForm, "init.upgrade.form.v1.5.1");
+            initOneTime(moduleFormService::initExtFieldsByVer, "1.5.0", "init.ext.fields.v1.5.0");
             initOneTime(moduleFormService::initExtFieldsByVer, "1.5.1", "init.ext.fields.v1.5.1");
             initOneTime(moduleFieldExtService::setDefaultOptionSource, "set.default.option.source");
             initOneTime(moduleFieldExtService::refreshPlanFieldPos, "refresh.plan.field.pos");
             initOneTime(moduleFormService::initInvoiceFormScenarioProp, "init.invoice.form.scenario");
             initOneTime(moduleFieldService::modifyInvoiceShowFields, "init.invoice.show.fields");
+            initOneTime(moduleService::deleteExtraModules, "delete.extra.modules");
+            initOneTime(moduleFieldExtService::modifySubProductSumColumn, "modify.quotation.product.sum.column");
         } finally {
             lock.unlock();
         }

@@ -1,5 +1,5 @@
 <template>
-  <n-scrollbar class="max-h-[60vh]">
+  <n-scrollbar>
     <div class="crm-form-design-formula-header">
       <div class="ph-prefix">{{ props.fieldConfig.name }} = </div>
       <n-button type="primary" text @click="handleClearFormulaField">
@@ -34,43 +34,46 @@
             class="field-search-input !w-[calc(100%+2px)]"
             :placeholder="t('crmFormDesign.formulaByNameSearchPlaceholder')"
           />
-          <div class="field-item-content">
-            <!-- <n-scrollbar class="max-h-[60%]"> -->
-            <CrmCollapse
-              v-for="ele of allFieldList"
-              :default-expand="true"
-              :name-key="ele.type"
-              class="field-item-collapse"
-            >
-              <template #header>
-                <div class="px-[4px] text-[14px] font-medium text-[var(--text-n2)]">
-                  {{ t(ele.name) }}（{{ ele.children.length }}）
-                </div>
-              </template>
-              <template v-if="ele.children.length > 0">
-                <div
-                  v-for="item of ele.children"
-                  class="flex h-[32px] items-center justify-between rounded px-[4px] hover:bg-[var(--text-n9)]"
-                  @mousedown.prevent="insertField(item)"
-                >
-                  <n-tooltip trigger="hover" :delay="300" placement="top-start">
-                    <template #trigger>
-                      <div class="one-line-text flex-1 cursor-pointer">
-                        {{ item.name }}
-                      </div>
-                    </template>
-                    {{ item.name }}
-                  </n-tooltip>
+          <div class="field-item-content max-h-[400px]">
+            <n-scrollbar>
+              <CrmCollapse
+                v-for="(ele, index) of allFieldList"
+                :default-expand="true"
+                :name-key="ele.type"
+                class="field-item-collapse"
+              >
+                <template #header>
+                  <div class="px-[4px] text-[14px] font-medium text-[var(--text-n2)]">
+                    {{ t(ele.name) }}（{{ ele.children.length }}）
+                  </div>
+                </template>
+                <template v-if="ele.children.length > 0">
+                  <div
+                    v-for="item of ele.children"
+                    class="flex h-[32px] items-center justify-between rounded px-[4px] hover:bg-[var(--text-n9)]"
+                    @mousedown.prevent="insertField(item)"
+                  >
+                    <n-tooltip trigger="hover" :delay="300" placement="top-start">
+                      <template #trigger>
+                        <div class="one-line-text flex-1 cursor-pointer">
+                          {{ item.name }}
+                        </div>
+                      </template>
+                      {{ item.name }}
+                    </n-tooltip>
 
-                  <CrmTag :type="colorThemeMap[ele.type]?.type || 'default'" class="flex-shrink-0" theme="light">
-                    {{ colorThemeMap[ele.type]?.label }}
-                  </CrmTag>
-                </div>
-              </template>
-              <div v-else class="px-[4px] text-[var(--text-n4)]">{{ t('common.noData') }}</div>
-              <n-divider v-if="ele.children.length !== 0" class="!mb-0 !mt-[16px]" />
-            </CrmCollapse>
-            <!-- </n-scrollbar> -->
+                    <CrmTag :type="colorThemeMap[ele.type]?.type || 'default'" class="flex-shrink-0" theme="light">
+                      {{ colorThemeMap[ele.type]?.label }}
+                    </CrmTag>
+                  </div>
+                </template>
+                <div v-else class="px-[4px] text-[var(--text-n4)]">{{ t('common.noData') }}</div>
+                <n-divider
+                  v-if="ele.children.length !== 0 && index !== allFieldList.length - 1"
+                  class="!mb-0 !mt-[16px]"
+                />
+              </CrmCollapse>
+            </n-scrollbar>
           </div>
         </div>
         <div class="field-item">
@@ -102,9 +105,10 @@
               </div>
               <div v-if="activeFun?.name === 'SUM'">
                 <div class="flex items-center">
-                  <!-- TODO 文案不确定 -->
-                  <div :class="`text-[${FUN_COLOR}]`">SUM</div>(<div :class="`text-[${INPUT_NUMBER_COLOR}]`"> 值1 </div
-                  >, <div :class="`text-[${INPUT_NUMBER_COLOR}]`">值2</div>, ... )
+                  <div :class="`text-[${FUN_COLOR}]`">SUM</div>(<div :class="`text-[${INPUT_NUMBER_COLOR}]`">
+                    {{ t('formulaEditor.function.argFirst') }} </div
+                  >, <div :class="`text-[${INPUT_NUMBER_COLOR}]`"> {{ t('formulaEditor.function.argSecond') }} </div>,
+                  ... )
                 </div>
               </div>
             </div>
@@ -118,9 +122,9 @@
         <div class="text-[var(--text-n6)]">{{ t('crmFormDesign.formulaPlaceholder') }}</div>
 
         <div class="flex items-center">
-          <div :class="`text-[${FUN_COLOR}]`">SUM</div>(<div :class="`text-[${ARRAY_COLOR}]`">订阅产品.金额</div>) +
-          <div :class="`text-[${FUN_COLOR}]`">SUM</div>(<div :class="`text-[${ARRAY_COLOR}]`">授权产品.金额</div>) +
-          <div :class="`text-[${FUN_COLOR}]`">SUM</div>(<div :class="`text-[${ARRAY_COLOR}]`">续费产品.金额</div>)
+          <div :style="{ color: FUN_COLOR }">SUM</div>(<div :style="{ color: ARRAY_COLOR }">订阅产品.金额</div>) +
+          <div :style="{ color: FUN_COLOR }">SUM</div>(<div :style="{ color: ARRAY_COLOR }">授权产品.金额</div>) +
+          <div :style="{ color: FUN_COLOR }">SUM</div>(<div :style="{ color: ARRAY_COLOR }">续费产品.金额</div>)
         </div>
       </div>
     </div>
@@ -129,6 +133,7 @@
 
 <script setup lang="ts">
   import { NButton, NDivider, NScrollbar, NTooltip } from 'naive-ui';
+  import { debounce } from 'lodash-es';
 
   import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -164,6 +169,8 @@
   const emit = defineEmits<{
     (e: 'save', astVal: string): void;
   }>();
+
+  const FUNCTION_NAMES = ['SUM', 'DAYS'];
 
   const formulaDiagnostics = ref<FormulaDiagnostic[]>([]);
   const keyword = ref('');
@@ -349,7 +356,7 @@
     }
   }
 
-  function validateCurrentFormula() {
+  const validateCurrentFormula = debounce(() => {
     if (!editor.value) return;
 
     const tokens = tokenizeFromEditor(editor.value);
@@ -358,7 +365,7 @@
     formulaDiagnostics.value = diagnoseFormula(tokens, ast);
     // TODO 高亮先不做
     // applyDiagnosticsHighlight(editor.value, diagnostics);
-  }
+  }, 200);
 
   type FormulaNodeMeta = {
     text: string;
@@ -432,7 +439,7 @@
     /** 参数区（真正可编辑） */
     const argsNode = document.createElement('span');
     argsNode.className = 'formula-args';
-    argsNode.appendChild(document.createTextNode('\u200B'));
+    argsNode.appendChild(document.createTextNode(''));
 
     /** 右括号 */
     const rightParen = document.createTextNode(')');
@@ -445,8 +452,8 @@
     /** 光标放入参数区 */
     const caretRange = document.createRange();
     const text = argsNode.firstChild!;
-    caretRange.setStart(text, 1);
-    caretRange.setEnd(text, 1);
+    caretRange.setStart(text, 0);
+    caretRange.setEnd(text, 0);
 
     const sel = window.getSelection();
     sel?.removeAllRanges();
@@ -501,6 +508,7 @@
     wrapper.dataset.value = item.id;
     wrapper.dataset.nodeType = 'field';
     wrapper.dataset.fieldType = item.type;
+    wrapper.dataset.originText = item.name;
     const numberType = getNumberType(item);
     if (numberType) {
       wrapper.dataset.numberType = numberType;
@@ -527,7 +535,136 @@
     });
   }
 
+  function replaceWithFunctionNode(range: Range, fnName: string) {
+    range.deleteContents();
+
+    /** 函数名 */
+    const fnNode = document.createElement('span');
+    fnNode.className = 'formula-fn';
+    fnNode.style.color = FUN_COLOR;
+    fnNode.contentEditable = 'false';
+    fnNode.dataset.nodeType = 'function';
+    fnNode.dataset.fnName = fnName;
+    fnNode.textContent = fnName;
+
+    // 左括号
+    const leftParen = document.createTextNode('(');
+
+    // 参数区
+    const argsNode = document.createElement('span');
+    argsNode.className = 'formula-args';
+    argsNode.appendChild(document.createTextNode('\u200B'));
+
+    // 右括号
+    const rightParen = document.createTextNode(')');
+
+    range.insertNode(rightParen);
+    range.insertNode(argsNode);
+    range.insertNode(leftParen);
+    range.insertNode(fnNode);
+
+    // 光标放进参数区
+    const caret = document.createRange();
+    const text = argsNode.firstChild!;
+    caret.setStart(text, 1);
+    caret.setEnd(text, 1);
+
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(caret);
+  }
+
+  function upgradePlainFunction(root: HTMLElement) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+
+    const toProcess: Text[] = [];
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      if (node.parentElement) {
+        // 已经在函数节点里的不要动
+        if (!(node.parentElement.closest('.formula-fn') || node.parentElement.closest('.formula-args'))) {
+          toProcess.push(node);
+        }
+      }
+    }
+    toProcess.forEach((textNode) => {
+      const text = textNode.nodeValue ?? '';
+      FUNCTION_NAMES.forEach((fn) => {
+        const reg = new RegExp(`\\b${fn}\\(`);
+        const match = reg.exec(text);
+        if (!match) return;
+
+        const start = match.index;
+        const end = start + fn.length + 1;
+
+        const range = document.createRange();
+        range.setStart(textNode, start);
+        range.setEnd(textNode, end);
+
+        replaceWithFunctionNode(range, fn);
+      });
+    });
+  }
+
+  // 字段是否被损坏
+  function isFieldNodeCorrupted(el: HTMLElement) {
+    const originalText = el.dataset.originText;
+    if (!originalText) return false;
+    return el.textContent !== originalText;
+  }
+
+  // 函数节点是否被损坏
+  function isFunctionNodeCorrupted(el: HTMLElement) {
+    const { fnName } = el.dataset;
+    if (!fnName) return false;
+    return el.textContent !== fnName;
+  }
+
+  // 降级成普通文本
+  function downgradeNode(el: HTMLElement) {
+    const text = el.textContent ?? '';
+
+    // 用普通文本替换
+    const textNode = document.createTextNode(text);
+    el.replaceWith(textNode);
+
+    // 光标放到文本末尾
+    const range = document.createRange();
+    range.setStart(textNode, text.length);
+    range.setEnd(textNode, text.length);
+
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
+  function removeFieldToText(editorEl: HTMLElement) {
+    // 字段降级
+    const fieldNodes = editorEl.querySelectorAll<HTMLElement>('.formula-tag-wrapper');
+    fieldNodes.forEach((el) => {
+      if (isFieldNodeCorrupted(el)) {
+        downgradeNode(el);
+      }
+    });
+  }
+
+  function removeFunToText(editorEl: HTMLElement) {
+    // 函数降级
+    const fnNodes = editorEl.querySelectorAll<HTMLElement>('.formula-fn');
+    fnNodes.forEach((el) => {
+      if (isFunctionNodeCorrupted(el)) {
+        downgradeNode(el);
+      }
+    });
+  }
+
   function handleEditorInput() {
+    // todo 优化
+    // const editorEl = editor.value!;
+    // removeFieldToText(editorEl);
+    // removeFunToText(editorEl);
+    upgradePlainFunction(editor.value!);
     validateCurrentFormula();
   }
 

@@ -131,5 +131,30 @@ export interface FormulaSerializeResult {
   source: string; // SUM(${123}, ${456}) + DAYS(...)
   display: string; // SUM(报价产品.价格, 订阅表格.价格)
   fields: FormulaFieldMeta[];
-  ir: IRNode; // 公式 IR
+  ir: IRNode | null; // 公式 IR
+}
+
+export interface DiagnoseContext {
+  tokens: Token[];
+  index: number;
+  diagnostics: FormulaDiagnostic[];
+  coveredRanges: Array<[number, number]>;
+
+  // 扫描期状态
+  parenBalance: number;
+  hasUnexpectedRightParen: boolean;
+  cur?: Token;
+  prev?: Token;
+
+  push(diag: FormulaDiagnostic): void;
+}
+
+export interface DiagnoseRule {
+  name: string;
+
+  // 每个 token 扫描时执行
+  check(ctx: DiagnoseContext): void;
+
+  // 扫描结束后执行（可选）
+  afterAll?(ctx: DiagnoseContext): void;
 }

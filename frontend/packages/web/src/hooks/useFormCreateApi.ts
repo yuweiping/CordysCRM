@@ -243,10 +243,6 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         key: 'departmentName',
       },
       {
-        title: t('opportunity.quotation.amount'),
-        key: 'amount',
-      },
-      {
         title: t('contract.alreadyPayAmount'),
         key: 'alreadyPayAmount',
       },
@@ -628,15 +624,16 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
               break;
             case linkAllAcceptTypes.includes(field.type):
               // 文本输入类型可填充任何字段类型值
+              const limitLength = field.type === FieldTypeEnum.INPUT ? 255 : 3000;
               if (dataSourceTypes.includes(linkField.type)) {
                 // 联动的字段是数据源则填充选项名
                 formDetail.value[field.id] = linkField.value
                   .map((e: Record<string, any>) => e.name)
                   .join(',')
-                  .slice(0, 255);
+                  .slice(0, limitLength);
               } else if (multipleTypes.includes(linkField.type)) {
                 // 联动的字段是多选则拼接选项名
-                formDetail.value[field.id] = linkField.value.join(',').slice(0, 255);
+                formDetail.value[field.id] = linkField.value.join(',').slice(0, limitLength);
               } else if (linkField.type === FieldTypeEnum.DATE_TIME) {
                 // 联动的字段是日期时间则转换
                 if (linkField.dateType === 'month') {
@@ -655,13 +652,13 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
               } else if (linkField.type === FieldTypeEnum.INDUSTRY) {
                 formDetail.value[field.id] = linkField.value ? getIndustryPath(linkField.value as string) : '-';
               } else if (linkField.type === FieldTypeEnum.TEXTAREA && field.type === FieldTypeEnum.INPUT) {
-                formDetail.value[field.id] = linkField.value.slice(0, 255);
+                formDetail.value[field.id] = linkField.value.slice(0, limitLength);
               } else if ([...memberTypes, ...departmentTypes].includes(linkField.type)) {
                 formDetail.value[field.id] = linkField.initialOptions
                   .map((e: any) => e.name)
                   .join(',')
-                  .slice(0, 255);
-              } else if (linkField.type === FieldTypeEnum.INPUT_NUMBER) {
+                  .slice(0, limitLength);
+              } else if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(linkField.type)) {
                 formDetail.value[field.id] = linkField.value?.toString();
               } else {
                 formDetail.value[field.id] = linkField.value;
@@ -1202,15 +1199,15 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
 
   function initForm(linkScenario?: FormLinkScenarioEnum) {
     fieldList.value.forEach((item) => {
-      const initLine: Record<string, any> = {};
+      // const initLine: Record<string, any> = {};
       if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type)) {
         item.subFields?.forEach((subField) => {
           subFieldInit(subField);
           replaceRule(subField, item.id);
-          initLine[subField.businessKey || subField.id] = subField.defaultValue;
+          // initLine[subField.businessKey || subField.id] = subField.defaultValue;
         });
         if (!formDetail.value[item.id]) {
-          formDetail.value[item.id] = [initLine];
+          formDetail.value[item.id] = [];
         }
         return;
       }

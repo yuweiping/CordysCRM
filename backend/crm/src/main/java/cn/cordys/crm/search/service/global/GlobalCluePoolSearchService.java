@@ -172,11 +172,16 @@ public class GlobalCluePoolSearchService extends BaseSearchService<BasePageReque
             List<String> productNames = getProductNames(globalClueResponse.getProducts(), productNameMap);
             globalClueResponse.setProducts(productNames);
 
-            globalClueResponse.getModuleFields().stream().forEach(moduleField -> {
-                if (phoneTypeFieldIds.contains(moduleField.getFieldId()) && StringUtils.isNotBlank(moduleField.getFieldValue().toString())) {
-                    moduleField.setFieldValue((getPhoneFieldValue(moduleField.getFieldValue(), moduleField.getFieldValue().toString().length())));
-                }
-            });
+            if (CollectionUtils.isNotEmpty(globalClueResponse.getModuleFields())) {
+                globalClueResponse.getModuleFields().stream().forEach(moduleField -> {
+                    if (phoneTypeFieldIds.contains(moduleField.getFieldId()) && StringUtils.isNotBlank(moduleField.getFieldValue().toString())) {
+                        moduleField.setFieldValue((getPhoneFieldValue(moduleField.getFieldValue(), moduleField.getFieldValue().toString().length())));
+                    }
+                });
+            }
+            if (StringUtils.isNotBlank(globalClueResponse.getPhone())) {
+                globalClueResponse.setPhone((String) getPhoneFieldValue(globalClueResponse.getPhone(), globalClueResponse.getPhone().length()));
+            }
 
             searchFieldMaskConfigMap.forEach((fieldId, searchFieldMaskConfig) -> {
                 if (Strings.CI.equals(searchFieldMaskConfig.getBusinessKey(), "name") && !hasPermission) {
@@ -185,9 +190,6 @@ public class GlobalCluePoolSearchService extends BaseSearchService<BasePageReque
                 if (Strings.CI.equals(searchFieldMaskConfig.getBusinessKey(), "products") && !hasPermission) {
                     List<String> maskProductNames = productNames.stream().map(t -> (String) getInputFieldValue(t, t.length())).toList();
                     globalClueResponse.setProducts(maskProductNames);
-                }
-                if (Strings.CI.equals(searchFieldMaskConfig.getBusinessKey(), "phone") && StringUtils.isNotBlank(globalClueResponse.getPhone())) {
-                    globalClueResponse.setPhone((String) getPhoneFieldValue(globalClueResponse.getPhone(), globalClueResponse.getPhone().length()));
                 }
             });
 

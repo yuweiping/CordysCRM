@@ -402,69 +402,81 @@ public class ModuleFormService {
      * @return 字段选项集合
      */
     public Map<String, List<OptionDTO>> getOptionMap(ModuleFormConfigDTO formConfig, List<BaseModuleFieldValue> allDataFields) {
-        Map<String, List<OptionDTO>> optionMap = new HashMap<>(4);
-        Map<String, String> idTypeMap = new HashMap<>(8);
-
-        // 平铺表单所有字段, 过滤出满足条件的字段获取选项
-        List<BaseField> allFields = flattenFormAllFields(formConfig);
-        List<String> showFields = allFields.stream().filter(f -> f instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()))
-                .flatMap(f -> ((DatasourceField) f).getShowFields().stream()).distinct().toList();
-        allFields.forEach(field -> {
-            if (Strings.CS.equalsAny(field.getType(), FieldType.RADIO.name()) && field instanceof RadioField radioField) {
-                optionMap.put(getOptionKey(showFields, field), optionPropToDto(radioField.getOptions()));
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.CHECKBOX.name()) && field instanceof CheckBoxField checkBoxField) {
-                optionMap.put(getOptionKey(showFields, field), optionPropToDto(checkBoxField.getOptions()));
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.SELECT.name(), FieldType.SELECT_MULTIPLE.name())) {
-                if (field instanceof HasOption optionField) {
-                    optionMap.put(getOptionKey(showFields, field), optionPropToDto(optionField.getOptions()));
-                }
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.DATA_SOURCE.name(), FieldType.DATA_SOURCE_MULTIPLE.name())) {
-                if (field instanceof DatasourceField sourceField) {
-                    idTypeMap.put(getOptionKey(showFields, field), sourceField.getDataSourceType());
-                }
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.MEMBER.name(), FieldType.MEMBER_MULTIPLE.name())) {
-                idTypeMap.put(getOptionKey(showFields, field), FieldType.MEMBER.name());
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.DEPARTMENT.name(), FieldType.DEPARTMENT_MULTIPLE.name())) {
-                idTypeMap.put(getOptionKey(showFields, field), FieldType.DEPARTMENT.name());
-            }
-        });
+        var optionMap = new HashMap<String, List<OptionDTO>>(4);
+        var optionMeta = collectOptionMetadata(formConfig);
+        optionMap.putAll(optionMeta.staticOptions());
         if (CollectionUtils.isEmpty(allDataFields)) {
             return optionMap;
         }
-        // 平铺子表格字段值
-        List<BaseModuleFieldValue> allFieldValues = flattenSubFieldValues(formConfig, allDataFields);
-
-        // 分组获取选项 typeIdsMap: {key: 数据类型, value: id集合}
-        Map<String, List<String>> typeIdsMap = new HashMap<>(8);
-        if (CollectionUtils.isNotEmpty(allFieldValues)) {
-            allFieldValues.stream().filter(fv -> idTypeMap.containsKey(fv.getFieldId())).forEach(fv -> {
-                typeIdsMap.putIfAbsent(fv.getFieldId(), new ArrayList<>());
-                Object v = fv.getFieldValue();
-                if (v == null) {
-                    return;
-                }
-                if (v instanceof List) {
-                    typeIdsMap.get(fv.getFieldId()).addAll(JSON.parseArray(JSON.toJSONString(v), String.class));
-                } else {
-                    typeIdsMap.get(fv.getFieldId()).add(v.toString());
-                }
-            });
-        }
-        // 批量查询选项映射
+        var allFieldValues = flattenSubFieldValues(formConfig, allDataFields);
+        var typeIdsMap = collectOptionIds(allFieldValues, optionMeta.idTypeMap());
         typeIdsMap.forEach((fieldId, ids) -> {
-            if (CollectionUtils.isNotEmpty(ids) && TYPE_SOURCE_MAP.containsKey(idTypeMap.get(fieldId))) {
-                List<OptionDTO> options = extModuleFieldMapper.getSourceOptionsByIds(TYPE_SOURCE_MAP.get(idTypeMap.get(fieldId)), ids);
-                if (CollectionUtils.isNotEmpty(options)) {
-                    optionMap.put(fieldId, options);
-                }
+            var sourceType = optionMeta.idTypeMap().get(fieldId);
+            if (CollectionUtils.isEmpty(ids) || !TYPE_SOURCE_MAP.containsKey(sourceType)) {
+                return;
+            }
+            var options = extModuleFieldMapper.getSourceOptionsByIds(TYPE_SOURCE_MAP.get(sourceType), ids);
+            if (CollectionUtils.isNotEmpty(options)) {
+                optionMap.put(fieldId, options);
             }
         });
         return optionMap;
+    }
+
+    private OptionMetadata collectOptionMetadata(ModuleFormConfigDTO formConfig) {
+        var allFields = flattenFormAllFields(formConfig);
+        var showFields = allFields.stream()
+                .filter(f -> f instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()))
+                .flatMap(f -> ((DatasourceField) f).getShowFields().stream())
+                .distinct()
+                .toList();
+        var staticOptions = new HashMap<String, List<OptionDTO>>(4);
+        var idTypeMap = new HashMap<String, String>(8);
+        for (var field : allFields) {
+            var key = getOptionKey(showFields, field);
+            switch (field) {
+                case RadioField radioField when Strings.CS.equals(field.getType(), FieldType.RADIO.name()) ->
+                        staticOptions.put(key, optionPropToDto(radioField.getOptions()));
+                case CheckBoxField checkBoxField when Strings.CS.equals(field.getType(), FieldType.CHECKBOX.name()) ->
+                        staticOptions.put(key, optionPropToDto(checkBoxField.getOptions()));
+                case HasOption optionField when Strings.CS.equalsAny(field.getType(), FieldType.SELECT.name(), FieldType.SELECT_MULTIPLE.name()) ->
+                        staticOptions.put(key, optionPropToDto(optionField.getOptions()));
+                default -> {
+                }
+            }
+            if (Strings.CS.equalsAny(field.getType(), FieldType.DATA_SOURCE.name(), FieldType.DATA_SOURCE_MULTIPLE.name()) && field instanceof DatasourceField sourceField) {
+                idTypeMap.put(key, sourceField.getDataSourceType());
+            }
+            if (Strings.CS.equalsAny(field.getType(), FieldType.MEMBER.name(), FieldType.MEMBER_MULTIPLE.name())) {
+                idTypeMap.put(key, FieldType.MEMBER.name());
+            }
+            if (Strings.CS.equalsAny(field.getType(), FieldType.DEPARTMENT.name(), FieldType.DEPARTMENT_MULTIPLE.name())) {
+                idTypeMap.put(key, FieldType.DEPARTMENT.name());
+            }
+        }
+        return new OptionMetadata(staticOptions, idTypeMap);
+    }
+
+    private Map<String, List<String>> collectOptionIds(List<BaseModuleFieldValue> allFieldValues, Map<String, String> idTypeMap) {
+        var typeIdsMap = new HashMap<String, List<String>>(8);
+        allFieldValues.stream()
+                .filter(fv -> idTypeMap.containsKey(fv.getFieldId()))
+                .forEach(fv -> {
+                    typeIdsMap.putIfAbsent(fv.getFieldId(), new ArrayList<>());
+                    var value = fv.getFieldValue();
+                    if (value == null) {
+                        return;
+                    }
+                    if (value instanceof List<?> listValue) {
+                        typeIdsMap.get(fv.getFieldId()).addAll(JSON.parseArray(JSON.toJSONString(listValue), String.class));
+                    } else {
+                        typeIdsMap.get(fv.getFieldId()).add(value.toString());
+                    }
+                });
+        return typeIdsMap;
+    }
+
+    private record OptionMetadata(Map<String, List<OptionDTO>> staticOptions, Map<String, String> idTypeMap) {
     }
 
     /**
@@ -1130,9 +1142,9 @@ public class ModuleFormService {
      */
     private ModuleField supplyFieldInfo(Map<String, Object> fieldMap, String formId, Long pos, Map<String, String> controlKeyPreMap) {
         ModuleField field = new ModuleField();
+		field.setInternalKey(fieldMap.get("internalKey").toString());
         field.setId(controlKeyPreMap.containsKey(field.getInternalKey()) ? controlKeyPreMap.get(field.getInternalKey()) : IDGenerator.nextStr());
         field.setFormId(formId);
-        field.setInternalKey(fieldMap.get("internalKey").toString());
         field.setType(fieldMap.get("type").toString());
         field.setName(fieldMap.get("name").toString());
         field.setMobile((Boolean) fieldMap.getOrDefault("mobile", false));
@@ -1802,22 +1814,8 @@ public class ModuleFormService {
         ModuleForm invoiceForm = moduleFormMapper.selectListByLambda(wrapper).getFirst();
         ModuleFormBlob invoiceFormBlob = moduleFormBlobMapper.selectByPrimaryKey(invoiceForm.getId());
         Map<String, Object> propMap = JSON.parseMap(invoiceFormBlob.getProp());
-        Map<String, List<LinkScenario>> linkProp = new HashMap<>(4);
-
-        // 设置默认的 linkFields
-        ModuleField contractNameField = moduleFieldService.selectFieldsByInternalKey(BusinessModuleField.CONTRACT_NAME.getKey());
-        ModuleField invoiceContractField = moduleFieldService.selectFieldsByInternalKey(BusinessModuleField.INVOICE_CONTRACT_ID.getKey());
-        List<LinkField> linkFields = new ArrayList<>();
-        if (contractNameField != null && invoiceContractField != null) {
-            LinkField linkField = new LinkField();
-            linkField.setEnable(true);
-            linkField.setCurrent(contractNameField.getId());
-            linkField.setLink(invoiceContractField.getId());
-            linkFields.add(linkField);
-        }
-
-        linkProp.put(FormKey.CONTRACT.getKey(), List.of(LinkScenario.builder().key(LinkScenarioKey.CONTRACT_TO_INVOICE.name()).linkFields(linkFields).build()));
-        propMap.put("linkProp", linkProp);
+        List<LinkScenario> contractLinkProp = List.of(LinkScenario.builder().key(LinkScenarioKey.CONTRACT_TO_INVOICE.name()).linkFields(List.of()).build());
+        propMap.put("linkProp", Map.of(FormKey.CONTRACT.getKey(), contractLinkProp));
         invoiceFormBlob.setProp(JSON.toJSONString(propMap));
         moduleFormBlobMapper.updateById(invoiceFormBlob);
     }

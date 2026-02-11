@@ -78,12 +78,15 @@
     return rows.map((row) => row?.[fieldKey]);
   }
 
-  // 根据公式实时计算 todo xinxinwu
+  // 根据公式实时计算
   const updateValue = debounce(() => {
     const { formula } = props.fieldConfig;
     const { ir } = safeParseFormula(formula ?? '');
 
-    if (!ir) return;
+    if (!ir) {
+      value.value = 0;
+      return;
+    }
     const contextMatch = props.path.match(/^([^[]+)\[(\d+)\]\./);
 
     const context = contextMatch
@@ -92,6 +95,7 @@
           rowIndex: Number(contextMatch[2]),
         }
       : undefined;
+
     const result = evaluateIR(ir, {
       context,
       getScalarFieldValue,
@@ -102,12 +106,12 @@
       },
     });
 
-    const next = result !== null ? Number(result.toFixed(2)) : 0;
+    const next = result != null && typeof result === 'number' ? Number(result.toFixed(2)) : 0;
     // 如果值未变，不需要更新
     if (Object.is(next, value.value)) return;
     value.value = next;
     emit('change', next);
-  }, 300);
+  }, 100);
 
   watch(
     () => props.fieldConfig.defaultValue,

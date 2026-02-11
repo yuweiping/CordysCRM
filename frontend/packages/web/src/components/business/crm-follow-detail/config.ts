@@ -5,6 +5,10 @@ import { useI18n } from '@lib/shared/hooks/useI18n';
 
 import type { Description } from '@/components/pure/crm-detail-card/index.vue';
 
+interface DescriptionItem extends Description {
+  formConfigField?: string;
+}
+
 const { t } = useI18n();
 
 // 跟进计划状态
@@ -31,7 +35,7 @@ export const statusTabList = ref<TabPaneProps[]>([
   },
 ]);
 
-export const descriptionList: Description[] = [
+export const descriptionList: DescriptionItem[] = [
   {
     key: 'contactName',
     label: t('common.contact'),
@@ -41,6 +45,12 @@ export const descriptionList: Description[] = [
     key: 'phone',
     label: t('common.phoneNumber'),
     value: 'phone',
+  },
+  {
+    key: 'ownerName',
+    label: '',
+    value: 'ownerName',
+    formConfigField: 'owner',
   },
   {
     key: 'createTime',

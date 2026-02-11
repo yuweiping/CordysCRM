@@ -61,10 +61,14 @@ export function createFieldNode(token: Token) {
   }
   if (parsedToken.name) {
     node.textContent = parsedToken.name;
+    node.dataset.originText = parsedToken.name;
   }
   return node;
 }
 
+/**
+ * 回显渲染 tokens
+ */
 export function renderTokens(tokens: Token[], startIndex = 0): { fragment: DocumentFragment; endIndex: number } {
   const fragment = document.createDocumentFragment();
   let i = startIndex;
@@ -90,7 +94,7 @@ export function renderTokens(tokens: Token[], startIndex = 0): { fragment: Docum
 
       // 空参数兜底
       if (!argsNode.firstChild) {
-        argsNode.appendChild(document.createTextNode('\u200B'));
+        argsNode.appendChild(document.createTextNode(''));
       }
 
       fragment.appendChild(argsNode);
@@ -119,7 +123,11 @@ export function renderTokens(tokens: Token[], startIndex = 0): { fragment: Docum
 
   return { fragment, endIndex: i };
 }
-
+/**
+ * 将解析后的 tokens 渲染到编辑器中回显
+ * @param editor 公式编辑器实例
+ * @param tokens 公式节点tokens列表
+ */
 export function renderTokensToEditor(editor: HTMLElement, tokens: Token[]) {
   editor.innerHTML = '';
 
@@ -127,5 +135,5 @@ export function renderTokensToEditor(editor: HTMLElement, tokens: Token[]) {
   editor.appendChild(fragment);
 
   // 结尾放一个空格，保证可继续输入
-  editor.appendChild(document.createTextNode('\u200B'));
+  editor.appendChild(document.createTextNode(''));
 }

@@ -343,6 +343,9 @@ public class ContractService {
     private void setAmount(String amount, Contract contract) {
         if (StringUtils.isNotBlank(amount)) {
             contract.setAmount(new BigDecimal(amount));
+            if (contract.getAmount().compareTo(MAX_AMOUNT) > 0) {
+                throw new GenericException(Translator.get("contract.amount.exceed.max"));
+            }
         } else {
             contract.setAmount(BigDecimal.ZERO);
         }
@@ -369,7 +372,7 @@ public class ContractService {
     /**
      * 删除合同
      *
-     * @param id
+     * @param id 合同ID
      */
     @OperationLog(module = LogModule.CONTRACT_INDEX, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id) {
@@ -377,10 +380,7 @@ public class ContractService {
         if (contract == null) {
             throw new GenericException(Translator.get("contract.not.exist"));
         }
-
-        if (extContractInvoiceMapper.hasContractInvoice(id)) {
-            throw new GenericException(Translator.get("contract.has.invoice.cannot.delete"));
-        }
+        checkContractRelated(id);
 
         contractFieldService.deleteByResourceId(id);
         contractMapper.deleteByPrimaryKey(id);
@@ -787,6 +787,23 @@ public class ContractService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         } else {
             return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * 校验合同是否存在关联数据
+     *
+     * @param contractId 合同ID
+     */
+    private void checkContractRelated(String contractId) {
+        LambdaQueryWrapper<ContractPaymentRecord> recordWrapper = new LambdaQueryWrapper<>();
+        recordWrapper.eq(ContractPaymentRecord::getContractId, contractId);
+        List<ContractPaymentRecord> contractPaymentRecords = contractPaymentRecordMapper.selectListByLambda(recordWrapper);
+        if (CollectionUtils.isNotEmpty(contractPaymentRecords)) {
+            throw new GenericException(Translator.get("contract.has.payment.record"));
+        }
+        if (extContractInvoiceMapper.hasContractInvoice(contractId)) {
+            throw new GenericException(Translator.get("contract.has.invoice.cannot.delete"));
         }
     }
 }

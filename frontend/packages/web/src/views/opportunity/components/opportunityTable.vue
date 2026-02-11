@@ -9,6 +9,7 @@
     :action-config="actionConfig"
     :fullscreen-target-ref="props.fullscreenTargetRef"
     :hiddenBackToTop="activeShowType === 'billboard'"
+    :customTotal="activeShowType === 'billboard'"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
     @sorter-change="propsEvent.sorterChange"
@@ -93,9 +94,20 @@
       />
     </template>
     <template v-if="activeShowType === 'billboard'" #other>
-      <billboard ref="billboardRef" :keyword="keyword" :view-id="activeTab" :advance-filter="advanceFilter" />
+      <billboard
+        ref="billboardRef"
+        :keyword="keyword"
+        :view-id="activeTab"
+        :advance-filter="advanceFilter"
+        @change="getStatistic()"
+        @open-detail="handleOpenDetail"
+        @init="handleBillboardInit"
+      />
     </template>
     <template v-if="showStatisticInfo" #totalRight>
+      <div v-if="activeShowType === 'billboard'">
+        {{ t('crmPagination.total', { count: billboardTotalCount }) }}
+      </div>
       <div class="ml-[24px]">
         {{ t('opportunity.averageAmount') }}
         <span class="ml-[4px]">
@@ -251,6 +263,7 @@
   const activeTab = ref();
   const keyword = ref('');
   const tableRefreshId = ref(0);
+  const billboardTotalCount = ref(0);
 
   const stageConfig = ref<OpportunityStageConfig>();
   async function initStageConfig() {
@@ -751,6 +764,7 @@
     setAdvanceFilter(filter);
     if (activeShowType.value === 'billboard') {
       billboardRef.value?.refresh();
+      getStatistic();
     } else {
       loadList();
       getStatistic();
@@ -831,6 +845,7 @@
     });
     if (activeShowType.value === 'billboard') {
       billboardRef.value?.refresh();
+      getStatistic(_keyword);
     } else {
       loadList();
       getStatistic(_keyword);
@@ -998,6 +1013,21 @@
     } else {
       emit('openCustomerDrawer', params, true);
     }
+  }
+
+  function handleOpenDetail(type: 'customer' | 'opportunity', item: any) {
+    if (type === 'customer') {
+      showCustomerDrawer(item);
+    } else if (type === 'opportunity') {
+      activeSourceId.value = item.id;
+      activeOpportunity.value = item;
+      realFormKey.value = FormDesignKeyEnum.BUSINESS;
+      showOverviewDrawer.value = true;
+    }
+  }
+
+  function handleBillboardInit(total: number) {
+    billboardTotalCount.value = total;
   }
 
   onBeforeUnmount(() => {

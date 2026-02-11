@@ -62,6 +62,9 @@
                 <n-button type="primary" class="text-btn-primary" quaternary @click="handleDetail(item)">
                   {{ t('common.detail') }}
                 </n-button>
+                <n-button type="primary" class="text-btn-primary" quaternary @click="handleEdit(item)">
+                  {{ t('common.edit') }}
+                </n-button>
                 <n-button type="error" class="text-btn-error" quaternary @click="handleDelete(item.id)">
                   {{ t('common.delete') }}
                 </n-button>
@@ -82,12 +85,21 @@
       </template>
     </CrmTable>
 
+    <CrmFormCreateDrawer
+      v-model:visible="formDrawerVisible"
+      :form-key="FormDesignKeyEnum.FOLLOW_RECORD"
+      :source-id="realFollowSourceId"
+      need-init-detail
+      @saved="handleAfterSave"
+    />
     <DetailDrawer
       v-model:show="showDetailDrawer"
       :form-key="FormDesignKeyEnum.FOLLOW_RECORD"
       :source-id="sourceId"
+      :refresh-key="refreshKey"
       :source-name="sourceName"
       @delete="handleDelete(sourceId)"
+      @edit="handleEdit(activeItem)"
     />
   </CrmCard>
 </template>
@@ -109,6 +121,7 @@
   import CrmTag from '@/components/pure/crm-tag/index.vue';
   import { descriptionList } from '@/components/business/crm-follow-detail/config';
   import FollowRecord from '@/components/business/crm-follow-detail/followRecord.vue';
+  import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmViewSelect from '@/components/business/crm-view-select/index.vue';
   import DetailDrawer from './detailDrawer.vue';
@@ -117,12 +130,14 @@
   import { baseFilterConfigList } from '@/config/clue';
   import useFormCreateTable from '@/hooks/useFormCreateTable';
   import useLocalForage from '@/hooks/useLocalForage';
+  import useModal from '@/hooks/useModal';
   import useOpenDetailPage from '@/hooks/useOpenDetailPage';
 
   const { t } = useI18n();
   const Message = useMessage();
   const { goDetail } = useOpenDetailPage();
   const { setItem, getItem } = useLocalForage();
+  const { openModal } = useModal();
 
   const activeTab = ref('');
 
@@ -159,6 +174,10 @@
       key: 'detail',
     },
     {
+      label: t('common.edit'),
+      key: 'edit',
+    },
+    {
       label: t('common.delete'),
       key: 'delete',
     },
@@ -166,25 +185,54 @@
 
   const tableRefreshId = ref(0);
 
-  // 删除
-  async function handleDelete(id: string) {
-    try {
-      await deleteFollowRecord(id);
-      Message.success(t('common.deleteSuccess'));
-      tableRefreshId.value += 1;
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.log(error);
-    }
-  }
-
+  const refreshKey = ref(0);
+  const activeItem = ref<any>();
   const sourceId = ref('');
   const sourceName = ref('');
   const showDetailDrawer = ref(false);
   function handleDetail(row: any) {
     sourceId.value = row.id;
+    activeItem.value = row;
     sourceName.value = row.resourceType === 'CLUE' ? row.clueName : row.customerName;
     showDetailDrawer.value = true;
+  }
+
+  // 删除
+  async function handleDelete(id: string) {
+    openModal({
+      type: 'error',
+      title: t('common.deleteConfirm'),
+      positiveText: t('common.confirmDelete'),
+      content: t('common.deleteConfirmContent'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: async () => {
+        try {
+          await deleteFollowRecord(id);
+          Message.success(t('common.deleteSuccess'));
+          tableRefreshId.value += 1;
+          if (showDetailDrawer.value) {
+            showDetailDrawer.value = false;
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.log(error);
+        }
+      },
+    });
+  }
+
+  const formDrawerVisible = ref(false);
+  const realFollowSourceId = ref<string | undefined>('');
+  function handleEdit(item: any) {
+    realFollowSourceId.value = item.id;
+    formDrawerVisible.value = true;
+  }
+
+  function handleAfterSave() {
+    if (showDetailDrawer.value) {
+      refreshKey.value += 1;
+    }
+    tableRefreshId.value += 1;
   }
 
   function handleActionSelect(row: any, actionKey: string) {
@@ -195,18 +243,21 @@
       case 'delete':
         handleDelete(row.id);
         break;
+      case 'edit':
+        handleEdit(row);
+        break;
       default:
         break;
     }
   }
 
-  const { useTableRes, customFieldsFilterConfig } = await useFormCreateTable({
+  const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: FormDesignKeyEnum.FOLLOW_RECORD,
     containerClass: '.crm-record-table',
     hiddenRefresh: true,
     operationColumn: {
       key: 'operation',
-      width: 100,
+      width: 140,
       fixed: 'right',
       render: (row: any) =>
         h(CrmOperationButton, {
@@ -298,14 +349,23 @@
           value: customerNameKey,
         },
       ],
-      ...descriptionList,
+      ...descriptionList.map((descriptionItem) => {
+        if (!descriptionItem.formConfigField) {
+          return descriptionItem;
+        }
+        const label = fieldList.value.find((field) => field.businessKey === descriptionItem.formConfigField)?.name;
+        return {
+          ...descriptionItem,
+          label,
+        };
+      }),
     ];
 
     if (isClue) {
       lastDescriptionList = lastDescriptionList.filter((e) => !['contactName', 'phone'].includes(e.key));
     }
 
-    return (lastDescriptionList.map((desc: Description) => ({
+    return (lastDescriptionList.map((desc) => ({
       ...desc,
       value: item[desc.key as keyof any],
     })) || []) as Description[];

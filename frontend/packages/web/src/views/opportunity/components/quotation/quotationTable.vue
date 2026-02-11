@@ -560,12 +560,6 @@
         h(quotationStatus, {
           status: row.approvalStatus,
         }),
-      amount: (row: QuotationItem) => {
-        return formatNumberValue(row.amount ?? 0, {
-          ...inputNumberDefaultFieldConfig,
-          showThousandsSeparator: true,
-        });
-      },
     },
     permission: ['OPPORTUNITY_QUOTATION:APPROVAL', 'OPPORTUNITY_QUOTATION:VOIDED'],
     readonly: props.readonly,
@@ -599,11 +593,6 @@
           showContainChildModule: true,
           type: 'department',
         },
-      },
-      {
-        title: t('opportunity.quotation.amount'),
-        dataIndex: 'amount',
-        type: FieldTypeEnum.INPUT_NUMBER,
       },
       ...baseFilterConfigList,
     ] as FilterFormItem[];

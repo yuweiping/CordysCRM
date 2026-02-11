@@ -55,6 +55,8 @@ export const {
   deleteFollowRecord,
   getFollowRecordTab,
   updateFollowRecord,
+  addFollowRecord,
+  addFollowPlan,
   dragFollowPlanView,
   getFollowPlanDetail,
   getFollowRecordPage,
@@ -685,8 +687,13 @@ export const {
   dashboardModuleRename,
 } = dashboardApi;
 
-export const { getHomeDepartmentTree, getHomeFollowOpportunity, getHomeLeadStatistic, getHomeSuccessOptStatistic } =
-  homeApi;
+export const {
+  getHomeDepartmentTree,
+  getHomeFollowOpportunity,
+  getHomeLeadStatistic,
+  getHomeSuccessOptStatistic,
+  getHomeOpportunityUnderwayStatistic,
+} = homeApi;
 
 export const {
   addAgent,

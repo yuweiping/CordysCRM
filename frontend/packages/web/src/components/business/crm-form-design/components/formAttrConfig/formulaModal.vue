@@ -2,7 +2,7 @@
   <CrmModal
     v-model:show="visible"
     :title="t('crmFormDesign.formulaSetting')"
-    :positive-text="t('common.confirm')"
+    :positive-text="t('common.save')"
     :maskClosable="false"
     footer
     :width="800"
@@ -19,9 +19,11 @@
 </template>
 
 <script setup lang="ts">
+  import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
   import CrmModal from '@/components/pure/crm-modal/index.vue';
+  import CrmTag from '@/components/pure/crm-tag/index.vue';
   import { FormCreateField } from '@/components/business/crm-form-create/types';
   import CrmFormulaEditor from '@/components/business/crm-formula-editor/index.vue';
 

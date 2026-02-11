@@ -151,8 +151,6 @@
   import useOpenNewPage from '@/hooks/useOpenNewPage';
   import { hasAnyPermission } from '@/utils/permission';
 
-  import { CustomerRouteEnum, OpportunityRouteEnum } from '@/enums/routeEnum';
-
   const props = defineProps<{
     keyword?: string;
     refreshTimeStamp?: number;
@@ -166,8 +164,10 @@
     viewId?: string;
   }>();
   const emit = defineEmits<{
+    (e: 'init', total: number): void;
     (e: 'fail', item: OpportunityItem): void;
     (e: 'change', stage: string): void;
+    (e: 'openDetail', type: 'customer' | 'opportunity', item: any): void;
   }>();
 
   const { t } = useI18n();
@@ -236,6 +236,7 @@
         list.value = list.value.concat(res.list);
         pageNation.value.total = res.total;
         optionMap.value = res.optionMap || {};
+        emit('init', res.total);
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -397,21 +398,7 @@
   }
 
   function jumpToDetail(type: 'customer' | 'opportunity', item: any) {
-    if (type === 'customer') {
-      if (item.inCustomerPool) {
-        openNewPage(CustomerRouteEnum.CUSTOMER_OPEN_SEA, {
-          id: item.customerId,
-        });
-      } else {
-        openNewPage(CustomerRouteEnum.CUSTOMER_INDEX, {
-          id: item,
-        });
-      }
-    } else if (type === 'opportunity') {
-      openNewPage(OpportunityRouteEnum.OPPORTUNITY_OPT, {
-        id: item.id,
-      });
-    }
+    emit('openDetail', type, item);
   }
 
   onBeforeMount(() => {

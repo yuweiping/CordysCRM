@@ -51,7 +51,7 @@ RUN echo -n "${CRM_VERSION}" > /tmp/CRM_VERSION
 
 VOLUME [ "/opt/cordys" ]
 
-EXPOSE 8081 8082 3306
+EXPOSE 8081 8082
 
 RUN chmod 777  /shells/*.sh
 ENTRYPOINT ["sh", "/shells/start-all.sh"]

@@ -63,23 +63,29 @@ jobs:
             echo "latest_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           fi
 
-      - name: 获取Release说明（轻量兜底）
+      - name: 获取原仓库Release Notes（验证参数）
         id: get-notes
         if: steps.check-tag.outputs.has_new_tag == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          UPSTREAM_OWNER: "1Panel-dev"
+          UPSTREAM_REPO: "CordysCRM"
+          TAG: ${{ steps.check-tag.outputs.latest_tag }}
         run: |
-          TAG=${{ steps.check-tag.outputs.latest_tag }}
-          # 1. 调用 GitHub API 获取 Release Notes，使用 jq 容错
-          NOTES=$(gh api repos/1Panel-dev/CordysCRM/releases/tags/$TAG --jq '.body // "无发布说明"' 2>/dev/null || echo "无发布说明")
-          # 2. 强制兜底：如果结果为空，设置为默认值
-          if [ -z "$NOTES" ]; then
-            NOTES="无发布说明"
+          # 新增：打印TAG的原始值和长度（关键验证）
+          echo "🔍 传递过来的TAG原始值：[$TAG]"
+          echo "🔍 TAG字符长度：${#TAG}"
+          
+          # 你之前的成功逻辑（仅加空值兜底）
+          NOTES=$(gh api repos/$UPSTREAM_OWNER/$UPSTREAM_REPO/releases/tags/$TAG --jq '.body' 2>/dev/null || echo "无发布说明")
+          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n//g')
+          
+          # 空值兜底（唯一补丁）
+          if [ -z "$NOTES_ESCAPED" ]; then
+            NOTES_ESCAPED="无发布说明"
           fi
-          # 3. 转义换行符，避免格式问题
-          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/\n/<br>/g')
-          # 4. 关键修复：使用 printf 写入 GITHUB_OUTPUT，避免空字符串问题
-          printf "release_notes=%s\n" "$NOTES_ESCAPED" >> $GITHUB_OUTPUT
+          
+          echo "release_notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
 
       - name: 同步tag + 合并到dev-yu
         if: steps.check-tag.outputs.has_new_tag == 'true'

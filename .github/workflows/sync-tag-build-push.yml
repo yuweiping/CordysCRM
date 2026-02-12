@@ -97,19 +97,32 @@ jobs:
 
       - name: PushPlus推送
         if: steps.check-tag.outputs.has_new_tag == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = process.env.PUSHPLUS_TOKEN;
+            const tag = process.env.TAG;
+            const notes = process.env.NOTES;
+      
+            // 转义特殊字符，适配HTML
+            const notesEscaped = notes.replace(/"/g, '\\"').replace(/\n/g, '<br>').replace(/[^\x20-\x7E]/g, '');
+      
+            const data = {
+              token: token,
+              title: `CordysCRM 新Tag: ${tag}`,
+              content: `新版本：${tag}<br>发布说明：${notesEscaped}`,
+              template: "html"
+            };
+      
+            await fetch('https://www.pushplus.plus/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            });
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        run: |
-          TAG=${{ steps.check-tag.outputs.latest_tag }}
-          NOTES=${{ steps.get-notes.outputs.release_notes }}
-          
-          # 关键修复：先对NOTES进行转义，处理emoji、引号、换行符等特殊字符
-          NOTES_ESCAPED='xxxxxxxx'
-          
-          # 极简curl命令（单行，避免换行干扰）
-          curl -X POST https://www.pushplus.plus/send \
-          -H "Content-Type: application/json" \
-          -d "{\"token\":\"$PUSHPLUS_TOKEN\",\"title\":\"CordysCRM 新Tag: $TAG\",\"content\":\"新版本：$TAG<br>发布说明：$NOTES_ESCAPED\",\"template\":\"html\"}"
+          TAG: ${{ steps.check-tag.outputs.latest_tag }}
+          NOTES: ${{ steps.get-notes.outputs.release_notes }}
 
   # ========== 打包推送：和PushPlus严格联动 ==========
   build-docker:

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cn.cordys.crm.biz.mapper.WhatsappSyncRecordMapper">
+
+    <resultMap id="BaseResultMap" type="cn.cordys.crm.biz.domain.WhatsappSyncRecord">
+        <id column="id" property="id"/>
+        <result column="owner_phone" property="ownerPhone"/>
+        <result column="contact_phone" property="contactPhone"/>
+        <result column="interact_date" property="interactDate"/>
+        <result column="sync_time" property="syncTime"/>
+        <result column="type" property="type"/>
+        <result column="target_id" property="targetId"/>
+    </resultMap>
+
+    <!-- 批量插入，冲突时忽略（MySQL ON DUPLICATE KEY UPDATE 无操作） -->
+    <!-- 批量插入，冲突时更新 -->
+    <insert id="insertBatchIgnore" parameterType="java.util.List">
+        INSERT INTO biz_whatsapp_sync_record
+        (owner_phone, contact_phone, interact_date, sync_time, type, target_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.ownerPhone},
+            #{item.contactPhone},
+            #{item.interactDate},
+            NOW(),
+            #{item.type},
+            #{item.targetId}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+        interact_date = VALUES(interact_date),
+        sync_time = NOW()
+    </insert>
+
+    <select id="selectByContact" resultMap="BaseResultMap">
+        SELECT *
+        FROM biz_whatsapp_sync_record
+        WHERE contact_phone = #{contactPhone}
+        ORDER BY interact_date DESC LIMIT 1
+    </select>
+    <select id="selectByOwnerAndContact" resultMap="BaseResultMap">
+        SELECT *
+        FROM biz_whatsapp_sync_record
+        WHERE owner_phone = #{ownerPhone}
+          AND contact_phone = #{contactPhone}
+        ORDER BY interact_date DESC LIMIT 1
+    </select>
+    <!-- 查询负责人冲突的记录 -->
+    <select id="selectOwnerConflict" resultMap="BaseResultMap">
+        SELECT *
+        FROM biz_whatsapp_sync_record
+        WHERE contact_phone = #{contactPhone}
+          AND owner_phone != #{currentOwnerPhone}
+    </select>
+
+    <!-- 更新WhatsApp同步记录 -->
+    <!-- 更新WhatsApp同步记录 -->
+    <update id="update" parameterType="cn.cordys.crm.biz.domain.WhatsappSyncRecord">
+        UPDATE biz_whatsapp_sync_record
+        <set>
+            <if test="record.type != null">type = #{record.type},</if>
+            <if test="record.targetId != null">target_id = #{record.targetId},</if>
+            <if test="record.interactDate != null">interact_date = #{record.interactDate},</if>
+            <if test="record.syncTime != null">sync_time = #{record.syncTime},</if>
+            <if test="record.ownerPhone != null">owner_phone = #{record.ownerPhone},</if>
+            <if test="record.contactPhone != null">contact_phone = #{record.contactPhone},</if>
+        </set>
+        WHERE id = #{record.id}
+    </update>
+
+</mapper>

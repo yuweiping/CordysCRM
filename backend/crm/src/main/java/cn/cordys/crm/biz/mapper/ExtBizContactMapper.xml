@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.cordys.crm.biz.mapper.ExtBizContactMapper">
+
+    <select id="getClueByUserPhone" resultType="cn.cordys.crm.biz.dto.ClueByPhoneResponse">
+        SELECT c.*,
+               MAX(CASE WHEN cf.field_id = 'category' THEN cf.field_value END) AS category,
+               MAX(CASE WHEN cf.field_id = 'website' THEN cf.field_value END)  AS website
+        FROM clue c
+                 LEFT JOIN clue_field cf ON c.id = cf.resource_id
+        WHERE c.owner = (SELECT id FROM sys_user WHERE phone = #{phone})
+          and c.id not in (SELECT clue_id from follow_up_record WHERE clue_id IS NOT NULL)
+        GROUP BY c.id limit 50
+    </select>
+</mapper>

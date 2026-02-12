@@ -45,11 +45,17 @@ jobs:
         run: |
           UPSTREAM_TAG=$(git ls-remote --tags upstream | grep -v '{}' | awk '{print $2}' | sed 's/refs\/tags\///' | sort -V | tail -n 1 | xargs)
           LOCAL_TAG=$(git tag -l | sort -V | tail -n 1 | xargs)
-          
+      
+          # 新增两行日志，打印实际获取到的tag值
+          echo "🔍 原仓库最新tag: [$UPSTREAM_TAG]"
+          echo "🔍 本地fork最新tag: [$LOCAL_TAG]"
+      
           if [[ -n "$UPSTREAM_TAG" && "$UPSTREAM_TAG" != "$LOCAL_TAG" ]]; then
+            echo "✅ 发现新tag: $UPSTREAM_TAG"
             echo "has_new_tag=true" >> $GITHUB_OUTPUT
             echo "latest_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           else
+            echo "❌ 无新tag（原tag=$UPSTREAM_TAG，本地tag=$LOCAL_TAG）"
             echo "has_new_tag=false" >> $GITHUB_OUTPUT
             echo "latest_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           fi

@@ -100,14 +100,16 @@ jobs:
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: |
-          # 完全复用你之前成功的变量读取方式
           TAG=${{ steps.check-tag.outputs.latest_tag }}
           NOTES=${{ steps.get-notes.outputs.release_notes }}
           
-          # 极简curl命令（和你之前成功版本一致，无emoji、无多余换行）
+          # 关键修复：先对NOTES进行转义，处理emoji、引号、换行符等特殊字符
+          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed 's/\n/\\n/g' | sed 's/[^[:print:]]//g')
+          
+          # 极简curl命令（单行，避免换行干扰）
           curl -X POST https://www.pushplus.plus/send \
           -H "Content-Type: application/json" \
-          -d "{\"token\":\"$PUSHPLUS_TOKEN\",\"title\":\"CordysCRM 新Tag: $TAG\",\"content\":\"新版本：$TAG<br>发布说明：$NOTES\",\"template\":\"html\"}"
+          -d "{\"token\":\"$PUSHPLUS_TOKEN\",\"title\":\"CordysCRM 新Tag: $TAG\",\"content\":\"新版本：$TAG<br>发布说明：$NOTES_ESCAPED\",\"template\":\"html\"}"
 
   # ========== 打包推送：和PushPlus严格联动 ==========
   build-docker:

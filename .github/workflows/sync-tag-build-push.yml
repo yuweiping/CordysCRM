@@ -1,9 +1,9 @@
-name: Sync Tag + Build & Push to DockerHub
+name: Sync Tag + Build & Push to DockerHub + PushPlus Notify
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # 每天凌晨2点（UTC+8）自动运行
-  workflow_dispatch: # 支持手动触发（可传参控制打包的tag）
+    - cron: '0 18 * * *'  # 每天凌晨2点（UTC+8）
+  workflow_dispatch:
     inputs:
       dockerImageTag:
         description: 'Docker镜像标签'
@@ -20,52 +20,72 @@ on:
           - linux/amd64,linux/arm64
 
 permissions:
-  contents: write  # 同步tag需要的权限
-  packages: write  # 推送DockerHub需要的权限
+  contents: write
+  packages: write
+  repository-projects: read
 
 jobs:
-  # ========== 第一个Job：同步原仓库新tag并合并到dev-yu ==========
   sync-tag-merge:
     runs-on: ubuntu-latest
     outputs:
-      latest_tag: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}  # 传递最新tag给下一个Job
+      latest_tag: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
+      has_new_tag: ${{ steps.check-new-tag.outputs.has_new_tag }}
+      release_notes: ${{ steps.get-release-notes.outputs.release_notes }}
     steps:
-      - name: 检出仓库（完整历史）
+      - name: 检出仓库
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: dev-yu
 
-      - name: 配置Git信息
+      - name: 配置Git
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      - name: 添加原仓库为upstream
+      - name: 添加上游仓库
         env:
-          UPSTREAM_REPO: "https://github.com/1Panel-dev/CordysCRM.git"  # 替换为原仓库地址
+          UPSTREAM_REPO: "https://github.com/1Panel-dev/CordysCRM.git"
         run: |
           git remote add upstream $UPSTREAM_REPO 2>/dev/null || true
           git fetch upstream --tags --prune
           git fetch origin
 
-      - name: 找出原仓库最新tag
+      - name: 获取最新tag
         id: get-latest-tag
         run: |
-          # 获取原仓库最新语义化tag
           LATEST_UPSTREAM_TAG=$(git ls-remote --tags upstream | grep -v '{}' | awk '{print $2}' | sed 's/refs\/tags\///' | sort -V | tail -n 1)
           LATEST_FORK_TAG=$(git tag -l | sort -V | tail -n 1)
-          
           echo "latest_upstream_tag=$LATEST_UPSTREAM_TAG" >> $GITHUB_OUTPUT
           echo "原仓库最新tag: $LATEST_UPSTREAM_TAG"
-          echo "Fork仓库最新tag: $LATEST_FORK_TAG"
+          echo "当前fork最新tag: $LATEST_FORK_TAG"
 
-      - name: 同步新tag并合并到dev-yu
-        if: steps.get-latest-tag.outputs.latest_upstream_tag != steps.get-latest-tag.outputs.latest_fork_tag
+      - name: 判断是否有新tag
+        id: check-new-tag
         run: |
-          # 推送新tag到Fork仓库
+          if [ "${{ steps.get-latest-tag.outputs.latest_upstream_tag }}" != "${{ steps.get-latest-tag.outputs.latest_fork_tag }}" ]; then
+            echo "has_new_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_new_tag=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 获取原仓库Release Notes
+        id: get-release-notes
+        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_OWNER: "1Panel-dev"
+          UPSTREAM_REPO: "CordysCRM"
+          TAG: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
+        run: |
+          NOTES=$(gh api repos/$UPSTREAM_OWNER/$UPSTREAM_REPO/releases/tags/$TAG --jq '.body' 2>/dev/null || echo "无发布说明")
+          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n//g')
+          echo "release_notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
+
+      - name: 同步tag并合并到dev-yu
+        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+        run: |
           git push origin ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
-          # 确保dev-yu分支存在并合并新tag
           if ! git show-ref --verify --quiet refs/heads/dev-yu; then
             git checkout main && git checkout -b dev-yu
           else
@@ -74,39 +94,19 @@ jobs:
           git merge --no-edit --strategy-option theirs ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
           git push origin dev-yu
 
-  # ========== 第二个Job：打包并推送到DockerHub（依赖第一个Job完成） ==========
-  build-push-dockerhub:
-    needs: sync-tag-merge  # 必须等同步Job完成才执行
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出dev-yu分支（已合并最新tag）
-        uses: actions/checkout@v4
-        with:
-          ref: dev-yu
-          fetch-depth: 0
-
-      - name: 准备镜像标签（优先用同步的最新tag，也支持手动传参）
-        id: prepare
+      # ====================== 这里是 PushPlus 推送 ======================
+      - name: 推送新Tag通知到PushPlus
+        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          TAG: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
+          RELEASE_NOTES: ${{ steps.get-release-notes.outputs.release_notes }}
         run: |
-          # 优先用同步的最新tag，若手动传参则用传参值
-          TAG=${{ github.event.inputs.dockerImageTag || needs.sync-tag-merge.outputs.latest_tag }}
-          DOCKER_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/cordys-crm-ce
-          echo "docker_image=${DOCKER_IMAGE}:${TAG}" >> $GITHUB_OUTPUT
-          echo "build_args=--tag ${DOCKER_IMAGE}:${TAG} --tag ${DOCKER_IMAGE}:latest" >> $GITHUB_OUTPUT
-
-      - name: 设置QEMU和Buildx
-        uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-
-      - name: 登录DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: 构建并推送镜像
-        run: |
-          docker buildx build --platform ${{ github.event.inputs.architecture }} \
-            --output "type=image,push=true" \
-            ${{ steps.prepare.outputs.build_args }} \
-            -f installer/Dockerfile .
+          curl -X POST https://www.pushplus.plus/send \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"token\":\"$PUSHPLUS_TOKEN\",
+              \"title\":\"CordysCRM 发现新Tag\",
+              \"content\":\"<b>新版本：</b>$TAG<br><br><b>发布说明：</b><br>$RELEASE_NOTES\",
+              \"template\":\"html\"
+            }"

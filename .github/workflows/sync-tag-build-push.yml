@@ -1,112 +1,125 @@
-name: Sync Tag + Build & Push to DockerHub + PushPlus Notify
+name: Sync Tag + Build & Push + PushPlus Notify
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # 每天凌晨2点（UTC+8）
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       dockerImageTag:
-        description: 'Docker镜像标签'
         default: 'latest'
         required: true
+        description: 'Docker镜像标签'
       architecture:
-        description: '架构'
         default: 'linux/amd64'
         required: true
         type: choice
-        options:
-          - linux/amd64
-          - linux/arm64
-          - linux/amd64,linux/arm64
+        options: [linux/amd64, linux/arm64, linux/amd64,linux/arm64]
 
 permissions:
   contents: write
   packages: write
-  repository-projects: read
 
 jobs:
-  sync-tag-merge:
+  sync-tag:
     runs-on: ubuntu-latest
     outputs:
-      latest_tag: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
-      has_new_tag: ${{ steps.check-new-tag.outputs.has_new_tag }}
-      release_notes: ${{ steps.get-release-notes.outputs.release_notes }}
+      has_new_tag: ${{ steps.check-tag.outputs.has_new_tag }}
+      latest_tag: ${{ steps.check-tag.outputs.latest_tag }}
+      release_notes: ${{ steps.get-notes.outputs.release_notes }}
     steps:
-      - name: 检出仓库
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: dev-yu
+          fetch-tags: true
 
-      - name: 配置Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: 添加上游仓库
+      - name: 配置上游仓库 & 拉取tag
         env:
           UPSTREAM_REPO: "https://github.com/1Panel-dev/CordysCRM.git"
         run: |
           git remote add upstream $UPSTREAM_REPO 2>/dev/null || true
           git fetch upstream --tags --prune
-          git fetch origin
 
-      - name: 获取最新tag
-        id: get-latest-tag
+      - name: 核心判断：是否有新tag（仅清理隐藏字符）
+        id: check-tag
         run: |
-          LATEST_UPSTREAM_TAG=$(git ls-remote --tags upstream | grep -v '{}' | awk '{print $2}' | sed 's/refs\/tags\///' | sort -V | tail -n 1)
-          LATEST_FORK_TAG=$(git tag -l | sort -V | tail -n 1)
-          echo "latest_upstream_tag=$LATEST_UPSTREAM_TAG" >> $GITHUB_OUTPUT
-          echo "原仓库最新tag: $LATEST_UPSTREAM_TAG"
-          echo "当前fork最新tag: $LATEST_FORK_TAG"
-
-      - name: 判断是否有新tag
-        id: check-new-tag
-        run: |
-          if [ "${{ steps.get-latest-tag.outputs.latest_upstream_tag }}" != "${{ steps.get-latest-tag.outputs.latest_fork_tag }}" ]; then
+          # 1. 获取并清理原仓库/本地最新tag（仅去空格/换行）
+          UPSTREAM_TAG=$(git ls-remote --tags upstream | grep -v '{}' | awk '{print $2}' | sed 's/refs\/tags\///' | sort -V | tail -n 1 | xargs)
+          LOCAL_TAG=$(git tag -l | sort -V | tail -n 1 | xargs)
+          
+          # 2. 严格对比：仅当原tag非空且≠本地tag，才判定为有新tag
+          if [[ -n "$UPSTREAM_TAG" && "$UPSTREAM_TAG" != "$LOCAL_TAG" ]]; then
             echo "has_new_tag=true" >> $GITHUB_OUTPUT
+            echo "latest_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           else
             echo "has_new_tag=false" >> $GITHUB_OUTPUT
+            echo "latest_tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
           fi
 
-      - name: 获取原仓库Release Notes
-        id: get-release-notes
-        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+      - name: 获取Release说明（仅新tag时）
+        id: get-notes
+        if: steps.check-tag.outputs.has_new_tag == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          UPSTREAM_OWNER: "1Panel-dev"
-          UPSTREAM_REPO: "CordysCRM"
-          TAG: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
         run: |
-          NOTES=$(gh api repos/$UPSTREAM_OWNER/$UPSTREAM_REPO/releases/tags/$TAG --jq '.body' 2>/dev/null || echo "无发布说明")
-          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n//g')
-          echo "release_notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
+          TAG=${{ steps.check-tag.outputs.latest_tag }}
+          NOTES=$(gh api repos/1Panel-dev/CordysCRM/releases/tags/$TAG --jq '.body' 2>/dev/null || echo "无发布说明")
+          NOTES=$(echo "$NOTES" | sed 's/\n/<br>/g' | xargs -0) # 仅转义换行
+          echo "release_notes=$NOTES" >> $GITHUB_OUTPUT
 
-      - name: 同步tag并合并到dev-yu
-        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+      - name: 同步tag + 合并到dev-yu（仅新tag时）
+        if: steps.check-tag.outputs.has_new_tag == 'true'
         run: |
-          git push origin ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
-          if ! git show-ref --verify --quiet refs/heads/dev-yu; then
-            git checkout main && git checkout -b dev-yu
-          else
-            git checkout dev-yu
-          fi
-          git merge --no-edit --strategy-option theirs ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
+          git push origin ${{ steps.check-tag.outputs.latest_tag }}
+          git checkout dev-yu
+          git merge --no-edit --strategy-option theirs ${{ steps.check-tag.outputs.latest_tag }}
           git push origin dev-yu
 
-      # ====================== 这里是 PushPlus 推送 ======================
-      - name: 推送新Tag通知到PushPlus
-        if: steps.check-new-tag.outputs.has_new_tag == 'true'
+      - name: PushPlus推送（仅新tag时）
+        if: steps.check-tag.outputs.has_new_tag == 'true'
         env:
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          TAG: ${{ steps.get-latest-tag.outputs.latest_upstream_tag }}
-          RELEASE_NOTES: ${{ steps.get-release-notes.outputs.release_notes }}
         run: |
+          TAG=${{ steps.check-tag.outputs.latest_tag }}
+          NOTES=${{ steps.get-notes.outputs.release_notes }}
           curl -X POST https://www.pushplus.plus/send \
             -H "Content-Type: application/json" \
             -d "{
               \"token\":\"$PUSHPLUS_TOKEN\",
-              \"title\":\"CordysCRM 发现新Tag\",
-              \"content\":\"<b>新版本：</b>$TAG<br><br><b>发布说明：</b><br>$RELEASE_NOTES\",
+              \"title\":\"CordysCRM 新Tag: $TAG\",
+              \"content\":\"新版本：$TAG<br>发布说明：$NOTES\",
               \"template\":\"html\"
             }"
+
+  # ========== 打包推送：和PushPlus同条件，确保联动 ==========
+  build-docker:
+    needs: sync-tag
+    if: needs.sync-tag.outputs.has_new_tag == 'true' # 和推送完全同条件
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev-yu
+          fetch-depth: 0
+
+      - name: 准备镜像标签
+        id: prepare
+        run: |
+          TAG=${{ needs.sync-tag.outputs.latest_tag || github.event.inputs.dockerImageTag }}
+          echo "build_args=--tag ${{ secrets.DOCKERHUB_USERNAME }}/cordys-crm-ce:$TAG --tag ${{ secrets.DOCKERHUB_USERNAME }}/cordys-crm-ce:latest" >> $GITHUB_OUTPUT
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 构建并推送
+        run: |
+          docker buildx build --platform ${{ github.event.inputs.architecture }} \
+            --output "type=image,push=true" \
+            ${{ steps.prepare.outputs.build_args }} \
+            -f installer/Dockerfile .

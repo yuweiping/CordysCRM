@@ -70,12 +70,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG=${{ steps.check-tag.outputs.latest_tag }}
-          # 修复1：jq 加容错，避免解析失败返回空
-          # 修复2：仅当最终结果为空时兜底，不影响正常内容
+          # 1. 调用 GitHub API 获取 Release Notes，使用 jq 容错
           NOTES=$(gh api repos/1Panel-dev/CordysCRM/releases/tags/$TAG --jq '.body // "无发布说明"' 2>/dev/null || echo "无发布说明")
-          # 仅转义换行，不修改原有内容
-          NOTES=$(echo "$NOTES" | sed 's/\n/<br>/g')
-          echo "release_notes=$NOTES" >> $GITHUB_OUTPUT
+          # 2. 强制兜底：如果结果为空，设置为默认值
+          if [ -z "$NOTES" ]; then
+            NOTES="无发布说明"
+          fi
+          # 3. 转义换行符，避免格式问题
+          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/\n/<br>/g')
+          # 4. 关键修复：使用 printf 写入 GITHUB_OUTPUT，避免空字符串问题
+          printf "release_notes=%s\n" "$NOTES_ESCAPED" >> $GITHUB_OUTPUT
 
       - name: 同步tag + 合并到dev-yu
         if: steps.check-tag.outputs.has_new_tag == 'true'

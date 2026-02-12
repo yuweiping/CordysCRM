@@ -104,7 +104,7 @@ jobs:
           NOTES=${{ steps.get-notes.outputs.release_notes }}
           
           # 关键修复：先对NOTES进行转义，处理emoji、引号、换行符等特殊字符
-          NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed 's/\n/\\n/g' | sed 's/[^[:print:]]//g')
+          NOTES_ESCAPED='xxxxxxxx'
           
           # 极简curl命令（单行，避免换行干扰）
           curl -X POST https://www.pushplus.plus/send \

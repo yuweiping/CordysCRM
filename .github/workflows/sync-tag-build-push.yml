@@ -104,13 +104,10 @@ jobs:
             const tag = process.env.TAG;
             const notes = process.env.NOTES;
       
-            // 转义特殊字符，适配HTML
-            const notesEscaped = notes.replace(/"/g, '\\"').replace(/\n/g, '<br>').replace(/[^\x20-\x7E]/g, '');
-      
             const data = {
               token: token,
               title: `CordysCRM 新Tag: ${tag}`,
-              content: `新版本：${tag}<br>发布说明：${notesEscaped}`,
+              content: `新版本：${tag}<br>发布说明：${notes}`,
               template: "html"
             };
       

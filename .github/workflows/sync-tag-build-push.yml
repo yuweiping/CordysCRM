@@ -89,10 +89,20 @@ jobs:
 
       - name: 同步tag + 合并到dev-yu
         if: steps.check-tag.outputs.has_new_tag == 'true'
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
+          # 用 PAT 重设远程地址
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
+          
+          # 推送tag
           git push origin ${{ steps.check-tag.outputs.latest_tag }}
+          
+          # 合并
           git checkout dev-yu
           git merge --no-edit --strategy-option theirs ${{ steps.check-tag.outputs.latest_tag }}
+          
+          # 推送dev-yu
           git push origin dev-yu
 
       - name: PushPlus推送

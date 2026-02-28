@@ -92,17 +92,24 @@ jobs:
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # 用 PAT 重设远程地址
+          # 设置用户名（必须）
+          git config user.name "your-username"
+          git config user.email "your-email@example.com"
+      
+          # 使用 PAT 认证
           git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
-          
+      
+          # 确认当前远程地址
+          git remote -v
+      
           # 推送tag
           git push origin ${{ steps.check-tag.outputs.latest_tag }}
-          
+      
           # 合并
           git checkout dev-yu
           git merge --no-edit --strategy-option theirs ${{ steps.check-tag.outputs.latest_tag }}
-          
-          # 推送dev-yu
+      
+          # 推送
           git push origin dev-yu
 
       - name: PushPlus推送

@@ -68,8 +68,9 @@ public class BusinessController {
     @GetMapping("/contact/check-phone")
     @Operation(summary = "根据手机号是否已经存在客户联系记录")
     public ResultHolder checkPhone(
-            @Parameter(description = "手机号", required = true) @RequestParam String phone) {
-        return whatsappSyncService.checkPhone(phone);
+            @Parameter(description = "手机号", required = true) @RequestParam String phone,
+            @Parameter(description = "联系人电话", required = true) @RequestParam String contactPhone) {
+        return whatsappSyncService.checkPhone(phone, contactPhone);
     }
 
     @GetMapping("/clue/to-pool")

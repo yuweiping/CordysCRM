@@ -60,8 +60,8 @@ public class WhatsappSyncService {
      * @param phone 手机号
      * @return 是否存在客户联系记录
      */
-    public ResultHolder checkPhone(String phone) {
-        WhatsappSyncRecord record = whatsappSyncRecordMapper.selectByContact(phone);
+    public ResultHolder checkPhone(String phone, String contactPhone) {
+        WhatsappSyncRecord record = whatsappSyncRecordMapper.selectByOwnerAndContact(phone, contactPhone);
         return ResultHolder.success(record);
     }
 

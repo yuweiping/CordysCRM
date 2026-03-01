@@ -15,7 +15,8 @@ public interface WhatsappSyncRecordMapper {
     /**
      * 根据 contactPhone 查询最新记录
      */
-    WhatsappSyncRecord selectByContact(
+    List<WhatsappSyncRecord> checkPhone(
+            @Param("ownerPhone") String ownerPhone,
             @Param("contactPhone") String contactPhone
     );
 

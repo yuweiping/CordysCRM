@@ -61,8 +61,8 @@ public class WhatsappSyncService {
      * @return 是否存在客户联系记录
      */
     public ResultHolder checkPhone(String phone, String contactPhone) {
-        WhatsappSyncRecord record = whatsappSyncRecordMapper.selectByOwnerAndContact(phone, contactPhone);
-        return ResultHolder.success(record);
+        List<WhatsappSyncRecord> records = whatsappSyncRecordMapper.checkPhone(phone, contactPhone);
+        return ResultHolder.success(records);
     }
 
     /**

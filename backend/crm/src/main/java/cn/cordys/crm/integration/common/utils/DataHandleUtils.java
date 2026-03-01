@@ -430,6 +430,7 @@ public class DataHandleUtils {
         User updateUser = new User();
         updateUser.setId(orgUser.getUserId());
         updateUser.setName(thirdUser.getName());
+        Optional.ofNullable(thirdUser.getGender()).ifPresent(g -> updateUser.setGender(g != 1));
         updateUser.setUpdateTime(timestamp);
         updateUser.setUpdateUser(operatorId);
         updateUser.setLastOrganizationId(orgId);

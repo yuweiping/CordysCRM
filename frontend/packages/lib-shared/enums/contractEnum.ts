@@ -1,6 +1,7 @@
 export enum ContractStatusEnum {
   PENDING_SIGNING = 'PENDING_SIGNING', // 待签署
   SIGNED = 'SIGNED', // 已签署
+  CHANGE = 'CHANGE', //合同变更
   IN_PROGRESS = 'IN_PROGRESS', // 履行中
   COMPLETED_PERFORMANCE = 'COMPLETED_PERFORMANCE', // 履行完毕
   VOID = 'VOID', // 作废
@@ -25,4 +26,5 @@ export enum ContractInvoiceStatusEnum {
   UNAPPROVED = 'UNAPPROVED', // 未通过
   APPROVING = 'APPROVING', // 提审中
   REVOKED = 'REVOKED', // 撤销
+  NONE = 'NONE', // 未开启审批状态
 }

@@ -6,6 +6,7 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
+import cn.cordys.common.constants.CommonResultCode;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.PermissionConstants;
 import cn.cordys.common.domain.BaseModuleFieldValue;
@@ -35,8 +36,10 @@ import cn.cordys.crm.contract.dto.response.ContractInvoiceGetResponse;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceListResponse;
 import cn.cordys.crm.contract.mapper.ExtContractInvoiceMapper;
 import cn.cordys.crm.opportunity.constants.ApprovalState;
+import cn.cordys.crm.system.constants.DictModule;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
+import cn.cordys.crm.system.service.DictService;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
@@ -85,6 +88,8 @@ public class ContractInvoiceService {
     private LogService logService;
     @Resource
     private BusinessTitleService businessTitleService;
+    @Resource
+    private DictService dictService;
 
     /**
      * 合同列表
@@ -161,6 +166,9 @@ public class ContractInvoiceService {
         invoice.setUpdateTime(System.currentTimeMillis());
         invoice.setUpdateUser(operatorId);
         invoice.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+        if (!dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
+            invoice.setApprovalStatus(ContractApprovalStatus.NONE.name());
+        }
 
         if (StringUtils.isBlank(request.getOwner())) {
             invoice.setOwner(operatorId);
@@ -241,7 +249,11 @@ public class ContractInvoiceService {
             // 保留不可更改的字段
             invoice.setCreateUser(originContractInvoice.getCreateUser());
             invoice.setCreateTime(originContractInvoice.getCreateTime());
-            invoice.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+            if (dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
+                invoice.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+            } else {
+                invoice.setApprovalStatus(originContractInvoice.getApprovalStatus());
+            }
 
             updateFields(moduleFields, invoice, orgId, userId);
             invoiceMapper.update(invoice);
@@ -525,6 +537,9 @@ public class ContractInvoiceService {
         if (invoice == null) {
             throw new GenericException(Translator.get("invoice.not.exist"));
         }
+
+        checkApprovalConfig(orgId);
+
         dataScopeService.checkDataPermission(userId, orgId, invoice.getOwner(), PermissionConstants.CONTRACT_INVOICE_APPROVAL);
 
         String state = invoice.getApprovalStatus();
@@ -540,11 +555,21 @@ public class ContractInvoiceService {
         logService.add(logDTO);
     }
 
+    private void checkApprovalConfig(String orgId) {
+        if (!dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
+            // 未开启审批
+            throw new GenericException(CommonResultCode.APPROVAL_NOT_ENABLED_ERROR);
+        }
+    }
+
     public String revoke(String id, String userId, String orgId) {
         ContractInvoice invoice = invoiceMapper.selectByPrimaryKey(id);
         if (invoice == null) {
             throw new GenericException(Translator.get("invoice.not.exist"));
         }
+
+        checkApprovalConfig(orgId);
+
         dataScopeService.checkDataPermission(userId, orgId, invoice.getOwner(), PermissionConstants.CONTRACT_INVOICE_UPDATE);
 
         String originApprovalStatus = invoice.getApprovalStatus();
@@ -592,12 +617,20 @@ public class ContractInvoiceService {
         }
     }
 
-    public BigDecimal calculateCustomerInvoiceAmount(String customerId, String userId, String organizationId) {
-        return extContractInvoiceMapper.calculateCustomerInvoiceAmount(customerId, userId, organizationId);
+    public BigDecimal calculateCustomerInvoiceAmount(String customerId, String userId, String orgId) {
+        if (dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
+            return extContractInvoiceMapper.calculateCustomerInvoiceAmount(customerId, userId, orgId, true);
+        } else {
+            return extContractInvoiceMapper.calculateCustomerInvoiceAmount(customerId, userId, orgId, false);
+        }
     }
 
-    public BigDecimal calculateContractInvoiceAmount(String contractId, String userId, String organizationId) {
-        return extContractInvoiceMapper.calculateContractInvoiceAmount(contractId, userId, organizationId);
+    public BigDecimal calculateContractInvoiceAmount(String contractId, String userId, String orgId) {
+        if (dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
+            return extContractInvoiceMapper.calculateContractInvoiceAmount(contractId, userId, orgId, true);
+        } else {
+            return extContractInvoiceMapper.calculateContractInvoiceAmount(contractId, userId, orgId, false);
+        }
     }
 
     public ModuleFormConfigDTO getBusinessFormConfig(String organizationId) {

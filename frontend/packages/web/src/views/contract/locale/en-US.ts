@@ -10,6 +10,7 @@ export default {
   'contract.changeStageTip': 'The contract stage can be changed only after approval and with the required permission',
   'contract.toBeSigned': 'To be signed',
   'contract.signed': 'Signed',
+  'contract.change': 'Change',
   'contract.inProgress': 'In Progress',
   'contract.completedPerformance': 'Completed',
   'contract.uncompleted': 'Incomplete',
@@ -46,6 +47,9 @@ export default {
   'contract.businessTitle.addMethodThird': 'Third-party',
   'contract.businessTitle.addMethodCustom': 'Custom',
   'contract.businessTitle.taxpayerNumber': 'Identification number',
+  'contract.businessTitle.area': 'Area',
+  'contract.businessTitle.scale': 'Scale',
+  'contract.businessTitle.industry': 'Industry',
   'contract.businessTitle.address': 'Registration address',
   'contract.businessTitle.bank': 'Opening bank',
   'contract.businessTitle.bankAccount': 'Bank account',
@@ -71,4 +75,5 @@ export default {
     'Invoice not approved, deleting does not affect the invoiced amount of the contract, please proceed with caution!',
   'contract.deleteInvoiceRevokedContent':
     'Invoice revoked, deleting does not affect the invoiced amount of the contract, please proceed with caution!',
+  'contract.deleteInvoiceNoneContent': 'Cannot recover after deletion, please careful operation!',
 };

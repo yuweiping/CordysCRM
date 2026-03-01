@@ -22,6 +22,7 @@ import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import jakarta.annotation.Resource;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.Strings;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -148,9 +149,13 @@ public class DictService {
         originalVal.put("module.switch", !request.getEnable() ? Translator.get("log.enable.true") : Translator.get("log.enable.false"));
         Map<String, String> modifiedVal = new HashMap<>(1);
         modifiedVal.put("module.switch", request.getEnable() ? Translator.get("log.enable.true") : Translator.get("log.enable.false"));
+        String resourceName = Translator.get("module." + request.getModule().toLowerCase());
+        if (Strings.CI.equalsAny(request.getModule(), DictModule.CLUE_POOL_RS.name(), DictModule.CUSTOMER_POOL_RS.name(), DictModule.OPPORTUNITY_FAIL_RS.name())) {
+            resourceName += Translator.get("module.reason.setting");
+        }
         OperationLogContext.setContext(LogContextInfo.builder()
                 .originalValue(originalVal)
-                .resourceName(Translator.get("module." + request.getModule().toLowerCase()) + Translator.get("module.reason.setting"))
+                .resourceName(resourceName)
                 .modifiedValue(modifiedVal)
                 .resourceId(request.getModule())
                 .build());
@@ -216,5 +221,10 @@ public class DictService {
         configLambdaQueryWrapper.eq(DictConfig::getModule, module).eq(DictConfig::getOrganizationId, orgId);
         List<DictConfig> configs = dictConfigMapper.selectListByLambda(configLambdaQueryWrapper);
         return DictConfigDTO.builder().dictList(dictList).enable(CollectionUtils.isNotEmpty(configs) && configs.getFirst().getEnabled()).build();
+    }
+
+    public boolean isDictConfigEnable(String module, String orgId) {
+        DictConfigDTO dictConf = getDictConf(module, orgId);
+        return  dictConf != null && BooleanUtils.isTrue(dictConf.getEnable());
     }
 }

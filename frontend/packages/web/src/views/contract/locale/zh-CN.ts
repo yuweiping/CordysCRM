@@ -10,6 +10,7 @@ export default {
   'contract.changeStageTip': '修改合同阶段需满足：审批状态为通过 + 合同阶段变更权限',
   'contract.toBeSigned': '待签署',
   'contract.signed': '已签署',
+  'contract.change': '合同变更',
   'contract.inProgress': '履行中',
   'contract.completedPerformance': '履行完毕',
   'contract.uncompleted': '未完成',
@@ -45,6 +46,9 @@ export default {
   'contract.businessTitle.addMethodThird': '第三方',
   'contract.businessTitle.addMethodCustom': '自定义',
   'contract.businessTitle.taxpayerNumber': '纳税人识别号',
+  'contract.businessTitle.area': '所属地区',
+  'contract.businessTitle.scale': '企业规模',
+  'contract.businessTitle.industry': '国标行业',
   'contract.businessTitle.address': '注册地址',
   'contract.businessTitle.bank': '开户银行',
   'contract.businessTitle.bankAccount': '银行账户',
@@ -65,4 +69,5 @@ export default {
   'contract.deleteInvoiceApprovedContent': '发票审核已通过，删除后，合同已开票金额将减去本次申请开票金额，请谨慎操作！',
   'contract.deleteInvoiceRejectedContent': '发票审核未通过，删除不影响合同已开票金额，请谨慎操作！',
   'contract.deleteInvoiceRevokedContent': '发票审核已撤销，删除不影响合同已开票金额，请谨慎操作！',
+  'contract.deleteInvoiceNoneContent': '删除后无法恢复，请谨慎操作！',
 };

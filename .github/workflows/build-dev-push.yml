@@ -6,6 +6,7 @@ on:
       - dev-yu
     paths-ignore:
       - '.github/**'
+  workflow_dispatch:
 
 permissions:
   contents: read

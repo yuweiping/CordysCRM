@@ -57,7 +57,19 @@ jobs:
 
           git push origin dev-yu
 
-      # 5️⃣ 获取 Release Notes
+      # 5️⃣ 新增：创建并推送本地 Tag
+      - name: Create and push local tag
+        if: steps.detect.outputs.has_new_tag == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          
+          # 创建 tag（与上游 tag 同名）
+          git tag ${{ steps.detect.outputs.latest_tag }}
+          # 推送 tag 到远程仓库
+          git push origin ${{ steps.detect.outputs.latest_tag }}
+
+      # 6️⃣ 获取 Release Notes
       - name: Get release notes
         if: steps.detect.outputs.has_new_tag == 'true'
         id: notes
@@ -69,7 +81,7 @@ jobs:
           NOTES_ESCAPED=$(echo "$NOTES" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n//g')
           echo "release_notes=$NOTES_ESCAPED" >> $GITHUB_OUTPUT
 
-      # 6️⃣ 构建 Docker
+      # 7️⃣ 构建 Docker
       - name: Setup QEMU
         if: steps.detect.outputs.has_new_tag == 'true'
         uses: docker/setup-qemu-action@v3
@@ -97,7 +109,7 @@ jobs:
             -t ${{ secrets.DOCKERHUB_USERNAME }}/cordys-crm-ce:latest \
             -f installer/Dockerfile .
 
-      # 7️⃣ PushPlus 通知
+      # 8️⃣ PushPlus 通知
       - name: PushPlus Notify
         if: steps.detect.outputs.has_new_tag == 'true'
         uses: actions/github-script@v7

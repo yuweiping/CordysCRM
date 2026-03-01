@@ -35,10 +35,7 @@
             :sourceId="props.sourceId"
             :sourceName="title"
             isContractTab
-            :readonly="
-              detailInfo?.stage === ContractStatusEnum.VOID ||
-              detailInfo?.approvalStatus === QuotationStatusEnum.APPROVING
-            "
+            :readonly="getReadonlyPayment"
           />
         </template>
         <template v-if="activeTab === 'paymentRecord'">
@@ -47,10 +44,7 @@
             :sourceId="props.sourceId"
             :sourceName="title"
             isContractTab
-            :readonly="
-              detailInfo?.stage === ContractStatusEnum.VOID ||
-              detailInfo?.approvalStatus === QuotationStatusEnum.APPROVING
-            "
+            :readonly="getReadonlyPayment"
             @refresh="handleSaved()"
           />
         </template>
@@ -59,11 +53,7 @@
           :sourceId="props.sourceId"
           :sourceName="title"
           is-contract-tab
-          :readonly="
-            detailInfo?.stage === ContractStatusEnum.VOID ||
-            detailInfo?.stage === ContractStatusEnum.ARCHIVED ||
-            detailInfo?.approvalStatus !== QuotationStatusEnum.APPROVED
-          "
+          :readonly="getReadonlyInvoice"
           @open-business-title-drawer="showBusinessTitleDetail"
         />
       </CrmCard>
@@ -104,6 +94,7 @@
 
   import { approvalContract, deleteContract, revokeContract } from '@/api/modules';
   import { contractStatusOptions } from '@/config/contract';
+  import useApprovalConfig from '@/hooks/useApprovalConfig';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useModal from '@/hooks/useModal';
   import { useUserStore } from '@/store';
@@ -160,7 +151,7 @@
     ].filter((item) => hasAnyPermission(item.permission))
   );
 
-  const buttonList = computed(() => {
+  function getApprovalEnableBtnList() {
     if (detailInfo.value?.approvalStatus === QuotationStatusEnum.APPROVING) {
       return [
         {
@@ -249,7 +240,44 @@
         permission: ['CONTRACT:DELETE'],
       },
     ];
-  });
+  }
+
+  const { initApprovalConfig, dicApprovalEnable } = useApprovalConfig(FormDesignKeyEnum.CONTRACT);
+
+  const buttonList = computed(() =>
+    dicApprovalEnable.value
+      ? getApprovalEnableBtnList()
+      : [
+          {
+            key: 'edit',
+            label: t('common.edit'),
+            permission: ['CONTRACT:UPDATE'],
+            text: false,
+            ghost: true,
+            class: 'n-btn-outline-primary',
+          },
+          {
+            label: t('contract.payment'),
+            key: 'paymentRecord',
+            permission: ['CONTRACT:PAYMENT'],
+            text: false,
+            ghost: true,
+            class: 'n-btn-outline-primary',
+            disabled: !detailInfo.value?.amount || detailInfo.value?.alreadyPayAmount >= detailInfo.value?.amount,
+            tooltipContent:
+              detailInfo.value?.alreadyPayAmount >= detailInfo.value?.amount ? t('contract.noPaymentRequired') : '',
+          },
+          {
+            label: t('common.delete'),
+            key: 'delete',
+            text: false,
+            ghost: true,
+            danger: true,
+            class: 'n-btn-outline-primary',
+            permission: ['CONTRACT:DELETE'],
+          },
+        ]
+  );
 
   function handleInit(type?: CollaborationType, name?: string, detail?: Record<string, any>) {
     title.value = name || '';
@@ -340,6 +368,25 @@
     formCreateDrawerVisible.value = true;
   }
 
+  const getReadonlyInvoice = computed(() => {
+    const contractIsVoidOrArchived =
+      detailInfo.value?.stage === ContractStatusEnum.VOID || detailInfo.value?.stage === ContractStatusEnum.ARCHIVED;
+    if (dicApprovalEnable.value) {
+      return contractIsVoidOrArchived || detailInfo.value?.approvalStatus !== QuotationStatusEnum.APPROVED;
+    }
+    return contractIsVoidOrArchived;
+  });
+
+  const getReadonlyPayment = computed(() => {
+    if (dicApprovalEnable.value) {
+      return (
+        detailInfo.value?.stage === ContractStatusEnum.VOID ||
+        detailInfo.value?.approvalStatus === QuotationStatusEnum.APPROVING
+      );
+    }
+    return detailInfo.value?.stage === ContractStatusEnum.VOID;
+  });
+
   async function handleButtonClick(actionKey: string) {
     switch (actionKey) {
       case 'pass':
@@ -368,4 +415,13 @@
   function showBusinessTitleDetail(params: { id: string }) {
     emit('openBusinessTitleDrawer', params);
   }
+
+  watch(
+    () => visible.value,
+    (val) => {
+      if (val) {
+        initApprovalConfig();
+      }
+    }
+  );
 </script>

@@ -193,21 +193,6 @@
     checkedRowKeys.value = [];
   }
 
-  const actionConfig: BatchActionConfig = {
-    baseAction: [
-      {
-        label: t('common.exportChecked'),
-        key: 'exportChecked',
-        permission: ['CONTRACT:EXPORT'],
-      },
-      {
-        label: t('common.batchApproval'),
-        key: 'approval',
-        permission: ['CONTRACT:APPROVAL'],
-      },
-    ],
-  };
-
   const showApprovalModal = ref(false);
   const batchOperationName = ref('');
   const batchResult = ref<BatchOperationResult>({
@@ -237,55 +222,7 @@
     }
   }
 
-  // 表格
-  const filterConfigList = computed<FilterFormItem[]>(() => [
-    {
-      title: t('opportunity.department'),
-      dataIndex: 'departmentId',
-      type: FieldTypeEnum.TREE_SELECT,
-      treeSelectProps: {
-        labelField: 'name',
-        keyField: 'id',
-        multiple: true,
-        clearFilterAfterSelect: false,
-        type: 'department',
-        checkable: true,
-        showContainChildModule: true,
-        containChildIds: [],
-      },
-    },
-    {
-      title: t('contract.status'),
-      dataIndex: 'stage',
-      type: FieldTypeEnum.SELECT_MULTIPLE,
-      operatorOption: COMMON_SELECTION_OPERATORS,
-      selectProps: {
-        options: contractStatusOptions,
-      },
-    },
-    {
-      title: t('contract.voidReason'),
-      dataIndex: 'voidReason',
-      type: FieldTypeEnum.INPUT,
-    },
-    {
-      title: t('contract.alreadyPayAmount'),
-      dataIndex: 'alreadyPayAmount',
-      type: FieldTypeEnum.INPUT_NUMBER,
-    },
-    {
-      title: t('contract.approvalStatus'),
-      dataIndex: 'approvalStatus',
-      operatorOption: COMMON_SELECTION_OPERATORS,
-      type: FieldTypeEnum.SELECT_MULTIPLE,
-      selectProps: {
-        options: quotationStatusOptions.filter((item) => ![QuotationStatusEnum.VOIDED].includes(item.value)),
-      },
-    },
-    ...baseFilterConfigList,
-  ]);
-
-  function getOperationGroupList(row: ContractItem) {
+  function getEnableApprovalGroupList(row: ContractItem) {
     if (row.approvalStatus === QuotationStatusEnum.APPROVING) {
       return [
         {
@@ -340,6 +277,34 @@
         permission: ['CONTRACT:DELETE'],
       },
     ];
+  }
+
+  function getOperationGroupList(row: ContractItem, dicApprovalEnable: boolean) {
+    return dicApprovalEnable
+      ? getEnableApprovalGroupList(row)
+      : [
+          {
+            label: t('common.edit'),
+            key: 'edit',
+            permission: ['CONTRACT:UPDATE'],
+          },
+          ...(row.stage !== ContractStatusEnum.VOID
+            ? [
+                {
+                  label: t('contract.payment'),
+                  key: 'paymentRecord',
+                  permission: ['CONTRACT:PAYMENT'],
+                  disabled: !row.amount || row.alreadyPayAmount >= row.amount,
+                  tooltipContent: row.alreadyPayAmount >= row.amount ? t('contract.noPaymentRequired') : undefined,
+                },
+              ]
+            : []),
+          {
+            label: t('common.delete'),
+            key: 'delete',
+            permission: ['CONTRACT:DELETE'],
+          },
+        ];
   }
 
   const showDetailDrawer = ref(false);
@@ -431,7 +396,6 @@
   }
 
   function showCustomerDrawer(params: { customerId: string; inCustomerPool: boolean; poolId: string }) {
-    activeSourceId.value = params.customerId;
     emit(
       'openCustomerDrawer',
       {
@@ -454,16 +418,16 @@
     }
   }
 
-  const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
+  const { useTableRes, customFieldsFilterConfig, fieldList, dicApprovalEnable } = await useFormCreateTable({
     formKey: FormDesignKeyEnum.CONTRACT,
     operationColumn: {
       key: 'operation',
       width: currentLocale.value === 'en-US' ? 180 : 150,
       fixed: 'right',
       render: (row: ContractItem) =>
-        getOperationGroupList(row).length
+        getOperationGroupList(row, dicApprovalEnable.value).length
           ? h(CrmOperationButton, {
-              groupList: getOperationGroupList(row),
+              groupList: getOperationGroupList(row, dicApprovalEnable.value),
               onSelect: (key: string) => handleActionSelect(row, key),
             })
           : '-',
@@ -503,7 +467,7 @@
       },
       stage: (row: ContractItem) => {
         const disabled = row.approvalStatus !== QuotationStatusEnum.APPROVED || !hasAnyPermission(['CONTRACT:STAGE']);
-        if (disabled) {
+        if (disabled && dicApprovalEnable.value) {
           return h(
             NTooltip,
             { delay: 300 },
@@ -523,7 +487,7 @@
         return h(StatusTagSelect, {
           'status': row.stage as ContractStatusEnum,
           'noRender': true,
-          'disabled': disabled,
+          'disabled': disabled && dicApprovalEnable.value,
           'onUpdate:status': async (val) => {
             // 修改为作废的时候需要填写原因
             if (val === ContractStatusEnum.VOID) {
@@ -555,6 +519,79 @@
       ids: checkedRowKeys.value,
     };
   });
+
+  const actionConfig = computed(() => {
+    return {
+      baseAction: [
+        {
+          label: t('common.exportChecked'),
+          key: 'exportChecked',
+          permission: ['CONTRACT:EXPORT'],
+        },
+        ...(dicApprovalEnable.value
+          ? [
+              {
+                label: t('common.batchApproval'),
+                key: 'approval',
+                permission: ['CONTRACT:APPROVAL'],
+              },
+            ]
+          : []),
+      ],
+    };
+  });
+
+  // 表格
+  const filterConfigList = computed<FilterFormItem[]>(() => [
+    {
+      title: t('opportunity.department'),
+      dataIndex: 'departmentId',
+      type: FieldTypeEnum.TREE_SELECT,
+      treeSelectProps: {
+        labelField: 'name',
+        keyField: 'id',
+        multiple: true,
+        clearFilterAfterSelect: false,
+        type: 'department',
+        checkable: true,
+        showContainChildModule: true,
+        containChildIds: [],
+      },
+    },
+    {
+      title: t('contract.status'),
+      dataIndex: 'stage',
+      type: FieldTypeEnum.SELECT_MULTIPLE,
+      operatorOption: COMMON_SELECTION_OPERATORS,
+      selectProps: {
+        options: contractStatusOptions,
+      },
+    },
+    {
+      title: t('contract.voidReason'),
+      dataIndex: 'voidReason',
+      type: FieldTypeEnum.INPUT,
+    },
+    {
+      title: t('contract.alreadyPayAmount'),
+      dataIndex: 'alreadyPayAmount',
+      type: FieldTypeEnum.INPUT_NUMBER,
+    },
+    ...(dicApprovalEnable.value
+      ? [
+          {
+            title: t('contract.approvalStatus'),
+            dataIndex: 'approvalStatus',
+            operatorOption: COMMON_SELECTION_OPERATORS,
+            type: FieldTypeEnum.SELECT_MULTIPLE,
+            selectProps: {
+              options: quotationStatusOptions.filter((item) => ![QuotationStatusEnum.VOIDED].includes(item.value)),
+            },
+          },
+        ]
+      : []),
+    ...baseFilterConfigList,
+  ]);
 
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
   const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();

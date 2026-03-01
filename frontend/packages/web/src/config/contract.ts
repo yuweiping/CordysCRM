@@ -44,10 +44,15 @@ export const contractInvoiceStatus = {
     icon: 'iconicon_close_circle_filled',
     color: 'var(--error-red)',
   },
-  [ContractBusinessTitleStatusEnum.REVOKED]: {
+  [ContractInvoiceStatusEnum.REVOKED]: {
     label: t('common.revoke'),
     icon: 'iconicon_skip_planarity',
     color: 'var(--text-n4)',
+  },
+  [ContractInvoiceStatusEnum.NONE]: {
+    label: '-',
+    icon: '',
+    color: '',
   },
 };
 
@@ -59,6 +64,10 @@ export const contractStatusOptions = [
   {
     value: ContractStatusEnum.SIGNED,
     label: t('contract.signed'),
+  },
+  {
+    value: ContractStatusEnum.CHANGE,
+    label: t('contract.change'),
   },
   {
     value: ContractStatusEnum.IN_PROGRESS,
@@ -149,6 +158,18 @@ export const businessTitleFormConfigList: {
     label: t('contract.businessTitle.registrationAccount'),
     value: 'registrationNumber',
   },
+  {
+    label: t('contract.businessTitle.area'),
+    value: 'area',
+  },
+  {
+    label: t('contract.businessTitle.scale'),
+    value: 'scale',
+  },
+  {
+    label: t('contract.businessTitle.industry'),
+    value: 'industry',
+  },
 ];
 
 export const allBusinessTitleFormConfigList: {
@@ -171,4 +192,5 @@ export const deleteInvoiceContentMap = {
   [ContractInvoiceStatusEnum.APPROVED]: t('contract.deleteInvoiceApprovedContent'),
   [ContractInvoiceStatusEnum.REVOKED]: t('contract.deleteInvoiceRevokedContent'),
   [ContractInvoiceStatusEnum.UNAPPROVED]: t('contract.deleteInvoiceRejectedContent'),
+  [ContractInvoiceStatusEnum.NONE]: t('contract.deleteInvoiceNoneContent'),
 };

@@ -45,7 +45,7 @@ public class ProductController {
 
 
     @GetMapping("/module/form")
-    @Operation(summary = "获取表单配置")
+    @Operation(summary = "获取产品表单配置")
     public ModuleFormConfigDTO getModuleFormConfig() {
         return moduleFormCacheService.getBusinessFormConfig(FormKey.PRODUCT.getKey(), OrganizationContext.getOrganizationId());
     }
@@ -123,7 +123,7 @@ public class ProductController {
     }
 
     @PostMapping("/import")
-    @Operation(summary = "导入")
+    @Operation(summary = "导入产品")
     @RequiresPermissions(PermissionConstants.PRODUCT_MANAGEMENT_IMPORT)
     public ImportResponse realImport(@RequestPart(value = "file") MultipartFile file) {
         return productService.realImport(file, OrganizationContext.getOrganizationId(), SessionUtils.getUserId());

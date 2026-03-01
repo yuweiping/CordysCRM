@@ -6,6 +6,7 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
+import cn.cordys.common.constants.CommonResultCode;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.PermissionConstants;
 import cn.cordys.common.domain.BaseModuleFieldValue;
@@ -23,6 +24,7 @@ import cn.cordys.common.uid.SerialNumGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.contract.constants.ContractApprovalStatus;
 import cn.cordys.crm.contract.constants.ContractStage;
 import cn.cordys.crm.contract.domain.Contract;
@@ -37,6 +39,7 @@ import cn.cordys.crm.contract.mapper.ExtContractMapper;
 import cn.cordys.crm.contract.mapper.ExtContractSnapshotMapper;
 import cn.cordys.crm.customer.domain.Customer;
 import cn.cordys.crm.opportunity.constants.ApprovalState;
+import cn.cordys.crm.system.constants.DictModule;
 import cn.cordys.crm.system.constants.NotificationConstants;
 import cn.cordys.crm.system.domain.MessageTaskConfig;
 import cn.cordys.crm.system.dto.MessageTaskConfigDTO;
@@ -45,6 +48,7 @@ import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.BatchAffectSkipResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
+import cn.cordys.crm.system.service.DictService;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
@@ -106,6 +110,8 @@ public class ContractService {
     private BaseMapper<ContractPaymentRecord> contractPaymentRecordMapper;
     @Resource
     private ExtContractInvoiceMapper extContractInvoiceMapper;
+    @Resource
+    private DictService dictService;
 
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999");
 
@@ -144,6 +150,10 @@ public class ContractService {
         contract.setCreateUser(operatorId);
         contract.setUpdateTime(System.currentTimeMillis());
         contract.setUpdateUser(operatorId);
+
+        if (!dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), orgId)) {
+            contract.setApprovalStatus(ContractApprovalStatus.NONE.name());
+        }
 
         //判断总金额
         setAmount(request.getAmount(), contract);
@@ -306,7 +316,12 @@ public class ContractService {
             contract.setCreateUser(oldContract.getCreateUser());
             contract.setCreateTime(oldContract.getCreateTime());
             contract.setStage(oldContract.getStage());
-            contract.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+            if (dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), orgId)) {
+                contract.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
+            } else {
+                contract.setApprovalStatus(oldContract.getApprovalStatus());
+            }
+
             //判断总金额
             setAmount(request.getAmount(), contract);
             moduleFields.add(new BaseModuleFieldValue("products", request.getProducts()));
@@ -534,7 +549,7 @@ public class ContractService {
         if (contract == null) {
             throw new GenericException(Translator.get("contract.not.exist"));
         }
-        if (!Strings.CI.equals(contract.getApprovalStatus(), ContractApprovalStatus.APPROVED.name())) {
+        if (dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), orgId) && !Strings.CI.equals(contract.getApprovalStatus(), ContractApprovalStatus.APPROVED.name())) {
             throw new GenericException(Translator.get("contract.unapproved.cannot.edit"));
         }
 
@@ -633,6 +648,9 @@ public class ContractService {
         if (contract == null) {
             throw new GenericException(Translator.get("contract.not.exist"));
         }
+
+        checkApprovalConfig(orgId);
+
         String state = contract.getApprovalStatus();
         contract.setApprovalStatus(request.getApprovalStatus());
         contract.setUpdateTime(System.currentTimeMillis());
@@ -651,6 +669,9 @@ public class ContractService {
         if (contract == null) {
             throw new GenericException(Translator.get("contract.not.exist"));
         }
+
+        checkApprovalConfig(orgId);
+
         String originApprovalStatus = contract.getApprovalStatus();
         if (!Strings.CI.equals(contract.getCreateUser(), userId) || !Strings.CI.equals(contract.getApprovalStatus(), ApprovalState.APPROVING.toString())) {
             return contract.getApprovalStatus();
@@ -670,6 +691,13 @@ public class ContractService {
         return contract.getApprovalStatus();
     }
 
+    private void checkApprovalConfig(String orgId) {
+        if (!dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), orgId)) {
+            // 未开启审批
+            throw new GenericException(CommonResultCode.APPROVAL_NOT_ENABLED_ERROR);
+        }
+    }
+
 
     /**
      * 批量审核
@@ -679,11 +707,14 @@ public class ContractService {
      * @param orgId
      */
     public BatchAffectSkipResponse batchApprovalContract(ContractApprovalBatchRequest request, String userId, String orgId) {
+        checkApprovalConfig(orgId);
+
         List<String> ids = extContractMapper.selectByStatusAndIds(request.getIds(), ContractApprovalStatus.APPROVING.name());
 
         if (CollectionUtils.isEmpty(ids)) {
             return BatchAffectSkipResponse.builder().success(0).fail(0).skip(request.getIds().size()).build();
         }
+
         LambdaQueryWrapper<ContractSnapshot> wrapper = new LambdaQueryWrapper<>();
         wrapper.in(ContractSnapshot::getContractId, ids);
         List<ContractSnapshot> contractSnapshots = snapshotBaseMapper.selectListByLambda(wrapper);
@@ -753,19 +784,21 @@ public class ContractService {
         // 只展示状态为通过且非作废/归档阶段的合同
         List<FilterCondition> conditions = new ArrayList<>();
 
-        FilterCondition statusCondition = new FilterCondition();
-        statusCondition.setMultipleValue(false);
-        statusCondition.setName("approvalStatus");
-        statusCondition.setOperator(FilterCondition.CombineConditionOperator.IN.name());
-        statusCondition.setValue(List.of(ContractApprovalStatus.APPROVED.name()));
-        conditions.add(statusCondition);
+        if (dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), OrganizationContext.getOrganizationId()))  {
+            FilterCondition statusCondition = new FilterCondition();
+            statusCondition.setMultipleValue(false);
+            statusCondition.setName("approvalStatus");
+            statusCondition.setOperator(FilterCondition.CombineConditionOperator.IN.name());
+            statusCondition.setValue(List.of(ContractApprovalStatus.APPROVED.name()));
+            conditions.add(statusCondition);
+        }
 
         FilterCondition stageCondition = new FilterCondition();
         stageCondition.setMultipleValue(false);
         stageCondition.setName("stage");
         stageCondition.setOperator(FilterCondition.CombineConditionOperator.IN.name());
         stageCondition.setValue(List.of(ContractStage.PENDING_SIGNING.name(), ContractStage.SIGNED.name(),
-                ContractStage.IN_PROGRESS.name(), ContractStage.COMPLETED_PERFORMANCE.name()));
+                ContractStage.IN_PROGRESS.name(), ContractStage.COMPLETED_PERFORMANCE.name(), ContractStage.CHANGE.name()));
         conditions.add(stageCondition);
 
         return conditions;

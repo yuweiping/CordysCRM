@@ -247,39 +247,7 @@
     }
   }
 
-  // 表格
-  const filterConfigList = computed<FilterFormItem[]>(() => [
-    {
-      title: t('opportunity.department'),
-      dataIndex: 'departmentId',
-      type: FieldTypeEnum.TREE_SELECT,
-      treeSelectProps: {
-        labelField: 'name',
-        keyField: 'id',
-        multiple: true,
-        clearFilterAfterSelect: false,
-        type: 'department',
-        checkable: true,
-        showContainChildModule: true,
-        containChildIds: [],
-      },
-    },
-    {
-      title: t('contract.approvalStatus'),
-      dataIndex: 'approvalStatus',
-      type: FieldTypeEnum.SELECT_MULTIPLE,
-      operatorOption: COMMON_SELECTION_OPERATORS,
-      selectProps: {
-        options: contractInvoiceStatusOptions,
-      },
-    },
-    ...baseFilterConfigList,
-  ]);
-
-  function getOperationGroupList(row: ContractInvoiceItem) {
-    if (props.readonly) {
-      return [];
-    }
+  function getApprovalEnableGroupList(row: ContractInvoiceItem) {
     if (row.approvalStatus === ContractInvoiceStatusEnum.APPROVING) {
       return [
         {
@@ -325,13 +293,36 @@
     ];
   }
 
+  function getOperationGroupList(row: ContractInvoiceItem, dicApprovalEnable: boolean) {
+    if (props.readonly) {
+      return [];
+    }
+    if (dicApprovalEnable) {
+      return getApprovalEnableGroupList(row);
+    }
+    return [
+      {
+        label: t('common.edit'),
+        key: 'edit',
+        permission: ['CONTRACT_INVOICE:UPDATE'],
+      },
+      {
+        label: t('common.delete'),
+        key: 'delete',
+        permission: ['CONTRACT_INVOICE:DELETE'],
+      },
+    ];
+  }
+
   const showDetailDrawer = ref(false);
 
-  function handleDelete(row: any) {
+  function handleDelete(row: any, approvalEnable: boolean) {
     openModal({
       type: 'error',
       title: t('common.deleteConfirmTitle', { name: row.name }),
-      content: deleteInvoiceContentMap[row.approvalStatus as ContractInvoiceStatusEnum],
+      content: approvalEnable
+        ? deleteInvoiceContentMap[row.approvalStatus as ContractInvoiceStatusEnum]
+        : deleteInvoiceContentMap[ContractInvoiceStatusEnum.NONE],
       positiveText: t('common.confirmDelete'),
       negativeText: t('common.cancel'),
       onPositiveClick: async () => {
@@ -369,7 +360,7 @@
     }
   }
 
-  async function handleActionSelect(row: ContractInvoiceItem, actionKey: string) {
+  async function handleActionSelect(row: ContractInvoiceItem, actionKey: string, approvalEnable: boolean) {
     switch (actionKey) {
       case 'edit':
         handleEdit(row.id);
@@ -378,7 +369,7 @@
         handleRevoke(row);
         break;
       case 'delete':
-        handleDelete(row);
+        handleDelete(row, approvalEnable);
         break;
       case 'approval':
         showDetail(row.id);
@@ -412,16 +403,23 @@
     });
   }
 
-  const { useTableRes, customFieldsFilterConfig } = await useFormCreateTable({
+  function getOperationWidth(approvalEnable: boolean) {
+    if (approvalEnable) {
+      return currentLocale.value === 'en-US' ? 180 : 150;
+    }
+    return 120;
+  }
+
+  const { useTableRes, customFieldsFilterConfig, dicApprovalEnable } = await useFormCreateTable({
     formKey: props.isContractTab ? FormDesignKeyEnum.CONTRACT_INVOICE : FormDesignKeyEnum.INVOICE,
     operationColumn: {
       key: 'operation',
-      width: currentLocale.value === 'en-US' ? 180 : 150,
+      width: computed(() => getOperationWidth(dicApprovalEnable.value)) as unknown as number,
       fixed: 'right',
       render: (row: ContractInvoiceItem) =>
         h(CrmOperationButton, {
-          groupList: getOperationGroupList(row),
-          onSelect: (key: string) => handleActionSelect(row, key),
+          groupList: getOperationGroupList(row, dicApprovalEnable.value),
+          onSelect: (key: string) => handleActionSelect(row, key, dicApprovalEnable.value),
         }),
     },
     specialRender: {
@@ -494,6 +492,39 @@
       contractId: props.sourceId,
     };
   });
+
+  // 表格
+  const filterConfigList = computed<FilterFormItem[]>(() => [
+    {
+      title: t('opportunity.department'),
+      dataIndex: 'departmentId',
+      type: FieldTypeEnum.TREE_SELECT,
+      treeSelectProps: {
+        labelField: 'name',
+        keyField: 'id',
+        multiple: true,
+        clearFilterAfterSelect: false,
+        type: 'department',
+        checkable: true,
+        showContainChildModule: true,
+        containChildIds: [],
+      },
+    },
+    ...(dicApprovalEnable.value
+      ? [
+          {
+            title: t('contract.approvalStatus'),
+            dataIndex: 'approvalStatus',
+            type: FieldTypeEnum.SELECT_MULTIPLE,
+            operatorOption: COMMON_SELECTION_OPERATORS,
+            selectProps: {
+              options: contractInvoiceStatusOptions,
+            },
+          },
+        ]
+      : []),
+    ...baseFilterConfigList,
+  ]);
 
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
   const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();

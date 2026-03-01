@@ -2,7 +2,7 @@
   <CrmDrawer v-model:show="visible" resizable no-padding :width="800" :footer="false" :title="detailInfo?.name ?? ''">
     <template #titleLeft>
       <div class="text-[14px] font-normal">
-        <quotationStatus v-if="detailInfo?.approvalStatus" :status="detailInfo?.approvalStatus" />
+        <quotationStatus v-if="isShowApprovalStatus" :status="detailInfo?.approvalStatus" />
       </div>
     </template>
     <template #titleRight>
@@ -63,6 +63,7 @@
   import quotationStatus from './quotationStatus.vue';
 
   import { approvalQuotation, deleteQuotation, revokeQuotation, voidQuotation } from '@/api/modules';
+  import useApprovalConfig from '@/hooks/useApprovalConfig';
   import useModal from '@/hooks/useModal';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
   import { useUserStore } from '@/store';
@@ -261,44 +262,86 @@
         break;
     }
   }
-
-  const buttonList = computed<ActionsItem[]>(() => {
-    switch (detailInfo.value?.approvalStatus) {
-      case QuotationStatusEnum.APPROVING:
-        return isShowApproval.value ? commonActions.filter((item) => ['pass', 'unPass'].includes(item.key)) : [];
-      case QuotationStatusEnum.APPROVED:
-        return commonActions.filter((item) => ['download'].includes(item.key));
-      case QuotationStatusEnum.UNAPPROVED:
-      case QuotationStatusEnum.REVOKED:
-        return commonActions.filter((item) => ['edit'].includes(item.key));
-      case QuotationStatusEnum.VOIDED:
-        return deleteActions;
-      default:
-        return [];
-    }
-  });
+  const { initApprovalConfig, dicApprovalEnable } = useApprovalConfig(FormDesignKeyEnum.OPPORTUNITY_QUOTATION);
 
   const buttonMoreList = computed(() => {
-    const allActions = [...commonActions, ...moreActions, ...deleteActions];
-    const commonActionsKeys = ['voided', 'delete'];
-    const { approvalStatus, createUser } = detailInfo.value || {};
-    const getActions = (keys: string[]) => allActions.filter((e) => keys.includes(e.key));
-    switch (approvalStatus) {
-      case QuotationStatusEnum.APPROVED:
-        const successStatusGroups = isShowApproval ? commonActionsKeys : ['download', ...commonActionsKeys];
-        return getActions(successStatusGroups);
-      case QuotationStatusEnum.UNAPPROVED:
-      case QuotationStatusEnum.REVOKED:
-        const revokeStatusGroups = isShowApproval ? commonActionsKeys : ['edit', 'download', ...commonActionsKeys];
-        return getActions(revokeStatusGroups);
-      case QuotationStatusEnum.APPROVING:
-        const reviewStatusGroups =
-          createUser === useStore.userInfo.id ? ['revoke', ...commonActionsKeys] : commonActionsKeys;
-        return getActions(reviewStatusGroups);
-      default:
-        return [];
+    if (dicApprovalEnable.value) {
+      const allActions = [...commonActions, ...moreActions, ...deleteActions];
+      const commonActionsKeys = ['voided', 'delete'];
+      const { approvalStatus, createUser } = detailInfo.value || {};
+      const getActions = (keys: string[]) => allActions.filter((e) => keys.includes(e.key));
+      switch (approvalStatus) {
+        case QuotationStatusEnum.APPROVED:
+          const successStatusGroups = isShowApproval ? commonActionsKeys : ['download', ...commonActionsKeys];
+          return getActions(successStatusGroups);
+        case QuotationStatusEnum.UNAPPROVED:
+        case QuotationStatusEnum.REVOKED:
+          const revokeStatusGroups = isShowApproval ? commonActionsKeys : ['edit', 'download', ...commonActionsKeys];
+          return getActions(revokeStatusGroups);
+        case QuotationStatusEnum.APPROVING:
+          const reviewStatusGroups =
+            createUser === useStore.userInfo.id ? ['revoke', ...commonActionsKeys] : commonActionsKeys;
+          return getActions(reviewStatusGroups);
+        default:
+          return getActions(commonActionsKeys);
+      }
+    } else {
+      if (detailInfo.value?.approvalStatus === QuotationStatusEnum.VOIDED) return [];
+      return [
+        {
+          label: t('common.voided'),
+          key: 'voided',
+          permission: ['OPPORTUNITY_QUOTATION:VOIDED'],
+        },
+        ...deleteActions,
+      ];
     }
   });
+
+  const buttonList = computed<ActionsItem[]>(() => {
+    if (dicApprovalEnable.value) {
+      switch (detailInfo.value?.approvalStatus) {
+        case QuotationStatusEnum.APPROVING:
+          return isShowApproval.value ? commonActions.filter((item) => ['pass', 'unPass'].includes(item.key)) : [];
+        case QuotationStatusEnum.APPROVED:
+          return commonActions.filter((item) => ['download'].includes(item.key));
+        case QuotationStatusEnum.UNAPPROVED:
+        case QuotationStatusEnum.REVOKED:
+          return commonActions.filter((item) => ['edit'].includes(item.key));
+        case QuotationStatusEnum.VOIDED:
+          return deleteActions;
+        default:
+          return [
+            {
+              label: t('common.edit'),
+              key: 'edit',
+              permission: ['OPPORTUNITY_QUOTATION:UPDATE'],
+            },
+          ];
+      }
+    } else {
+      if (detailInfo.value?.approvalStatus === QuotationStatusEnum.VOIDED) {
+        return deleteActions;
+      }
+      return commonActions.filter((e) => ['edit', 'download'].includes(e.key));
+    }
+  });
+
+  const isShowApprovalStatus = computed(() => {
+    if (dicApprovalEnable.value) {
+      return !!detailInfo.value?.approvalStatus;
+    }
+    return detailInfo.value?.approvalStatus && [QuotationStatusEnum.VOIDED].includes(detailInfo.value?.approvalStatus);
+  });
+
+  watch(
+    () => visible.value,
+    (val) => {
+      if (val) {
+        initApprovalConfig();
+      }
+    }
+  );
 </script>
 
 <style scoped></style>

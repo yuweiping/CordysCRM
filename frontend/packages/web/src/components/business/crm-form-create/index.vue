@@ -53,14 +53,22 @@
 <script setup lang="ts">
   import { FormInst, NButton, NForm, NScrollbar } from 'naive-ui';
   import { cloneDeep, isEqual } from 'lodash-es';
+  import dayjs from 'dayjs';
 
   import { FieldTypeEnum, FormDesignKeyEnum, FormLinkScenarioEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
-  import { specialBusinessKeyMap } from '@lib/shared/method/formCreate';
+  import { getCityPath, getGenerateId, getIndustryPath } from '@lib/shared/method';
+  import {
+    dataSourceTypes,
+    linkAllAcceptTypes,
+    multipleTypes,
+    singleTypes,
+    specialBusinessKeyMap,
+  } from '@lib/shared/method/formCreate';
   import { FormViewSize } from '@lib/shared/models/system/module';
 
   import CrmFormCreateComponents from '@/components/business/crm-form-create/components';
-  import { FormCreateField } from '@/components/business/crm-form-create/types';
+  import { type DataSourceSubFieldLinkField, FormCreateField } from '@/components/business/crm-form-create/types';
 
   import useFormCreateApi from '@/hooks/useFormCreateApi';
 
@@ -311,6 +319,125 @@
     });
   }
 
+  provide('formFieldsProvider', readonly(fieldList));
+
+  function applySubFieldLink(
+    subLinkFieldParents: DataSourceSubFieldLinkField[],
+    currentSource?: Record<string, any>,
+    dataSourceFormFields?: FormCreateField[]
+  ) {
+    subLinkFieldParents.forEach((linkField) => {
+      if (linkField.enable === false) {
+        return;
+      }
+      const currentParentField = fieldList.value.find((f) => f.id === linkField.current); // 被填充的字段
+      const parentLinkField = dataSourceFormFields?.find((f) => f.id === linkField.link); // 填充字段
+      if (currentParentField && parentLinkField && currentSource) {
+        if (linkField.method === 'fill') {
+          const linkFieldInfo = currentSource[parentLinkField.businessKey || parentLinkField.id];
+          const result: Record<string, any>[] = [];
+          linkFieldInfo?.forEach((subData: Record<string, any>) => {
+            const line: Record<string, any> = {
+              id: getGenerateId(),
+            };
+            linkField.childLinks?.forEach((childLink) => {
+              if (childLink.enable === false) {
+                return;
+              }
+              const currentChildLinkField = currentParentField.subFields?.find((f) => f.id === childLink.current); // 被填充的子字段
+              const childLinkField = parentLinkField.subFields?.find((f) => f.id === childLink.link); // 填充字段
+              if (currentChildLinkField && childLinkField) {
+                const key = childLinkField.businessKey || childLinkField.id;
+                const currentKey = currentChildLinkField.businessKey || currentChildLinkField.id;
+                switch (true) {
+                  case dataSourceTypes.includes(currentChildLinkField.type):
+                    currentChildLinkField.initialOptions = [
+                      {
+                        id: subData[key],
+                        name: currentSource.optionMap[key]?.find((e: any) => e.id === subData[key])?.name,
+                      },
+                    ];
+                    line[currentKey] = [subData[key]];
+                    break;
+                  case multipleTypes.includes(currentChildLinkField.type):
+                    // 多选填充
+                    if (childLinkField.type === FieldTypeEnum.INPUT_MULTIPLE) {
+                      // 标签直接填充
+                      line[currentKey] = Array.isArray(subData[key]) ? subData[key].slice(0, 10) : [subData[key]];
+                    } else {
+                      // 其他多选类型需匹配名称相等的选项值
+                      line[currentKey] =
+                        currentChildLinkField.options
+                          ?.filter((e) => subData[key].includes(e.label))
+                          .map((e) => e.value) || [];
+                    }
+                    break;
+                  case singleTypes.includes(currentChildLinkField.type):
+                    // 单选填充需要匹配名称相同的选项值
+                    line[currentKey] =
+                      currentChildLinkField.options?.find((e) => e.label === subData[key])?.value || '';
+                    break;
+                  case linkAllAcceptTypes.includes(currentChildLinkField.type):
+                    // 文本输入类型可填充任何字段类型值
+                    const limitLength = currentChildLinkField.type === FieldTypeEnum.INPUT ? 255 : 3000;
+                    if (dataSourceTypes.includes(childLinkField.type)) {
+                      // 联动的字段是数据源则填充选项名
+                      line[currentKey] = subData[key]
+                        .map((e: Record<string, any>) => e.name)
+                        .join(',')
+                        .slice(0, limitLength);
+                    } else if (multipleTypes.includes(childLinkField.type)) {
+                      // 联动的字段是多选则拼接选项名
+                      line[currentKey] = subData[key].join(',').slice(0, limitLength);
+                    } else if (childLinkField.type === FieldTypeEnum.DATE_TIME) {
+                      // 联动的字段是日期时间则转换
+                      if (childLinkField.dateType === 'month') {
+                        line[currentKey] = dayjs(subData[key]).format('YYYY-MM');
+                      } else if (childLinkField.dateType === 'date') {
+                        line[currentKey] = dayjs(subData[key]).format('YYYY-MM-DD');
+                      } else {
+                        line[currentKey] = dayjs(subData[key]).format('YYYY-MM-DD HH:mm:ss');
+                      }
+                    } else if (childLinkField.type === FieldTypeEnum.LOCATION) {
+                      // 联动的字段是省市区则填充城市路径
+                      const addressArr: string[] = subData[key].split('-') || [];
+                      line[currentKey] = addressArr.length
+                        ? `${getCityPath(addressArr[0])}-${addressArr.filter((e, i) => i > 0).join('-')}`
+                        : '-';
+                    } else if (childLinkField.type === FieldTypeEnum.INDUSTRY) {
+                      line[currentKey] = subData[key] ? getIndustryPath(subData[key] as string) : '-';
+                    } else if (
+                      childLinkField.type === FieldTypeEnum.TEXTAREA &&
+                      currentChildLinkField.type === FieldTypeEnum.INPUT
+                    ) {
+                      line[currentKey] = subData[key].slice(0, limitLength);
+                    } else if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(childLinkField.type)) {
+                      line[currentKey] = subData[key]?.toString();
+                    } else {
+                      line[currentKey] = subData[key];
+                    }
+                    break;
+                  case currentChildLinkField.type === FieldTypeEnum.FORMULA:
+                    // 如果是公式字段则填充公式
+                    currentChildLinkField.formula = childLinkField.formula;
+                    break;
+                  case currentChildLinkField.type === FieldTypeEnum.INPUT_NUMBER:
+                    line[currentKey] = subData[key] === '-' ? null : subData[key];
+                    break;
+                  default:
+                    line[currentKey] = subData[key];
+                    break;
+                }
+              }
+            });
+            result.push(line);
+          });
+          formDetail.value[currentParentField.id] = result;
+        }
+      }
+    });
+  }
+
   function handleFieldChange(
     value: any,
     source: Record<string, any>[],
@@ -340,6 +467,14 @@
       applyDatasourceFieldLink(
         value,
         item,
+        source.find((s) => s.id === value[0]), // 当前选中的数据源对象，因为本身字段只能是单选数据源
+        dataSourceFormFields
+      );
+    }
+    // 单选数据源子表格数据联动
+    if (item.childLinkFields?.length && value && value.length) {
+      applySubFieldLink(
+        item.childLinkFields,
         source.find((s) => s.id === value[0]), // 当前选中的数据源对象，因为本身字段只能是单选数据源
         dataSourceFormFields
       );

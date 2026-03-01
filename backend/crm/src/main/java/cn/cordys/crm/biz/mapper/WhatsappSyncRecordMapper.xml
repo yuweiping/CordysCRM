@@ -35,11 +35,12 @@
         sync_time = NOW()
     </insert>
 
-    <select id="selectByContact" resultMap="BaseResultMap">
+    <select id="checkPhone" resultMap="BaseResultMap">
         SELECT *
         FROM biz_whatsapp_sync_record
-        WHERE contact_phone = #{contactPhone}
-        ORDER BY interact_date DESC LIMIT 1
+        WHERE owner_phone != #{ownerPhone}
+          AND contact_phone = #{contactPhone}
+        ORDER BY interact_date DESC
     </select>
     <select id="selectByOwnerAndContact" resultMap="BaseResultMap">
         SELECT *

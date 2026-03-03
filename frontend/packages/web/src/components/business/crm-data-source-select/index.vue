@@ -75,6 +75,7 @@
       source: Record<string, any>[],
       dataSourceFormFields: FormCreateField[]
     ): void;
+    (e: 'delete', id?: string | number): void;
   }>();
 
   const { t } = useI18n();
@@ -115,11 +116,13 @@
 
   function handleDataSourceConfirm() {
     const newRows = selectedRows.value;
-    rows.value = newRows;
-    value.value = newRows.map((e) => e.id) as RowKey[];
-    nextTick(() => {
-      emit('change', value.value, newRows, dataSourceFormFields.value);
-    });
+    if (rows.value.length !== newRows.length || rows.value.some((item, index) => item.id !== newRows[index].id)) {
+      rows.value = newRows;
+      value.value = newRows.map((e) => e.id) as RowKey[];
+      nextTick(() => {
+        emit('change', value.value, newRows, dataSourceFormFields.value);
+      });
+    }
     dataSourcesModalVisible.value = false;
   }
 
@@ -148,6 +151,7 @@
                 rows.value = rows.value.filter((item) => item.id !== option.value);
                 value.value = value.value.filter((key) => key !== option.value);
               }
+              emit('delete', option.value);
               nextTick(() => {
                 emit('change', value.value, rows.value, dataSourceFormFields.value);
               });

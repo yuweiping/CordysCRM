@@ -23,7 +23,12 @@
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { formatTimeValue, getCityPath, getIndustryPath } from '@lib/shared/method';
-  import { formatNumberValue, formatNumberValueToString, normalizeNumber } from '@lib/shared/method/formCreate';
+  import {
+    formatNumberValue,
+    formatNumberValueToString,
+    mergeUniqueOptions,
+    normalizeNumber,
+  } from '@lib/shared/method/formCreate';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -241,39 +246,24 @@
     }
   }
 
-  const sumInitialOptions = ref<Record<string, any>[]>([]); // 记录子表格内数据源列的初始选项
-
-  function mergeUniqueOptions(
-    fieldInitialOptions: Record<string, any>[] = [],
-    appendOptions: Record<string, any>[] = []
-  ) {
-    const optionMap = new Map<any, Record<string, any>>();
-    [...fieldInitialOptions, ...appendOptions].forEach((option) => {
-      if (!option) {
-        return;
-      }
-      const optionKey = option.id ?? option.value;
-      if (optionKey !== undefined && !optionMap.has(optionKey)) {
-        optionMap.set(optionKey, option);
-      }
-    });
-    return Array.from(optionMap.values());
-  }
+  let sumInitialOptions: Record<string, any>[] = []; // 记录子表格内数据源列的初始选项
 
   const pictureFields = computed<FormCreateField[]>(() => {
     return props.subFields.filter((field) => field.type === FieldTypeEnum.PICTURE);
   });
   const maxPictureCountMap = computed<Record<string, number>>(() => {
-    return data.value.reduce((prev, curr) => {
-      pictureFields.value.forEach((field) => {
-        const key = field.businessKey || field.id;
-        const currCount = Array.isArray(curr[key]) ? curr[key].length : 0;
-        if (!prev[key] || currCount > prev[key]) {
-          prev[key] = currCount;
-        }
-      });
-      return prev;
-    }, {} as Record<string, number>);
+    return (
+      data.value?.reduce((prev, curr) => {
+        pictureFields.value.forEach((field) => {
+          const key = field.businessKey || field.id;
+          const currCount = Array.isArray(curr[key]) ? curr[key].length : 0;
+          if (!prev[key] || currCount > prev[key]) {
+            prev[key] = currCount;
+          }
+        });
+        return prev;
+      }, {} as Record<string, number>) || {}
+    );
   });
 
   const isProcessingDataSourceChange = ref(false);
@@ -285,7 +275,7 @@
     rowIndex: number,
     isPriceSubTableShowSubField?: boolean
   ) {
-    if (isProcessingDataSourceChange.value) {
+    if (isProcessingDataSourceChange.value || row.price_sub) {
       // 子表格添加多行会触发 change，避免重复处理
       return;
     }
@@ -354,8 +344,9 @@
         row.price_sub = '';
       }
     }
-    sumInitialOptions.value = sumInitialOptions.value.concat(
-      ...source.filter((s) => !sumInitialOptions.value.some((io) => io.id === s.id))
+    sumInitialOptions = mergeUniqueOptions(
+      sumInitialOptions,
+      source.filter((s) => !sumInitialOptions.some((io) => io.id === s.id))
     );
     nextTick(() => {
       isProcessingDataSourceChange.value = false;
@@ -466,7 +457,7 @@
                 value: row[key],
                 fieldConfig: {
                   ...field,
-                  initialOptions: mergeUniqueOptions(field.initialOptions || [], sumInitialOptions.value),
+                  initialOptions: mergeUniqueOptions(sumInitialOptions, field.initialOptions || []),
                 },
                 path: `${props.parentId}[${rowIndex}].${key}`,
                 isSubTableRender: true,
@@ -477,6 +468,12 @@
                 hideChildTag: isPriceSubTableShowSubField,
                 onChange: (val, source) => {
                   handleDataSourceChange(val, source, field, row, rowIndex, isPriceSubTableShowSubField);
+                },
+                onDelete: (val) => {
+                  row[key] = row[key].filter((e: any) => e !== val);
+                  if (isPriceSubTableShowSubField) {
+                    row.price_sub = '';
+                  }
                 },
               });
             },

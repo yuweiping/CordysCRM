@@ -10,7 +10,7 @@
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
     @sorter-change="propsEvent.sorterChange"
-    @filter-change="propsEvent.filterChange"
+    @filter-change="filterChange"
     @batch-action="handleBatchAction"
     @refresh="searchData"
   >
@@ -52,6 +52,26 @@
         @refresh-table-data="searchData"
       />
     </template>
+    <template #totalRight>
+      <div class="ml-[24px]">
+        {{ t('opportunity.averageAmount') }}
+        <span class="ml-[4px]">
+          {{ abbreviateNumber(totalAmountInfo?.averageAmount, '').value }}
+          <span class="unit">
+            {{ abbreviateNumber(totalAmountInfo?.averageAmount, '').unit }}
+          </span>
+        </span>
+      </div>
+      <div class="ml-[24px]">
+        {{ t('opportunity.totalAmount') }}
+        <span class="ml-[4px]">
+          {{ abbreviateNumber(totalAmountInfo?.amount, '').value }}
+          <span class="unit">
+            {{ abbreviateNumber(totalAmountInfo?.amount, '').unit }}
+          </span>
+        </span>
+      </div>
+    </template>
   </CrmTable>
 
   <CrmFormCreateDrawer
@@ -62,8 +82,9 @@
     :initial-source-name="initialSourceName"
     :link-form-key="FormDesignKeyEnum.CONTRACT"
     :link-form-info="linkFormInfo"
-    @saved="() => searchData()"
+    @saved="handleFormCreateSaved"
   />
+
   <CrmTableExportModal
     v-model:show="showExportModal"
     :params="exportParams"
@@ -72,26 +93,33 @@
     type="contract"
     @create-success="handleExportCreateSuccess"
   />
+
   <VoidReasonModal
     v-model:visible="showVoidReasonModal"
     :name="activeSourceName"
     :sourceId="activeSourceId"
-    @refresh="searchData"
+    @refresh="searchData(undefined, activeSourceId)"
   />
+
   <DetailDrawer
     v-model:visible="showDetailDrawer"
     :sourceId="activeSourceId"
-    @refresh="searchData"
+    isContractTableDetail
+    @refresh="searchData(undefined, activeSourceId)"
+    @delete="removeItemFromList(activeSourceId)"
     @showCustomerDrawer="showCustomerDrawer"
     @open-business-title-drawer="handleOpenBusinessTitleDrawer"
   />
+
   <ApprovalModal
     v-model:show="showApprovalModal"
     :quotationIds="checkedRowKeys"
     :approval-api="batchApproveContract"
     @refresh="handleApprovalSuccess"
   />
+
   <batchOperationResultModal v-model:visible="resultVisible" :result="batchResult" :name="batchOperationName" />
+
   <businessTitleDrawer v-model:visible="showBusinessTitleDetailDrawer" :source-id="activeBusinessTitleSourceId" />
 </template>
 
@@ -104,7 +132,7 @@
   import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import useLocale from '@lib/shared/locale/useLocale';
-  import { characterLimit } from '@lib/shared/method';
+  import { abbreviateNumber, characterLimit } from '@lib/shared/method';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { ContractItem } from '@lib/shared/models/contract';
   import { BatchOperationResult } from '@lib/shared/models/opportunity';
@@ -115,7 +143,6 @@
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import CrmNameTooltip from '@/components/pure/crm-name-tooltip/index.vue';
   import CrmTable from '@/components/pure/crm-table/index.vue';
-  import { BatchActionConfig } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import StatusTagSelect from '@/components/business/crm-follow-detail/statusTagSelect.vue';
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
@@ -129,7 +156,13 @@
   import batchOperationResultModal from '@/views/opportunity/components/quotation/batchOperationResultModal.vue';
   import QuotationStatus from '@/views/opportunity/components/quotation/quotationStatus.vue';
 
-  import { batchApproveContract, changeContractStatus, deleteContract, revokeContract } from '@/api/modules';
+  import {
+    batchApproveContract,
+    changeContractStatus,
+    deleteContract,
+    getContractStatistic,
+    revokeContract,
+  } from '@/api/modules';
   import { baseFilterConfigList } from '@/config/clue';
   import { contractStatusOptions } from '@/config/contract';
   import { quotationStatusOptions } from '@/config/opportunity';
@@ -167,6 +200,8 @@
   // 操作
   const checkedRowKeys = ref<DataTableRowKey[]>([]);
   const tableRefreshId = ref(0);
+  const tableRemoveRefreshId = ref('');
+  const tableItemRefreshId = ref('');
 
   const formCreateDrawerVisible = ref(false);
   const activeSourceId = ref('');
@@ -327,7 +362,7 @@
         try {
           await deleteContract(row.id);
           Message.success(t('common.deleteSuccess'));
-          tableRefreshId.value += 1;
+          tableRemoveRefreshId.value = row.id;
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -347,7 +382,7 @@
     try {
       await revokeContract(row.id);
       Message.success(t('common.revokeSuccess'));
-      tableRefreshId.value += 1;
+      tableItemRefreshId.value = row.id;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);
@@ -446,7 +481,8 @@
         );
       },
       customerId: (row: ContractItem) => {
-        return (!row.inCustomerPool && !hasAnyPermission(['CUSTOMER_MANAGEMENT:READ'])) ||
+        return !row.customerName ||
+          (!row.inCustomerPool && !hasAnyPermission(['CUSTOMER_MANAGEMENT:READ'])) ||
           (row.inCustomerPool && !hasAnyPermission(['CUSTOMER_MANAGEMENT_POOL:READ']))
           ? h(
               CrmNameTooltip,
@@ -508,7 +544,53 @@
     permission: ['CONTRACT:EXPORT', 'CONTRACT:APPROVAL'],
     containerClass: '.crm-contract-table',
   });
-  const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
+  const {
+    propsRes,
+    propsEvent,
+    tableQueryParams,
+    filterItem,
+    advanceFilter,
+    loadList,
+    setLoadListParams,
+    setAdvanceFilter,
+  } = useTableRes;
+
+  const statisticInfo = ref({ amount: 0, averageAmount: 0 });
+  async function getStatistic(_keyword?: string) {
+    try {
+      const res = await getContractStatistic({
+        keyword: _keyword ?? keyword.value,
+        viewId: activeTab.value,
+        combineSearch: advanceFilter,
+        filters: filterItem.value,
+      });
+      statisticInfo.value = res;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+    }
+  }
+
+  const totalAmountInfo = computed(() => {
+    if (checkedRowKeys.value.length > 0) {
+      const amount = propsRes.value.data
+        .filter((item: ContractItem) => checkedRowKeys.value.includes(item.id))
+        .reduce((total: number, item: ContractItem) => total + (item.amount || 0), 0);
+      return {
+        averageAmount: amount / checkedRowKeys.value.length,
+        amount,
+      };
+    }
+    return {
+      averageAmount: statisticInfo.value?.averageAmount ?? 0,
+      amount: statisticInfo.value?.amount ?? 0,
+    };
+  });
+
+  function filterChange(val: any) {
+    propsEvent.value.filterChange(val);
+    getStatistic();
+  }
 
   const exportColumns = computed<ExportTableColumnItem[]>(() =>
     getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value)
@@ -594,7 +676,6 @@
   ]);
 
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
-  const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();
 
   const isAdvancedSearchMode = ref(false);
   const advancedOriginalForm = ref<FilterForm | undefined>();
@@ -604,13 +685,17 @@
     isAdvancedSearchMode.value = isAdvancedMode;
     setAdvanceFilter(filter);
     loadList();
+    getStatistic();
     crmTableRef.value?.scrollTo({ top: 0 });
   }
 
-  function searchData(val?: string) {
+  function searchData(val?: string, refreshId?: string) {
     setLoadListParams({ keyword: val ?? keyword.value, viewId: activeTab.value });
-    loadList();
-    crmTableRef.value?.scrollTo({ top: 0 });
+    loadList(false, refreshId);
+    getStatistic(val);
+    if (!refreshId) {
+      crmTableRef.value?.scrollTo({ top: 0 });
+    }
   }
 
   watch(
@@ -627,6 +712,41 @@
     activeBusinessTitleSourceId.value = params.id;
     showBusinessTitleDetailDrawer.value = true;
   }
+
+  function handleFormCreateSaved(res: any) {
+    if (needInitDetail.value || activeFormKey.value === FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD) {
+      searchData(undefined, res.id);
+    } else {
+      searchData();
+    }
+  }
+
+  function removeItemFromList(id: string) {
+    propsRes.value.data = propsRes.value.data.filter((item) => item.id !== id);
+    propsRes.value.crmPagination = {
+      ...propsRes.value.crmPagination,
+      itemCount: (propsRes.value.crmPagination?.itemCount ?? 1) - 1,
+    };
+  }
+
+  watch(
+    () => tableRemoveRefreshId.value,
+    (val) => {
+      if (val) {
+        removeItemFromList(val);
+      }
+    }
+  );
+
+  watch(
+    () => tableItemRefreshId.value,
+    (val) => {
+      if (val) {
+        loadList(false, val);
+        getStatistic();
+      }
+    }
+  );
 
   // 先不上
   // function handleGeneratedChart(res: FilterResult, form: FilterForm) {
@@ -653,8 +773,10 @@
         setLoadListParams({ keyword: keyword.value, viewId: activeTab.value });
         // initTableViewChartParams(viewChartCallBack);
         crmTableRef.value?.setColumnSort(val);
+        getStatistic();
       }
-    }
+    },
+    { immediate: true }
   );
 
   onMounted(async () => {

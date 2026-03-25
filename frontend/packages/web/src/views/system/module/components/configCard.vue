@@ -71,8 +71,10 @@
     v-model:enable="enableOptMoveReason"
     @load-config="() => getGlobalReasonConfig()"
   />
-  <stepSettingDrawer v-model:visible="businessManagementStepSetVisible" />
+  <stateFlowDrawer v-model:visible="businessManagementStepSetVisible" :type="FormDesignKeyEnum.BUSINESS" />
+  <stateFlowDrawer v-model:visible="orderStateFlowVisible" :type="FormDesignKeyEnum.ORDER" />
   <ContractFormFormDrawer v-model:visible="contractFormVisible" />
+  <OrderFormFormDrawer v-model:visible="orderFormVisible" />
   <ContractPaymentPlanFormDrawer v-model:visible="contractPaymentPlanFormVisible" />
   <ContractPaymentRecordFormDrawer v-model:visible="contractPaymentRecordFormVisible" />
   <contractInvoiceFormDrawer v-model:visible="contractInvoiceFormVisible" />
@@ -92,6 +94,7 @@
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import CrmMoreAction from '@/components/pure/crm-more-action/index.vue';
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
+  import stateFlowDrawer from '@/components/business/crm-status-config-drawer/index.vue';
   import approvalSwitch, { approvalConfigType } from './approvalSwitch.vue';
   import businessTitleValidate from './businessTitleValidate.vue';
   import CapacitySetDrawer from './capacitySetDrawer.vue';
@@ -110,12 +113,13 @@
   import OpportunityFormDrawer from './opportunity/formDrawer.vue';
   import OpportunityCloseRulesDrawer from './opportunity/opportunityCloseRulesDrawer.vue';
   import optQuotationFormDrawer from './opportunity/optQuotationFormDrawer.vue';
-  import stepSettingDrawer from './opportunity/stepSettingDrawer.vue';
+  import OrderFormFormDrawer from './order/orderFormFormDrawer.vue';
   import ProductFromDrawer from './productManagement/formDrawer.vue';
   import priceTableFormDrawer from './productManagement/priceTableFormDrawer.vue';
 
   import { getReasonConfig, toggleModuleNavStatus, updateReasonEnable } from '@/api/modules';
   import useModal from '@/hooks/useModal';
+  import useAppStore from '@/store/modules/app';
   // import useLicenseStore from '@/store/modules/setting/license';
   import { hasAnyPermission } from '@/utils/permission';
 
@@ -124,6 +128,7 @@
   const { t } = useI18n();
   const route = useRoute();
   // const licenseStore = useLicenseStore();
+  const appStore = useAppStore();
 
   const props = defineProps<{
     list: ModuleNavItem[];
@@ -443,6 +448,22 @@
         },
       ],
     },
+    {
+      label: t('module.order'),
+      key: ModuleConfigEnum.ORDER,
+      icon: 'iconicon_order_form',
+      enable: true,
+      groupList: [
+        {
+          label: `${t('module.order')}${t('module.formSettings')}`,
+          key: 'newForm',
+        },
+        {
+          label: t('module.order.stateFlow'),
+          key: 'orderStateFlow',
+        },
+      ],
+    },
     // TODO 不上 xxw
     // {
     //   label: t('module.dataManagement'),
@@ -489,17 +510,40 @@
       enable: true,
     },
   ];
-  const moduleConfigList = computed<ModuleConfigItem[]>(() =>
-    staticConfigList.map((item) => {
-      const findConfigItem = props.list.find((e) => e.key === item.key);
-      return {
-        ...item,
-        enable: findConfigItem?.enable ?? false,
-        id: findConfigItem?.id ?? '',
-        disabled: findConfigItem?.disabled ?? false,
-      };
-    })
-  );
+
+  const moduleConfigList = computed<ModuleConfigItem[]>(() => {
+    const propsConfigMap = new Map(props.list.map((item) => [item.key, item]));
+    const orderMap = new Map(appStore.moduleConfigList.map((item, index) => [item.moduleKey, index]));
+
+    return staticConfigList
+      .map((item, staticIndex) => {
+        const findConfigItem = propsConfigMap.get(item.key);
+
+        return {
+          ...item,
+          enable: findConfigItem?.enable ?? false,
+          id: findConfigItem?.id ?? '',
+          disabled: findConfigItem?.disabled ?? false,
+          _order: orderMap.get(item.key),
+          _staticIndex: staticIndex,
+        };
+      })
+      .sort((a, b) => {
+        const aOrder = a._order;
+        const bOrder = b._order;
+        if (aOrder != null && bOrder != null) {
+          return aOrder - bOrder;
+        }
+        if (aOrder != null) {
+          return -1;
+        }
+        if (bOrder != null) {
+          return 1;
+        }
+        return a._staticIndex - b._staticIndex;
+      })
+      .map(({ _order, _staticIndex, ...item }) => item as ModuleConfigItem);
+  });
 
   // 切换模块状态
   async function toggleModule(enable: boolean, item: ModuleConfigItem) {
@@ -543,6 +587,8 @@
   const opportunityQuotationFormVisible = ref(false);
   const businessManagementBusinessParamsSetVisible = ref(false);
   const businessManagementStepSetVisible = ref(false);
+  const orderFormVisible = ref(false);
+  const orderStateFlowVisible = ref(false);
 
   const productManagementFormVisible = ref(false);
   const priceTableFormVisible = ref(false);
@@ -598,6 +644,13 @@
           productManagementFormVisible.value = true;
         } else if (key === 'newPriceForm') {
           priceTableFormVisible.value = true;
+        }
+        break;
+      case ModuleConfigEnum.ORDER:
+        if (key === 'newForm') {
+          orderFormVisible.value = true;
+        } else if (key === 'orderStateFlow') {
+          orderStateFlowVisible.value = true;
         }
         break;
       default:

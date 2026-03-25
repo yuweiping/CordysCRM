@@ -11,7 +11,7 @@
     :form-key="FormDesignKeyEnum.BUSINESS"
     :source-id="sourceId"
     @button-select="handleSelect"
-    @saved="() => (refreshKey += 1)"
+    @saved="refreshList"
   >
     <template #left>
       <div class="h-full overflow-hidden">
@@ -120,6 +120,7 @@
 
   const emit = defineEmits<{
     (e: 'refresh'): void;
+    (e: 'remove'): void;
     (e: 'openCustomerDrawer', params: { customerId: string; inCustomerPool: boolean; poolId: string }): void;
   }>();
 
@@ -232,6 +233,7 @@
       name: 'contact',
       tab: t('opportunity.contactInfo'),
       enable: true,
+      permission: ['CUSTOMER_MANAGEMENT_CONTACT:READ'],
     },
     {
       name: 'quotation',
@@ -240,6 +242,10 @@
       permission: ['OPPORTUNITY_QUOTATION:READ'],
     },
   ];
+
+  const titleName = ref('');
+  const subTitleName = ref('');
+  const initialSourceName = ref('');
 
   // 转移
   const transferFormRef = ref<InstanceType<typeof TransferForm>>();
@@ -271,7 +277,7 @@
   function handleDelete() {
     openModal({
       type: 'error',
-      title: t('common.deleteConfirmTitle', { name: characterLimit(props.detail?.opportunityName) }),
+      title: t('common.deleteConfirmTitle', { name: characterLimit(titleName.value) }),
       content: t('opportunity.batchDeleteContentTip'),
       positiveText: t('common.confirmDelete'),
       negativeText: t('common.cancel'),
@@ -280,7 +286,7 @@
           await deleteOpt(sourceId.value);
           Message.success(t('common.deleteSuccess'));
           showOptOverviewDrawer.value = false;
-          emit('refresh');
+          emit('remove');
         } catch (error) {
           // eslint-disable-next-line no-console
           console.log(error);
@@ -306,10 +312,6 @@
     refreshKey.value += 1;
     emit('refresh');
   }
-
-  const titleName = ref('');
-  const subTitleName = ref('');
-  const initialSourceName = ref('');
 
   function handleDescriptionInit(
     _collaborationType?: CollaborationType,

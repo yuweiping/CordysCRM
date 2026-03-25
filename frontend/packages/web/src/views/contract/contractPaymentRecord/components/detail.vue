@@ -12,10 +12,9 @@
       </n-button>
       <n-button
         v-permission="['CONTRACT_PAYMENT_RECORD:DELETE']"
-        type="primary"
-        danger
+        type="error"
         ghost
-        class="n-btn-outline-primary ml-[12px]"
+        class="n-btn-outline-error ml-[12px]"
         @click="handleDelete(detailInfo)"
       >
         {{ t('common.delete') }}
@@ -72,6 +71,7 @@
   }>();
   const emit = defineEmits<{
     (e: 'refresh'): void;
+    (e: 'delete'): void;
     (e: 'openContractDrawer', params: { id: string }): void;
   }>();
 
@@ -108,7 +108,7 @@
           await deletePaymentRecord(row.id);
           Message.success(t('common.deleteSuccess'));
           visible.value = false;
-          emit('refresh');
+          emit('delete');
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);

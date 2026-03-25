@@ -29,6 +29,7 @@
     mergeUniqueOptions,
     normalizeNumber,
   } from '@lib/shared/method/formCreate';
+  import { isNotEmpty } from '@lib/shared/method/is';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -186,17 +187,18 @@
     props.subFields.forEach((field) => {
       const key = field.resourceFieldId ? field.id : field.businessKey || field.id;
       if (field.type === FieldTypeEnum.INPUT_NUMBER) {
-        newRow[key] = field.resourceFieldId
-          ? formatNumberValue(field.defaultValue ?? 0, field)
-          : field.defaultValue ?? null;
+        newRow[key] =
+          field.resourceFieldId && isNotEmpty(field.defaultValue)
+            ? formatNumberValue(field.defaultValue, field)
+            : field.defaultValue ?? null;
       } else if (field.type === FieldTypeEnum.FORMULA) {
-        newRow[key] = field.defaultValue ?? 0;
+        newRow[key] = field.resourceFieldId ? null : field.defaultValue ?? null;
       } else if (
         [FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.PICTURE].includes(field.type)
       ) {
         newRow[key] = [];
       } else {
-        newRow[key] = field.defaultValue ?? '';
+        newRow[key] = field.resourceFieldId ? '' : field.defaultValue ?? '';
       }
     });
     return newRow;
@@ -214,7 +216,7 @@
     source: Record<string, any>[],
     rowId?: string
   ) {
-    if (field.showFields?.length) {
+    if (field.showFields?.length && val) {
       // 数据源显示字段联动
       const showFields = props.subFields.filter((f) => f.resourceFieldId === field.id);
       const targetSource = source.filter((e) => !e.parentId).find((e) => val.includes(e.id)); // 子表格数据源是单选，所以目标数据源只有一个
@@ -275,8 +277,17 @@
     rowIndex: number,
     isPriceSubTableShowSubField?: boolean
   ) {
-    if (isProcessingDataSourceChange.value || row.price_sub) {
+    if (isProcessingDataSourceChange.value) {
       // 子表格添加多行会触发 change，避免重复处理
+      return;
+    }
+    if (source.every((e) => e.isFormLinkFilled)) {
+      // 填充时已经有了价格表数据，需要回显字段
+      const key = field.businessKey || field.id;
+      for (let i = 0; i < data.value.length; i++) {
+        const newRow = data.value[i];
+        applyDataSourceShowFields(field, newRow[key], newRow, source, newRow.price_sub); // 回显价格表带出的显示字段
+      }
       return;
     }
     isProcessingDataSourceChange.value = true;

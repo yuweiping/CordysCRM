@@ -11,18 +11,20 @@
 
 <hr/>
 
-**Cordys CRM** 是新一代的开源 AI CRM 系统，是集信息化、数字化、智能化于一体的「客户关系管理系统」，由 [飞致云](https://fit2cloud.com/) 匠心出品。Cordys CRM 能够帮助企业实现从线索到回款（L2C）的全流程精细化管理，覆盖线索获取、智能分配、客户与联系人管理、商机跟进、合同签约及回款执行，构建端到端的销售运营闭环。
+## 什么是 Cordys CRM？
 
-Cordys [/ˈkɔːrdɪs/] 由“Cord”（连接之绳）与“System”（系统）融合而成，寓意“关系的纽带系统”，诠释了 CRM 的本质：连接客户，缔造长期价值。
+**Cordys CRM** 是新一代的开源 AI CRM 系统，是集信息化、数字化、智能化于一体的「客户关系管理系统」，由 [飞致云](https://fit2cloud.com/) 匠心出品。
 
-[![Watch the video](https://resource.fit2cloud.com/1panel/cordys-crm/img/overview-video-20251110.png)](https://www.bilibili.com/video/BV1Wm1sB4ExL/)
+Cordys CRM 能够帮助企业实现从线索到回款（L2C）的全流程精细化管理，覆盖线索获取、智能分配、客户与联系人管理、商机跟进、合同签约及回款执行，构建端到端的销售运营闭环。
 
-**Cordys CRM** 的核心优势是：
+<img alt="Cordys CRM Overview" src="https://cordys.cn/images/cordyscrm-202603.png" />
 
-- **灵活易用**：基于现代化技术栈构建，使用体验好；平台支持基于角色的权限管控，提供灵活的模块化配置，可无缝集成企业微信、钉钉、飞书等主流办公平台，实现高效协同；
-- **安全可控**：私有化部署，所有客户数据与业务信息均存储于企业自有服务器，数据主权完全自主，同时便于深度集成与二次开发；
-- **AI 加持**：开放 MCP Server，借助 [MaxKB](https://github.com/1Panel-dev/MaxKB) 强大的智能体开发能力，轻松构建智能创建、智能跟进、智能报价等多样化智能体；
-- **BI 加持**：融合 [DataEase](https://github.com/dataease/dataease) 与 [SQLBot](https://github.com/dataease/SQLBot) 的强大能力，实现销售数据可视化呈现、自助分析，以及基于自然语言的智能查询与归因分析。
+## 核心优势
+
+- **灵活配置 · 高效协同**：现代化架构，操作简洁流畅；精细权限与模块化配置，无缝集成主流办公平台，赋能团队高效协同；
+- **安全自主 · 深度可控**：私有化部署，数据100%自主可控；开放API与标准接口，支持深度集成与定制开发，筑牢安全与发展基石；
+- **智能 BI · 决策赋能**：深度融合 DataEase 分析引擎，销售数据可视化呈现；支持自助探索与实时洞察，驱动精准决策与业绩增长；
+- **AI 赋能 · 智能提效**：开放 CRM Skills 接口，赋能 OpenClaw AI 销售助理 7×24 小时智能服务；提升销售全流程效率与决策质量。
 
 ## 快速开始
 
@@ -103,12 +105,10 @@ docker run -d \
 - [x] 2025.12.12：[v1.3.6](https://github.com/1Panel-dev/CordysCRM/releases/tag/v1.3.6) 发布
 - [x] 2025.12.18：[v1.4.0 新增标讯、报价和合同模块](https://github.com/1Panel-dev/CordysCRM/releases/tag/v1.4.0)
 - [x] 2026.01.29：[v1.5.0 新增工商抬头管理、发票管理、回款管理](https://github.com/1Panel-dev/CordysCRM/releases/tag/v1.5.0)
+- [x] 2026.03.11：[Cordys CRM Skills 正式发布](https://github.com/1Panel-dev/CordysCRM-skills)
 
 ## 技术栈
 
--  AI 智能体能力：[MaxKB](https://github.com/1Panel-dev/MaxKB)
--  AI 智能问数能力：[SQLBot](https://github.com/dataease/SQLBot)
--  数据可视化能力：[DataEase](https://github.com/dataease/dataease)
 -  后端：[Spring Boot](https://spring.io/projects/spring-boot)
 -  前端：[Vue.js](https://vuejs.org/) 、[Naive-UI](https://www.naiveui.com/) 、[Vant-UI](https://vant-ui.github.io/)
 -  中间件：[MySQL](https://www.mysql.com/) , [Redis](https://redis.com/)

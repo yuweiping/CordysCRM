@@ -622,25 +622,73 @@
       <!-- 流水号属性 -->
       <div v-if="fieldConfig.type === FieldTypeEnum.SERIAL_NUMBER" class="crm-form-design-config-item">
         <div class="crm-form-design-config-item-title">
-          {{ t('crmFormDesign.serialNumberRule') }}
-          <n-tooltip trigger="hover">
-            <template #trigger>
-              <CrmIcon
-                type="iconicon_help_circle"
-                class="cursor-pointer text-[var(--text-n4)] hover:text-[var(--primary-1)]"
-              />
-            </template>
-            {{ t('crmFormDesign.serialNumberRuleTip') }}
-          </n-tooltip>
+          <div class="flex items-center gap-[8px]">
+            {{ t('crmFormDesign.serialNumberRule') }}
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <CrmIcon
+                  type="iconicon_help_circle"
+                  class="cursor-pointer text-[var(--text-n4)] hover:text-[var(--primary-1)]"
+                />
+              </template>
+              {{ t('crmFormDesign.serialNumberRuleTip') }}
+            </n-tooltip>
+          </div>
+          <div
+            v-if="fieldConfig?.prefixType === 'formula'"
+            class="font-normal"
+            :class="`${
+              disabledClearFormulaConfig
+                ? 'cursor-not-allowed text-[var(--primary-6)]'
+                : 'cursor-pointer text-[var(--primary-8)]'
+            }`"
+            @click="handleClearFormulaField"
+          >
+            {{ t('common.clear') }}
+          </div>
         </div>
         <template v-if="fieldConfig.serialNumberRules">
-          <n-input
-            v-model:value="serialNumberRules1"
-            maxlength="10"
-            :disabled="fieldConfig.disabledProps?.includes('serialNumberRules') || !!fieldConfig.resourceFieldId"
-          >
-            <template #prefix>{{ t('crmFormDesign.fixedChar') }}</template>
-          </n-input>
+          <n-input-group>
+            <n-select
+              v-model:value="fieldConfig.prefixType"
+              class="w-[100px]"
+              :options="[
+                {
+                  label: t('crmFormDesign.fixedChar'),
+                  value: 'custom',
+                },
+                {
+                  label: t('crmFormDesign.formulaSetting'),
+                  value: 'formula',
+                },
+              ]"
+              :render-option="renderPrefixTypeOption"
+              @update-value="
+                (val) => {
+                  fieldConfig.prefixType = val;
+                }
+              "
+            />
+            <n-input
+              v-if="fieldConfig.prefixType === 'custom'"
+              v-model:value="serialNumberRules1"
+              class="flex-1"
+              maxlength="10"
+              :disabled="fieldConfig.disabledProps?.includes('serialNumberRules') || !!fieldConfig.resourceFieldId"
+            />
+
+            <div v-else class="flex flex-1">
+              <n-button
+                type="default"
+                class="outline--secondary flex-1"
+                :disabled="!!fieldConfig.resourceFieldId"
+                @click="handleCalculateFormula"
+              >
+                {{ formulaConfig.source?.length ? t('crmFormDesign.formulaHasBeenSet') : t('common.setting') }}
+              </n-button>
+            </div>
+          </n-input-group>
+
           <n-input
             v-model:value="serialNumberRules2"
             maxlength="10"
@@ -658,16 +706,30 @@
           >
             <template #prefix>{{ t('crmFormDesign.fixedChar') }}</template>
           </n-input>
-          <n-input-number
-            v-model:value="serialNumberRules5"
-            :min="1"
-            :max="9"
-            :precision="0"
-            :show-button="false"
-            :disabled="fieldConfig.disabledProps?.includes('serialNumberRules') || !!fieldConfig.resourceFieldId"
-          >
-            <template #prefix>{{ t('crmFormDesign.autoCount') }}</template>
-          </n-input-number>
+          <div class="flex items-center gap-[8px]">
+            <n-input-number
+              v-model:value="serialNumberRules5"
+              :min="1"
+              :max="9"
+              :precision="0"
+              :show-button="false"
+              :disabled="fieldConfig.disabledProps?.includes('serialNumberRules') || !!fieldConfig.resourceFieldId"
+            >
+              <template #prefix>
+                <div class="text-[var(--primary-8)]">{{ t('crmFormDesign.autoCount') }}</div>
+              </template>
+            </n-input-number>
+            <n-tooltip trigger="hover">
+              <template #trigger>
+                <CrmIcon
+                  type="iconicon_error_circle"
+                  class="cursor-pointer text-[var(--text-n4)] hover:text-[var(--primary-1)]"
+                />
+              </template>
+              {{ t('crmFormDesign.serialNumberRuleAutoCountTip', { number: serialNumberRules5 }) }}
+            </n-tooltip>
+          </div>
+
           <div
             class="flex flex-1 items-center gap-[8px] rounded-[var(--border-radius-small)] bg-[var(--text-n9)] px-[8px] py-[4px]"
           >
@@ -768,7 +830,21 @@
         "
         class="crm-form-design-config-item"
       >
-        <div class="crm-form-design-config-item-title">{{ t('crmFormDesign.defaultValue') }}</div>
+        <div class="flex items-center justify-between">
+          <div class="crm-form-design-config-item-title">{{ t('crmFormDesign.defaultValue') }}</div>
+          <div
+            v-if="fieldConfig?.defaultValueType === 'formula' && !isSubTableField"
+            class="crm-form-design-config-item-formula-clear"
+            :class="`${
+              disabledClearFormulaConfig
+                ? 'cursor-not-allowed text-[var(--primary-6)]'
+                : 'cursor-pointer text-[var(--primary-8)]'
+            }`"
+            @click="handleClearFormulaField"
+          >
+            {{ t('common.clear') }}
+          </div>
+        </div>
         <div
           v-if="[FieldTypeEnum.MEMBER, FieldTypeEnum.MEMBER_MULTIPLE].includes(fieldConfig.type)"
           class="flex items-center gap-[8px]"
@@ -803,12 +879,10 @@
           :show-button="false"
           :min="0"
           :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
-          :fieldConfig="{
-            ...fieldConfig,
-            rules: [],
-          }"
+          :fieldConfig="fieldConfig"
           path=""
           isDefaultValueRender
+          ignore-rule
         />
         <CrmTextArea
           v-else-if="fieldConfig.type === FieldTypeEnum.TEXTAREA"
@@ -887,13 +961,43 @@
           :data-source-type="fieldConfig.dataSourceType || dataSourceOptions[0].value as FieldDataSourceTypeEnum"
           :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
         />
-        <n-input
-          v-else
-          v-model:value="fieldConfig.defaultValue"
-          :maxlength="255"
-          :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
-          clearable
-        />
+        <template v-else>
+          <n-radio-group
+            v-if="fieldConfig.type === FieldTypeEnum.INPUT && !isSubTableField"
+            v-model:value="fieldConfig.defaultValueType"
+            name="defaultValueType"
+            class="crm-form-design-config-radio-group"
+            :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
+            @update-value="
+              (val) => {
+                fieldConfig.defaultValueType = val;
+                fieldConfig.defaultValue = null;
+              }
+            "
+          >
+            <n-radio-button key="custom" value="custom" :label="t('crmFormDesign.custom')" />
+            <n-radio-button key="formula" value="formula" :label="t('crmFormDesign.formulaSetting')" />
+          </n-radio-group>
+
+          <!-- 默认值为公式 -->
+          <div v-if="fieldConfig?.defaultValueType === 'formula' && !isSubTableField">
+            <n-button
+              type="default"
+              class="outline--secondary w-full"
+              :disabled="!!fieldConfig.resourceFieldId"
+              @click="handleCalculateFormula"
+            >
+              {{ formulaConfig.source?.length ? t('crmFormDesign.formulaHasBeenSet') : t('common.setting') }}
+            </n-button>
+          </div>
+          <n-input
+            v-else
+            v-model:value="fieldConfig.defaultValue"
+            :maxlength="255"
+            :disabled="fieldConfig.disabledProps?.includes('defaultValue') || !!fieldConfig.resourceFieldId"
+            clearable
+          />
+        </template>
       </div>
       <!-- 默认值 End -->
       <!-- 附件 Start -->
@@ -1226,6 +1330,7 @@
 </template>
 
 <script setup lang="ts">
+  import { VNodeChild } from 'vue';
   import {
     NButton,
     NCheckbox,
@@ -1363,6 +1468,10 @@
     return safeParseFormula(fieldConfig.value.formula);
   });
 
+  const disabledClearFormulaConfig = computed(() => {
+    return !formulaConfig.value.source?.length || !!fieldConfig.value.resourceFieldId;
+  });
+
   function handleRuleChange(val: (string | number)[]) {
     fieldConfig.value.rules = val
       .map((e) => {
@@ -1399,6 +1508,13 @@
       },
     ];
   });
+
+  function renderPrefixTypeOption({ node, option }: { node: VNode; option: SelectOption }): VNodeChild {
+    return h(NTooltip, null, {
+      trigger: () => node,
+      default: () => option.label,
+    });
+  }
 
   function handleHasCurrentChange(val: boolean, multiple: boolean) {
     if (val && !multiple) {
@@ -1503,12 +1619,17 @@
       )
         ? // 子表格里只能有一个价格表
           fullList.filter(
-            (item) => [FieldDataSourceTypeEnum.PRODUCT].includes(item.value) && item.formKey !== props.formKey
+            (item) =>
+              [FieldDataSourceTypeEnum.PRODUCT, FieldDataSourceTypeEnum.BUSINESS_TITLE].includes(item.value) &&
+              item.formKey !== props.formKey
           )
         : fullList.filter(
             (item) =>
-              [FieldDataSourceTypeEnum.PRODUCT, FieldDataSourceTypeEnum.PRICE].includes(item.value) &&
-              item.formKey !== props.formKey
+              [
+                FieldDataSourceTypeEnum.PRODUCT,
+                FieldDataSourceTypeEnum.PRICE,
+                FieldDataSourceTypeEnum.BUSINESS_TITLE,
+              ].includes(item.value) && item.formKey !== props.formKey
           );
     }
     return fullList.filter((item) => item.formKey !== props.formKey);
@@ -1852,6 +1973,15 @@
     border-radius: var(--border-radius-small);
     .crm-form-design-color-select {
       @apply h-full w-full;
+    }
+  }
+  .crm-form-design-config-radio-group {
+    @apply flex;
+    .n-radio-button {
+      @apply flex-1;
+      :deep(.n-radio__label) {
+        text-align: center;
+      }
     }
   }
 </style>

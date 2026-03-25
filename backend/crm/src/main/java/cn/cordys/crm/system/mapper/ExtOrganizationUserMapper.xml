@@ -3,6 +3,25 @@
 
 <mapper namespace="cn.cordys.crm.system.mapper.ExtOrganizationUserMapper">
 
+    <sql id="combine">
+        <if test="${combineSearch} != null and ${combineSearch}.conditions != null and ${combineSearch}.conditions.size() > 0">
+            <trim prefix="and">
+                <trim prefix="(" suffix=")" suffixOverrides="and|or">
+                    <foreach collection="${combineSearch}.conditions" index="i" item="condition">
+                        <include refid="condition">
+                            <property name="condition" value="condition"/>
+                            <property name="fieldTable" value="combine_${i}.field_value"/>
+                            <property name="table" value="combine_${i}"/>
+                        </include>
+                        <include refid="cn.cordys.common.mapper.CommonMapper.searchMode">
+                            <property name="searchMode" value="${combineSearch}.searchMode"/>
+                        </include>
+                    </foreach>
+                </trim>
+            </trim>
+        </if>
+    </sql>
+
 
     <select id="countUserByDepartmentIds" resultType="java.lang.Integer">
         select count(user_id)
@@ -47,6 +66,8 @@
         sys_department_commander
         GROUP BY user_id
         ) uc ON su.id = uc.user_id
+        LEFT JOIN sys_user su_create ON sou.create_user = su_create.id
+        LEFT JOIN sys_user su_update ON sou.update_user = su_update.id
         where sou.department_id in
         <foreach collection="request.departmentIds" item="departmentId" open="(" separator="," close=")">
             #{departmentId}
@@ -60,7 +81,9 @@
         <include refid="filters">
             <property name="filters" value="request.filters"/>
         </include>
-
+        <include refid="combine">
+            <property name="combineSearch" value="request.combineSearch"/>
+        </include>
         <include refid="sorts">
             <property name="sort" value="request.sort"/>
         </include>
@@ -75,6 +98,9 @@
                 <choose>
                     <when test="sortName == 'user_name'">
                         su.name ${sortType},
+                    </when>
+                    <when test="sortName == 'work_city_name'">
+                        sou.work_city ${sortType},
                     </when>
                     <otherwise>
                         sou.${sortName} ${sortType},
@@ -113,6 +139,141 @@
 
     <sql id="condition">
         <choose>
+            <when test="condition.name == 'userName'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="su.name"/>
+                </include>
+            </when>
+            <when test="condition.name == 'status'">
+                <if test="condition.operator == 'IN'">
+                    <if test="condition.value == true">
+                        sou.enable is true
+                    </if>
+                    <if test="condition.value == false">
+                        sou.enable is false
+                    </if>
+                </if>
+                <if test="condition.operator == 'NOT_IN'">
+                    <if test="condition.value == true">
+                        sou.enable is false
+                    </if>
+                    <if test="condition.value == false">
+                        sou.enable is true
+                    </if>
+                </if>
+                <if test="condition.operator == 'EMPTY'">
+                    sou.enable IS NULL
+                </if>
+                <if test="condition.operator == 'NOT_EMPTY'">
+                    sou.enable IS NOT NULL
+                </if>
+            </when>
+            <when test="condition.name == 'gender'
+                and (condition.value == 'female' or condition.value == 'male'
+                or condition.operator == 'EMPTY' or condition.operator == 'NOT_EMPTY')">
+                <if test="condition.operator == 'IN'">
+                    <if test="condition.value == 'female'">
+                        su.gender is true
+                    </if>
+                    <if test="condition.value == 'male'">
+                        su.gender is false
+                    </if>
+
+                </if>
+                <if test="condition.operator == 'NOT_IN'">
+                    <if test="condition.value == 'female'">
+                        su.gender is false
+                    </if>
+                    <if test="condition.value == 'male'">
+                        su.gender is true
+                    </if>
+                </if>
+                <if test="condition.operator == 'EMPTY'">
+                    su.gender IS NULL
+                </if>
+                <if test="condition.operator == 'NOT_EMPTY'">
+                    su.gender IS NOT NULL
+                </if>
+            </when>
+            <when test="condition.name == 'email'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="su.email"/>
+                </include>
+            </when>
+            <when test="condition.name == 'phoneNumber'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="su.phone"/>
+                </include>
+            </when>
+            <when test="condition.name == 'supervisorId'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.supervisor_id"/>
+                </include>
+            </when>
+            <when test="condition.name == 'departmentId'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.department_id"/>
+                </include>
+            </when>
+            <when test="condition.name == 'employeeId'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.employee_id"/>
+                </include>
+            </when>
+            <when test="condition.name == 'employeeType'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.employee_type"/>
+                </include>
+            </when>
+            <when test="condition.name == 'updateUser'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.update_user"/>
+                </include>
+            </when>
+            <when test="condition.name == 'createUser'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.create_user"/>
+                </include>
+            </when>
+            <when test="condition.name == 'onboardingDate'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.onboarding_date"/>
+                </include>
+            </when>
+            <when test="condition.name == 'createTime'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.create_time"/>
+                </include>
+            </when>
+            <when test="condition.name == 'updateTime'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.update_time"/>
+                </include>
+            </when>
+            <when test="condition.name == 'workCity'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.work_city"/>
+                </include>
+            </when>
+            <when test="condition.name == 'positionId'">
+                <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                    <property name="condition" value="condition"/>
+                    <property name="column" value="sou.position"/>
+                </include>
+            </when>
             <when test="condition.name == 'enable'">
                 <include refid="cn.cordys.common.mapper.CommonMapper.condition">
                     <property name="condition" value="condition"/>

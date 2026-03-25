@@ -6,6 +6,7 @@ import useContractApi from '@lib/shared/api/modules/contract';
 import useCustomerApi from '@lib/shared/api/modules/customer';
 import useFollowApi from '@lib/shared/api/modules/follow';
 import useOpportunityApi from '@lib/shared/api/modules/opportunity';
+import useOrderApi from '@lib/shared/api/modules/order';
 import useProductApi from '@lib/shared/api/modules/product';
 import useLicenseApi from '@lib/shared/api/modules/system/authorizedManagement';
 import useBusinessApi from '@lib/shared/api/modules/system/business';
@@ -33,6 +34,7 @@ const loginApi = useLoginApi(CDR);
 const licenseApi = useLicenseApi(CDR);
 const followApi = useFollowApi(CDR);
 const contractApi = useContractApi(CDR);
+const orderApi = useOrderApi(CDR);
 
 export const {
   getFollowPlanDetail,
@@ -49,6 +51,35 @@ export const {
   addFollowRecord,
   addFollowPlan,
 } = followApi;
+
+export const {
+  getOrderFormConfig,
+  getOrderFormSnapshotConfig,
+  addOrder,
+  getOrderDetail,
+  getOrderDetailSnapshot,
+  updateOrder,
+  deleteOrder,
+  getOrderList,
+  getOrderInContractList,
+  getOrderTab,
+  addOrderView,
+  updateOrderView,
+  getOrderViewList,
+  getOrderViewDetail,
+  fixedOrderView,
+  enableOrderView,
+  deleteOrderView,
+  dragOrderView,
+  updateOrderStatus,
+  updateOrderStatusRollback,
+  sortOrderStatus,
+  addOrderStatus,
+  getOrderStatusConfig,
+  updateOrderStage,
+  downloadOrder,
+  deleteOrderStatus,
+} = orderApi;
 
 export const {
   addProduct,
@@ -234,6 +265,7 @@ export const {
   getGlobalOpenSeaCustomerList,
   getGlobalModuleCount,
   moveCustomerToPool,
+  getCustomerOrderList,
 } = customerApi;
 
 export const {
@@ -360,6 +392,7 @@ export const {
   deleteAttachment,
   getFieldPriceList,
   getFieldQuotationList,
+  getFieldOrderList,
   getFieldContractPaymentPlanList,
   getFieldContractPaymentRecordList,
   getFieldBusinessTitleList,

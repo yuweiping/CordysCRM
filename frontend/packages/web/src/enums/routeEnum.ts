@@ -37,6 +37,11 @@ export enum ContractRouteEnum {
   CONTRACT_INVOICE = 'contractInvoice',
 }
 
+export enum OrderRouteEnum {
+  ORDER = 'order',
+  ORDER_INDEX = 'orderIndex',
+}
+
 export enum ProductRouteEnum {
   PRODUCT = 'product',
   PRODUCT_PRO = 'productPro',
@@ -76,6 +81,7 @@ export enum FullPageEnum {
   FULL_PAGE = 'fullPage',
   FULL_PAGE_DASHBOARD = 'fullPageDashboard',
   FULL_PAGE_EXPORT_QUOTATION = 'fullPageExportQuotation',
+  FULL_PAGE_EXPORT_ORDER = 'fullPageExportOrder',
 }
 
 export const AppRouteEnum = {
@@ -89,5 +95,6 @@ export const AppRouteEnum = {
   ...DashboardRouteEnum,
   ...AgentRouteEnum,
   ...ContractRouteEnum,
+  ...OrderRouteEnum,
   ...TenderRouteEnum,
 };

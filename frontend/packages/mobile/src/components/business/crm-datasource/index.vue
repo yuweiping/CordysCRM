@@ -106,6 +106,7 @@
     getUserOptions,
     getFieldPriceList,
     getFieldQuotationList,
+    getFieldOrderList,
     getFieldContractPaymentPlanList,
     getFieldContractPaymentRecordList,
     getBusinessTitleList,
@@ -158,6 +159,7 @@
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: '',
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: '',
     [FieldDataSourceTypeEnum.BUSINESS_TITLE]: 'contract.businessTitle',
+    [FieldDataSourceTypeEnum.ORDER]: 'formCreate.order',
   };
 
   const sourceApi: Record<FieldDataSourceTypeEnum, (data: any) => Promise<CommonList<any>>> = {
@@ -174,6 +176,7 @@
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: getFieldContractPaymentPlanList,
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: getFieldContractPaymentRecordList,
     [FieldDataSourceTypeEnum.BUSINESS_TITLE]: getBusinessTitleList,
+    [FieldDataSourceTypeEnum.ORDER]: getFieldOrderList,
   };
 
   function onConfirm() {

@@ -31,6 +31,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.redisson.Redisson;
 import org.redisson.api.RLock;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -79,7 +80,7 @@ public class ThirdDepartmentService {
      * @param type       同步类型(企业微信，钉钉，飞书)
      */
     @Async
-    public void syncUser(String operatorId, String orgId, String type) {
+    public void syncUser(String operatorId, String orgId, String type, Locale locale) {
         Redisson redisson = CommonBeanFactory.getBean(Redisson.class);
         assert redisson != null;
         RLock lock = redisson.getLock(LOCK_PREFIX + orgId);
@@ -94,6 +95,7 @@ public class ThirdDepartmentService {
         setSyncStatus(syncStatusKey, operatorId);
 
         try {
+            LocaleContextHolder.setLocale(locale);
             performSync(operatorId, orgId, type);
             clearCaches(orgId);
         } catch (Exception e) {
@@ -109,6 +111,7 @@ public class ThirdDepartmentService {
      * 获取同步状态
      *
      * @param orgId 组织ID
+     *
      * @return 同步状态信息，如果没有正在同步则返回null
      */
     public Boolean getSyncStatus(String orgId) {
@@ -159,7 +162,7 @@ public class ThirdDepartmentService {
                         .map(Long::parseLong)
                         .toList();
                 departmentUserMap = weComDepartmentService.getDepartmentUser(accessToken, departmentIds);
-                log.info("企业微信部门用户数：{}", departmentUserMap.size());
+                log.info("企业微信部门用户数：{}", departmentUserMap.values().stream().mapToLong(List::size).sum());
             }
             case DINGTALK -> {
                 var thirdOrgDataDTO = dingTalkDepartmentService.convertToThirdOrgDataDTO(accessToken);
@@ -168,7 +171,7 @@ public class ThirdDepartmentService {
                 }
                 departments = thirdOrgDataDTO.getDepartments();
                 departmentUserMap = thirdOrgDataDTO.getUsers();
-                log.info("钉钉部门数：{}，部门用户数：{}", departments.size(), departmentUserMap.size());
+                log.info("钉钉部门数：{}，部门用户数：{}", departments.size(), departmentUserMap.values().stream().mapToLong(List::size).sum());
             }
             case LARK -> {
                 departments = larkDepartmentService.getDepartmentList(accessToken);
@@ -176,7 +179,8 @@ public class ThirdDepartmentService {
 
                 var departmentIds = departments.stream().map(ThirdDepartment::getId).toList();
                 departmentUserMap = larkDepartmentService.getDepartmentUserList(accessToken, departmentIds);
-                log.info("飞书部门用户数：{}", departmentUserMap.size());
+
+                log.info("飞书部门用户数：{}", departmentUserMap.values().stream().mapToLong(List::size).sum());
             }
             default -> throw new GenericException("不支持的同步类型：" + type);
         }

@@ -143,7 +143,7 @@ export default function useTable<T>(
     return item;
   }
 
-  async function loadList(isPageChange = false) {
+  async function loadList(isPageChange = false, refreshId: string | number | undefined = undefined) {
     if (!loadListFunc || propsRes.value.loading) return;
     setLoading(true);
     try {
@@ -154,7 +154,17 @@ export default function useTable<T>(
         ...loadListParams.value,
         filters: filterItem.value,
       };
-      const res = await loadListFunc(tableQueryParams.value);
+      let refreshPage = 0;
+      if (refreshId !== undefined) {
+        refreshPage = Math.max(
+          Math.ceil((propsRes.value.data.findIndex((item) => item.id === refreshId) + 1) / appStore.pageSize),
+          1
+        );
+      }
+      const res = await loadListFunc({
+        ...tableQueryParams.value,
+        current: refreshId ? refreshPage : tableQueryParams.value.current,
+      });
       if (props?.isReturnNativeResponse) {
         code.value = res.data.code;
       }
@@ -171,13 +181,19 @@ export default function useTable<T>(
           tmpArr.list?.forEach((item: CrmTableDataItem<T>) => {
             propsRes.value.data.push(processRecordItem(item, tmpArr));
           }) as unknown as UnwrapRef<CrmTableDataItem<T>[]>;
+          setPagination(tmpArr.current, tmpArr.total);
+        } else if (refreshId) {
+          const oldData = propsRes.value.data.find((item) => item.id === refreshId);
+          const newData = tmpArr.list?.find((item: CrmTableDataItem<T>) => item.id === refreshId);
+          if (oldData && newData) {
+            Object.assign(oldData, processRecordItem(newData, tmpArr) as unknown as UnwrapRef<CrmTableDataItem<T>>);
+          }
         } else {
           propsRes.value.data = tmpArr.list?.map((item: CrmTableDataItem<T>) =>
             processRecordItem(item, tmpArr)
           ) as unknown as UnwrapRef<CrmTableDataItem<T>[]>;
+          setPagination(tmpArr.current, tmpArr.total);
         }
-        // 设置分页
-        setPagination(tmpArr.current, tmpArr.total);
       }
       // 解决分页数据不足一页时不能触发滚动的问题
       nextTick(() => {

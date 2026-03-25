@@ -52,7 +52,6 @@ public class DataInitService {
             initOneTime(moduleFormService::modifyFormLinkProp, "modify.form.link");
             initOneTime(moduleFormService::modifyFormProp, "modify.form.prop");
             initOneTime(moduleFormService::modifyFieldMobile, "modify.field.mobile");
-            initOneTime(moduleFormService::modifyPhoneFieldFormat, "modify.field.format");
             initOneTime(moduleFormService::processOldLinkData, "process.old.link.data");
             initOneTime(moduleFormService::initFormScenarioProp, "init.record.form.scenario");
             initOneTime(clueService::processTransferredCluePlanAndRecord, "process.transferred.clue");
@@ -67,7 +66,14 @@ public class DataInitService {
             initOneTime(moduleFieldService::modifyInvoiceShowFields, "init.invoice.show.fields");
             initOneTime(moduleService::deleteExtraModules, "delete.extra.modules");
             initOneTime(moduleFieldExtService::modifySubProductSumColumn, "modify.quotation.product.sum.column");
-        } finally {
+            initOneTime(moduleFormService::initUpgradeForm, "init.upgrade.form.v1.6.0");
+            initOneTime(moduleFieldService::initOrderFields, "init.order.fields");
+			initOneTime(moduleFormService::initContactFormLinkRules, "init.contact.form.link.rules");
+			initOneTime(moduleFormService::initContractToOrderLinkScenario, "init.order.form.link.rules");
+            initOneTime(moduleFormService::initOrderFormScenarioProp, "init.order.form.scenario");
+			initOneTime(moduleFieldExtService::modifyInternalSubSumColumn, "modify.internal.sum.column");
+			initOneTime(moduleFieldExtService::modifyInternalSubCalcFormula, "modify.internal.calc.formula");
+		} finally {
             lock.unlock();
         }
     }

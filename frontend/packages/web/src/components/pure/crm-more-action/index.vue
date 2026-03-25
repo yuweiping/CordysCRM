@@ -2,6 +2,7 @@
   <n-dropdown
     v-if="moreOptions.length"
     :trigger="props.trigger"
+    :show="isHoverTrigger ? dropdownShow : undefined"
     :options="moreOptions"
     :render-label="renderLabel"
     class="crm-dropdown"
@@ -46,7 +47,6 @@
   import { hasAllPermission, hasAnyPermission } from '@/utils/permission';
 
   import type { ActionsItem } from './type';
-  import { Size } from 'naive-ui/es/button/src/interface';
 
   const slots = useSlots();
   const props = withDefaults(
@@ -54,7 +54,7 @@
       options: ActionsItem[];
       trigger?: PopoverTrigger;
       nodeProps?: (option: DropdownOption | DropdownGroupOption) => HTMLAttributes;
-      size?: Size;
+      size?: 'tiny' | 'small' | 'medium' | 'large';
       placement?:
         | 'top-start'
         | 'top'
@@ -92,16 +92,36 @@
     }
   }
 
+  // hover模式下手动控制dropdown
+  const dropdownShow = ref(false);
+  const isHoverTrigger = computed(() => props.trigger === 'hover');
+
+  const popShow = ref<Record<string, boolean>>({});
+  const hasPopOpen = computed(() => Object.values(popShow.value).some((v) => v));
+
   function handleUpdateShow(show: boolean) {
     emit('updateShow', show);
+
+    if (!isHoverTrigger.value) return;
+
+    // popconfirm打开时，不允许dropdown关闭
+    if (!show && hasPopOpen.value) return;
+
+    dropdownShow.value = show;
   }
-  const popShow = ref<Record<string, boolean>>({});
 
   function cancel() {
     // 关闭所有弹出框
     Object.keys(popShow.value).forEach((key) => {
       popShow.value[key] = false;
     });
+  }
+
+  function clickOutSide() {
+    emit('close');
+    if (!isHoverTrigger.value) return;
+    dropdownShow.value = false;
+    cancel();
   }
 
   function renderLabel(option: DropdownOption) {
@@ -142,6 +162,11 @@
                   'onCancel': () => emit('popCancel'),
                   'onUpdate:show': (val: boolean) => {
                     popShow.value[option.key as string] = val;
+
+                    // popconfirm 打开时锁住dropdown
+                    if (isHoverTrigger.value && val) {
+                      dropdownShow.value = true;
+                    }
                   },
                 },
                 {
@@ -231,10 +256,6 @@
     );
     return cleanDividers(filtered);
   });
-
-  function clickOutSide() {
-    emit('close');
-  }
 
   // 初始化
   watch(

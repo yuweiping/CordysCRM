@@ -2,7 +2,7 @@
   <n-form-item
     :label="props.fieldConfig.name"
     :path="props.path"
-    :rule="props.fieldConfig.rules"
+    :rule="formItemRules"
     :required="props.fieldConfig.rules.some((rule) => rule.key === 'required')"
     :label-placement="props.isSubTableField || props.isSubTableRender ? 'top' : props.formConfig?.labelPos"
     :show-label="!props.isSubTableRender && !props.isDefaultValueRender"
@@ -56,6 +56,7 @@
     isSubTableField?: boolean; // 是否是子表字段
     isSubTableRender?: boolean; // 是否是子表渲染
     isDefaultValueRender?: boolean; // 是否是默认值渲染
+    ignoreRule?: boolean;
   }>();
   const emit = defineEmits<{
     (e: 'change', value: number | null): void;
@@ -65,16 +66,18 @@
     default: null,
   });
 
+  const formItemRules = computed(() => {
+    if (props.ignoreRule) return [];
+    return props.fieldConfig.rules || [];
+  });
+
   watch(
     () => props.fieldConfig.defaultValue,
     (val) => {
       if (!props.needInitDetail) {
-        value.value = val !== undefined && val !== null ? val : value.value;
+        value.value = val !== undefined ? val : value.value;
         emit('change', value.value);
       }
-    },
-    {
-      immediate: true,
     }
   );
 
@@ -114,6 +117,13 @@
       ? val.toFixed(props.fieldConfig.precision || 0)
       : Number(val).toFixed(props.fieldConfig.precision || 0);
   }
+
+  onBeforeMount(() => {
+    if (props.needInitDetail && props.fieldConfig.defaultValue !== undefined) {
+      value.value = value.value === undefined || value.value === null ? props.fieldConfig.defaultValue : value.value;
+      emit('change', value.value);
+    }
+  });
 </script>
 
 <style lang="less" scoped></style>

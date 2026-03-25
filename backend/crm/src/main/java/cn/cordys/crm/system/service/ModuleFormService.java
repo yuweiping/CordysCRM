@@ -17,6 +17,7 @@ import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
 import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.resolver.field.TextMultipleResolver;
+import cn.cordys.common.resolver.field.TextResolver;
 import cn.cordys.common.service.BaseResourceFieldService;
 import cn.cordys.common.service.FieldSourceServiceProvider;
 import cn.cordys.common.uid.IDGenerator;
@@ -60,6 +61,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
@@ -83,6 +85,7 @@ public class ModuleFormService {
     private static final String PRICE_SUB_ROW_KEY = "price_sub";
     private static final String OPTION_DEFAULT_SOURCE = "custom";
     private static final String UPGRADE_EXT_FIELD = "ext_ver";
+    private static final String UNDERLINE = "_";
 
     static {
         TYPE_SOURCE_MAP = Map.ofEntries(
@@ -98,7 +101,8 @@ public class ModuleFormService {
                 Map.entry(FieldSourceType.CONTRACT.name(), "contract"),
                 Map.entry(FieldSourceType.PAYMENT_PLAN.name(), "contract_payment_plan"),
                 Map.entry(FieldSourceType.BUSINESS_TITLE.name(), "business_title"),
-                Map.entry(FieldSourceType.CONTRACT_PAYMENT_RECORD.name(), "contract_payment_record")
+                Map.entry(FieldSourceType.CONTRACT_PAYMENT_RECORD.name(), "contract_payment_record"),
+                Map.entry(FieldSourceType.ORDER.name(), "sales_order")
         );
     }
 
@@ -389,6 +393,13 @@ public class ModuleFormService {
                 if (baseField.needInitialOptions()) {
                     handleInitialOption(baseField);
                 }
+				// 文本字段默认值格式 || 流水号前缀固定字符格式
+				if (baseField instanceof SerialNumberField serialField && StringUtils.isEmpty(serialField.getPrefixType())) {
+					serialField.setPrefixType(OPTION_DEFAULT_SOURCE);
+				}
+				if (baseField instanceof InputField inputField && StringUtils.isEmpty(inputField.getDefaultValueType())) {
+					inputField.setDefaultValueType(OPTION_DEFAULT_SOURCE);
+				}
                 fieldDTOList.add(baseField);
             });
         }
@@ -500,11 +511,7 @@ public class ModuleFormService {
             if (CollectionUtils.isEmpty(subField.getSubFields())) {
                 return;
             }
-            subField.getSubFields().forEach(field -> {
-                if (StringUtils.isEmpty(field.getSubTableFieldId())) {
-                    field.setSubTableFieldId(subField.getId());
-                }
-            });
+            subField.getSubFields().forEach(field -> field.setSubTableFieldId(subField.getId()));
             toFlattenFields.addAll(subField.getSubFields());
         });
         formConfig.getFields().addAll(toFlattenFields);
@@ -809,7 +816,7 @@ public class ModuleFormService {
                         .collect(Collectors.toMap(ModuleFieldBlob::getId,
                                 filedBlob -> JSON.parseObject(filedBlob.getProp(), BaseField.class)));
 
-                List<BaseField> subFields = getSubFieldsBySourceType(sourceField.getDataSourceType());
+                List<BaseField> subFields = getSubFieldsBySourceType(FieldSourceType.PRICE.name());
                 Map<String, BaseField> subFieldMap = subFields.stream().collect(Collectors.toMap(BaseField::getId, Function.identity(), (p, n) -> p));
 
                 // 补充扩展的系统字段
@@ -890,28 +897,25 @@ public class ModuleFormService {
     }
 
     /**
-     * 获取指定数据源的子表字段集合
+     * 获取指定数据源的子表字段集合 (目前只有价格表类型的子表字段支持引用)
      *
      * @param sourceType 数据源类型
      * @return 子表字段集合
      */
     private List<BaseField> getSubFieldsBySourceType(String sourceType) {
-        LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
+		List<ModuleFieldBlob> subFields = new ArrayList<>();
 		if (Strings.CS.equals(sourceType, FieldSourceType.PRICE.name())) {
-            fieldWrapper.eq(ModuleField::getInternalKey, BusinessModuleField.PRICE_PRODUCT_TABLE.getKey());
-        } else if (Strings.CS.equals(sourceType, FieldSourceType.CONTRACT.name())) {
-            fieldWrapper.eq(ModuleField::getInternalKey, BusinessModuleField.CONTRACT_PRODUCT_TABLE.getKey());
-        } else {
-            return new ArrayList<>();
-        }
-        List<ModuleField> subFields = moduleFieldMapper.selectListByLambda(fieldWrapper);
+			subFields = extModuleFieldMapper.getFormSubFields(FormKey.PRICE.getKey());
+		}
         if (CollectionUtils.isEmpty(subFields)) {
             return new ArrayList<>();
         }
-        String subId = subFields.getFirst().getId();
-        ModuleFieldBlob fieldBlob = moduleFieldBlobMapper.selectByPrimaryKey(subId);
-        SubField subField = JSON.parseObject(fieldBlob.getProp(), SubField.class);
-        return subField.getSubFields();
+		List<BaseField> subFieldList = new ArrayList<>(subFields.size());
+		for (ModuleFieldBlob fieldBlob : subFields) {
+			SubField subField = JSON.parseObject(fieldBlob.getProp(), SubField.class);
+			subFieldList.addAll(subField.getSubFields());
+		}
+        return subFieldList;
     }
 
     /**
@@ -954,6 +958,58 @@ public class ModuleFormService {
         }
         initFormAndFields(allKeys);
     }
+
+	/**
+	 * 初始化线索转联系人表单联动规则
+	 */
+	@SuppressWarnings("unchecked")
+	public void initContactFormLinkRules() {
+		// 加载初始化的字段信息
+		LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
+		fieldWrapper.in(ModuleField::getInternalKey, List.of("contactName", "contactPhone", "clueContactName", "clueContactPhone"));
+		List<ModuleField> fields = moduleFieldMapper.selectListByLambda(fieldWrapper);
+		if (CollectionUtils.isEmpty(fields) || fields.size() < 4) {
+			log.error("未找到对应的内置字段，无法初始化联动规则");
+			return;
+		}
+		Map<String, String> fieldMap = fields.stream().collect(Collectors.toMap(ModuleField::getInternalKey, ModuleField::getId));
+		// 构建联动规则
+		LinkField contactNameLink = new LinkField();
+		contactNameLink.setCurrent(fieldMap.get("contactName"));
+		contactNameLink.setLink(fieldMap.get("clueContactName"));
+		contactNameLink.setEnable(true);
+		LinkField contactPhoneLink = new LinkField();
+		contactPhoneLink.setCurrent(fieldMap.get("contactPhone"));
+		contactPhoneLink.setLink(fieldMap.get("clueContactPhone"));
+		contactPhoneLink.setEnable(true);
+		// 更新表单属性
+		LambdaQueryWrapper<ModuleForm> wrapper = new LambdaQueryWrapper<>();
+		wrapper.eq(ModuleForm::getFormKey, FormKey.CONTACT.getKey());
+		ModuleForm contactForm = moduleFormMapper.selectListByLambda(wrapper).getFirst();
+		ModuleFormBlob formBlob = moduleFormBlobMapper.selectByPrimaryKey(contactForm.getId());
+		Map<String, Object> propMap = JSON.parseMap(formBlob.getProp());
+		List<LinkScenario> contactLinkProp = List.of(LinkScenario.builder().key(LinkScenarioKey.CLUE_TO_CONTACT.name())
+				.linkFields(List.of(contactNameLink, contactPhoneLink)).build());
+		propMap.put("linkProp", Map.of(FormKey.CLUE.getKey(), contactLinkProp));
+		formBlob.setProp(JSON.toJSONString(propMap));
+		moduleFormBlobMapper.updateById(formBlob);
+	}
+
+	/**
+	 * 初始化订单(合同)联动规则
+	 */
+	@SuppressWarnings("unchecked")
+	public void initContractToOrderLinkScenario() {
+		LambdaQueryWrapper<ModuleForm> wrapper = new LambdaQueryWrapper<>();
+		wrapper.eq(ModuleForm::getFormKey, FormKey.ORDER.getKey());
+		ModuleForm orderForm = moduleFormMapper.selectListByLambda(wrapper).getFirst();
+		ModuleFormBlob formBlob = moduleFormBlobMapper.selectByPrimaryKey(orderForm.getId());
+		Map<String, Object> propMap = JSON.parseMap(formBlob.getProp());
+		propMap.put("linkProp", Map.of(FormKey.CONTRACT.getKey(), List.of(
+				LinkScenario.builder().key(LinkScenarioKey.CONTRACT_TO_ORDER.name()).linkFields(new ArrayList<>()))));
+		formBlob.setProp(JSON.toJSONString(propMap));
+		moduleFormBlobMapper.updateById(formBlob);
+	}
 
     @SuppressWarnings("unchecked")
     public void initExtFieldsByVer(String version) {
@@ -1256,7 +1312,7 @@ public class ModuleFormService {
                                         f.idOrBusinessKey(), BaseField::getName, (oldValue, newValue) -> oldValue));
 
                 subField.getSubFields().stream()
-                        .filter(BaseField::canImport)
+                        .filter(BaseField::canExport)
                         .forEach(f -> {
                             List<String> head = new ArrayList<>();
                             head.add(field.getName());
@@ -1305,17 +1361,19 @@ public class ModuleFormService {
                         .collect(Collectors.toMap(f -> StringUtils.isNotBlank(f.getResourceFieldId()) ? f.getId()
                                 : f.idOrBusinessKey(), Function.identity(), (oldValue, newValue) -> oldValue));
 
+				// 子表格的表头ID格式: 子表格ID_字段ID
                 subField.getSubFields().stream()
-                        .filter(BaseField::canImport)
+                        .filter(BaseField::canExport)
                         .map(BaseField::getId)
-                        .forEach(heads::add);
+                        .forEach(bf -> heads.add(subField.getId() + UNDERLINE + bf));
 
+				// 子表格汇总字段ID格式: SUM-子表格ID-字段ID
                 if (CollectionUtils.isNotEmpty(subField.getSumColumns())) {
                     subField.getSumColumns().forEach(sumColumn -> {
                         if (!subFieldMap.containsKey(sumColumn)) {
                             return;
                         }
-                        heads.add(SUM_PREFIX + subFieldMap.get(sumColumn).getId());
+                        heads.add(SUM_PREFIX + subField.getId() + UNDERLINE + subFieldMap.get(sumColumn).getId());
                     });
                 }
             } else {
@@ -1494,6 +1552,9 @@ public class ModuleFormService {
         @SuppressWarnings("unchecked")
         List<BaseModuleFieldValue> sourceFieldVals = (List<BaseModuleFieldValue>) sourceClass.getMethod("getModuleFields").invoke(source);
         for (LinkField linkField : scenarioOptional.get().getLinkFields()) {
+			if (!linkField.isEnable()) {
+				continue;
+			}
             BaseField targetField = targetFieldMap.get(linkField.getCurrent());
             BaseField sourceField = sourceFieldMap.get(linkField.getLink());
             if (targetField == null || sourceField == null) {
@@ -1512,6 +1573,7 @@ public class ModuleFormService {
             if (sourceValue == null || sourceValue.getActualVal() == null) {
                 continue;
             }
+
             // 放入目标对象字段
             putTargetFieldVal(targetField, sourceValue, targetClass, target, targetFieldVals);
         }
@@ -1605,6 +1667,9 @@ public class ModuleFormService {
         } else {
             sourceApply.setDisplayVal(displayOfType(sourceField, sourceApply.getActualVal()));
         }
+		if (sourceField instanceof InputNumberField) {
+			sourceApply.setActualVal(sourceApply.getDisplayVal());
+		}
         return sourceApply;
     }
 
@@ -1663,7 +1728,7 @@ public class ModuleFormService {
      * @param sourceVal   来源值
      * @return 值
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked"})
     public Object resolveTargetPutVal(BaseField targetField, TransformSourceApplyDTO sourceVal) {
         if (targetField.multiple() && sourceVal.getActualVal() instanceof String) {
             // 兼容处理: 单值映射多值的情况
@@ -1676,19 +1741,47 @@ public class ModuleFormService {
             if (displayVal == null) {
                 return null;
             }
-            return displayVal instanceof List ? String.join(",", (List<String>) displayVal) : displayVal.toString();
+			String displayStr;
+			if (displayVal instanceof List) {
+				displayStr = String.join(",", (List<String>) displayVal);
+			} else {
+				displayStr = displayVal.toString();
+			}
+			if (targetField instanceof InputField) {
+				return new TextResolver().getCorrectInputString(displayStr);
+			} else {
+				return displayStr;
+			}
         }
-        if (targetField instanceof InputMultipleField) {
-            // 兼容处理: 多值输入直接取展示值即可.
-            TextMultipleResolver textMultipleResolver = new TextMultipleResolver();
-            return new ArrayList<>(textMultipleResolver.getCorrectFormatInput(sourceVal.getDisplayVal() instanceof List ?
-                    (List<String>) sourceVal.getDisplayVal() : List.of(sourceVal.getDisplayVal().toString().split(","))));
-        }
-        if (targetField instanceof HasOption targetFieldWithOption) {
-            // 兼容处理: 选项文本映射
-            return text2Val(targetFieldWithOption.getOptions(), sourceVal.getDisplayVal());
-        }
-        return sourceVal.getActualVal();
+		switch (targetField) {
+			case InputMultipleField ignored -> {
+				TextMultipleResolver textMultipleResolver = new TextMultipleResolver();
+				return textMultipleResolver.getCorrectFormatInput(
+						sourceVal.getDisplayVal() instanceof List
+								? (List<String>) sourceVal.getDisplayVal() : List.of(sourceVal.getDisplayVal().toString().split(","))
+				);
+			}
+			case HasOption targetFieldWithOption -> {
+				return text2Val(targetFieldWithOption.getOptions(), sourceVal.getDisplayVal());
+			}
+			case InputNumberField ignored -> {
+				String actualVal = sourceVal.getActualVal().toString();
+				if (StringUtils.isEmpty(actualVal)) {
+					return null;
+				}
+				if (actualVal.contains("%") || actualVal.contains(",")) {
+					actualVal = actualVal.replace(",", "").replace("%", "");
+				}
+				try {
+					return new BigDecimal(actualVal);
+				} catch (NumberFormatException e) {
+					log.error("Invalid source value: {}", actualVal, e);
+					return null;
+				}
+			}
+			default -> {}
+		}
+		return sourceVal.getActualVal();
     }
 
     /**
@@ -1820,6 +1913,22 @@ public class ModuleFormService {
     }
 
     /**
+     * 初始化订单表单联动场景
+     */
+    @SuppressWarnings("unchecked")
+    public void initOrderFormScenarioProp() {
+        LambdaQueryWrapper<ModuleForm> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ModuleForm::getFormKey, FormKey.ORDER.getKey());
+        ModuleForm orderForm = moduleFormMapper.selectListByLambda(wrapper).getFirst();
+        ModuleFormBlob orderFormBlob = moduleFormBlobMapper.selectByPrimaryKey(orderForm.getId());
+        Map<String, Object> propMap = JSON.parseMap(orderFormBlob.getProp());
+        List<LinkScenario> contractLinkProp = List.of(LinkScenario.builder().key(LinkScenarioKey.CONTRACT_TO_ORDER.name()).linkFields(List.of()).build());
+        propMap.put("linkProp", Map.of(FormKey.CONTRACT.getKey(), contractLinkProp));
+        orderFormBlob.setProp(JSON.toJSONString(propMap));
+        moduleFormBlobMapper.updateById(orderFormBlob);
+    }
+
+    /**
      * 表单属性处理(视图)
      */
     @SuppressWarnings("unchecked")
@@ -1850,21 +1959,6 @@ public class ModuleFormService {
             moduleFieldBlobMapper.updateById(fieldBlob);
         }
         extModuleFieldMapper.batchUpdateMobile(fieldIds, true);
-    }
-
-    @SuppressWarnings("unchecked")
-    public void modifyPhoneFieldFormat() {
-        LambdaQueryWrapper<ModuleField> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(ModuleField::getType, FieldType.PHONE.name());
-        List<ModuleField> moduleFields = moduleFieldMapper.selectListByLambda(lambdaQueryWrapper);
-        List<String> fieldIds = moduleFields.stream().map(ModuleField::getId).toList();
-        List<ModuleFieldBlob> moduleFieldBlobs = moduleFieldBlobMapper.selectByIds(fieldIds);
-        for (ModuleFieldBlob fieldBlob : moduleFieldBlobs) {
-            Map<String, Object> propMap = JSON.parseMap(fieldBlob.getProp());
-            propMap.put("format", "255");
-            fieldBlob.setProp(JSON.toJSONString(propMap));
-            moduleFieldBlobMapper.updateById(fieldBlob);
-        }
     }
 
     /**

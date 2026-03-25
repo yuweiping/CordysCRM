@@ -106,6 +106,14 @@
           :form-key="FormDesignKeyEnum.INVOICE"
           :source-id="props.sourceId"
         />
+        <CrmCard v-else-if="activeTab === 'order'" hide-footer no-content-bottom-padding>
+          <OrderTable
+            :formKey="FormDesignKeyEnum.CUSTOMER_ORDER"
+            :sourceId="props.sourceId"
+            isCustomerTab
+            @open-contract-drawer="handleOpenContractDrawer"
+          />
+        </CrmCard>
       </div>
       <CrmMoveModal
         v-model:show="showMoveModal"
@@ -113,7 +121,12 @@
         :source-id="props.sourceId"
         :name="sourceName"
         type="warning"
-        @refresh="refresh"
+        @refresh="emit('deleted')"
+      />
+      <ContractDetailDrawer
+        v-model:visible="showContractDetailDrawer"
+        :sourceId="activeSourceId"
+        @showCustomerDrawer="handleOpenCustomerDrawer"
       />
     </template>
   </CrmOverviewDrawer>
@@ -139,7 +152,9 @@
   import collaborator from './collaborator.vue';
   import customerRelation from './customerRelation.vue';
   import ContractTimeline from '@/views/contract/contract/components/contractTimeline.vue';
+  import ContractDetailDrawer from '@/views/contract/contract/components/detail.vue';
   import opportunityTable from '@/views/opportunity/components/opportunityTable.vue';
+  import OrderTable from '@/views/order/order/components/orderTable.vue';
 
   import { deleteCustomer, getCustomerHeaderList, updateCustomer } from '@/api/modules';
   import useModal from '@/hooks/useModal';
@@ -153,6 +168,8 @@
   }>();
   const emit = defineEmits<{
     (e: 'saved'): void;
+    (e: 'deleted'): void;
+    (e: 'transfer'): void;
   }>();
 
   const { t } = useI18n();
@@ -231,6 +248,7 @@
         name: 'contact',
         tab: t('opportunity.contactInfo'),
         enable: true,
+        permission: ['CUSTOMER_MANAGEMENT_CONTACT:READ'],
       },
       {
         name: 'followPlan',
@@ -282,6 +300,12 @@
         enable: true,
         permission: ['CONTRACT_INVOICE:READ'],
       },
+      {
+        name: 'order',
+        tab: t('module.order'),
+        enable: true,
+        permission: ['ORDER:READ'],
+      },
     ];
     if (collaborationType.value) {
       return fullList.filter((item) => item.name !== 'collaborator');
@@ -305,7 +329,7 @@
       });
       Message.success(t('common.transferSuccess'));
       descriptionRef.value?.initFormDescription();
-      emit('saved');
+      emit('transfer');
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);
@@ -326,7 +350,7 @@
         try {
           await deleteCustomer(props.sourceId);
           Message.success(t('common.deleteSuccess'));
-          emit('saved');
+          emit('deleted');
           show.value = false;
         } catch (error) {
           // eslint-disable-next-line no-console
@@ -357,14 +381,20 @@
     emit('saved');
   }
 
-  function refresh() {
-    emit('saved');
-    show.value = false;
-  }
-
   function handleDescriptionInit(_collaborationType?: CollaborationType, _sourceName?: string) {
     collaborationType.value = _collaborationType;
     sourceName.value = _sourceName || '';
+  }
+
+  const showContractDetailDrawer = ref(false);
+  const activeSourceId = ref<string>('');
+  function handleOpenContractDrawer(params: { id: string }) {
+    activeSourceId.value = params.id;
+    showContractDetailDrawer.value = true;
+  }
+
+  function handleOpenCustomerDrawer() {
+    showContractDetailDrawer.value = false;
   }
 </script>
 

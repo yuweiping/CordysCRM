@@ -14,6 +14,7 @@ import { getCityPath, getIndustryPath, safeFractionConvert } from '@lib/shared/m
 import {
   dataSourceTypes,
   departmentTypes,
+  formatNumberValueToString,
   getNormalFieldValue,
   getRuleType,
   initFieldValue,
@@ -24,7 +25,8 @@ import {
   parseModuleFieldValue,
   singleTypes,
 } from '@lib/shared/method/formCreate';
-import type { CollaborationType, ModuleField } from '@lib/shared/models/customer';
+import type { ModuleField } from '@lib/shared/models/common';
+import type { CollaborationType } from '@lib/shared/models/customer';
 import type { FormConfig, FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
 
 import type { Description } from '@/components/pure/crm-description/index.vue';
@@ -49,6 +51,7 @@ export interface FormCreateApiProps {
   linkFormInfo?: Ref<Record<string, any> | undefined>; // 关联表单信息
   linkFormKey?: Ref<FormDesignKeyEnum | undefined>; // 关联表单key
   linkScenario?: Ref<FormLinkScenarioEnum | undefined>; // 关联表单场景
+  isContractTableDetail?: boolean;
 }
 
 export default function useFormCreateApi(props: FormCreateApiProps) {
@@ -259,6 +262,12 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         key: 'departmentName',
       },
     ],
+    [FormDesignKeyEnum.ORDER_SNAPSHOT]: [
+      {
+        title: t('org.department'),
+        key: 'departmentName',
+      },
+    ],
   };
   const staticFields = [
     {
@@ -283,6 +292,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
     FormDesignKeyEnum.CONTRACT,
     FormDesignKeyEnum.INVOICE,
+    FormDesignKeyEnum.ORDER,
   ];
 
   function initFormShowControl(value?: any) {
@@ -375,6 +385,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         FormDesignKeyEnum.BUSINESS,
         FormDesignKeyEnum.CONTRACT_SNAPSHOT,
         FormDesignKeyEnum.INVOICE_SNAPSHOT,
+        FormDesignKeyEnum.ORDER_SNAPSHOT,
       ].includes(props.formKey.value) &&
       !item.resourceFieldId
     ) {
@@ -382,7 +393,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       descriptions.value.push({
         label: item.name,
         value: parseFormDetailValue(item, form),
-        slotName: FieldDataSourceTypeEnum.CUSTOMER,
+        slotName: 'dataSource',
         fieldInfo: item,
         tooltipPosition: 'top-end',
       });
@@ -395,7 +406,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       descriptions.value.push({
         label: item.name,
         value: parseFormDetailValue(item, form),
-        slotName: FieldDataSourceTypeEnum.BUSINESS_TITLE,
+        slotName: 'dataSource',
         fieldInfo: item,
         tooltipPosition: 'top-end',
       });
@@ -406,13 +417,50 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         FormDesignKeyEnum.CONTRACT_PAYMENT,
         FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
         FormDesignKeyEnum.INVOICE_SNAPSHOT,
+        FormDesignKeyEnum.ORDER_SNAPSHOT,
       ].includes(props.formKey.value) &&
+      !item.resourceFieldId
+    ) {
+      // 合同
+      descriptions.value.push({
+        label: item.name,
+        value: parseFormDetailValue(item, form),
+        slotName: 'dataSource',
+        fieldInfo: item,
+        tooltipPosition: 'top-end',
+      });
+    } else if (
+      props.isContractTableDetail &&
+      [FieldTypeEnum.DATA_SOURCE].includes(item.type) &&
+      props.formKey.value === FormDesignKeyEnum.CONTRACT_SNAPSHOT &&
+      [FieldDataSourceTypeEnum.BUSINESS, FieldDataSourceTypeEnum.QUOTATION].includes(
+        item.dataSourceType as FieldDataSourceTypeEnum
+      ) &&
       !item.resourceFieldId
     ) {
       descriptions.value.push({
         label: item.name,
         value: parseFormDetailValue(item, form),
-        slotName: FieldDataSourceTypeEnum.CONTRACT,
+        slotName: 'dataSource',
+        fieldInfo: item,
+        tooltipPosition: 'top-end',
+      });
+    } else if (
+      props.isContractTableDetail &&
+      item.type === FieldTypeEnum.DATA_SOURCE_MULTIPLE &&
+      props.formKey.value === FormDesignKeyEnum.CONTRACT_SNAPSHOT &&
+      [
+        FieldDataSourceTypeEnum.BUSINESS,
+        FieldDataSourceTypeEnum.CUSTOMER,
+        FieldDataSourceTypeEnum.BUSINESS_TITLE,
+        FieldDataSourceTypeEnum.QUOTATION,
+      ].includes(item.dataSourceType as FieldDataSourceTypeEnum) &&
+      !item.resourceFieldId
+    ) {
+      descriptions.value.push({
+        label: item.name,
+        value: parseFormDetailValue(item, form),
+        slotName: 'dataSourceMultiple',
         fieldInfo: item,
         tooltipPosition: 'top-end',
       });
@@ -647,7 +695,9 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
                 // 联动的字段是省市区则填充城市路径
                 const addressArr: string[] = linkField.value.split('-') || [];
                 formDetail.value[field.id] = addressArr.length
-                  ? `${getCityPath(addressArr[0])}-${addressArr.filter((e, i) => i > 0).join('-')}`
+                  ? [getCityPath(addressArr[0]), addressArr.filter((e, i) => i > 0).join('-')]
+                      .filter((e) => e)
+                      .join('-')
                   : '-';
               } else if (linkField.type === FieldTypeEnum.INDUSTRY) {
                 formDetail.value[field.id] = linkField.value ? getIndustryPath(linkField.value as string) : '-';
@@ -658,15 +708,22 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
                   .map((e: any) => e.name)
                   .join(',')
                   .slice(0, limitLength);
-              } else if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(linkField.type)) {
+              } else if (FieldTypeEnum.FORMULA === linkField.type) {
                 formDetail.value[field.id] = linkField.value?.toString();
+              } else if (FieldTypeEnum.INPUT_NUMBER === linkField.type) {
+                formDetail.value[field.id] = formatNumberValueToString(linkField.value, linkField);
               } else {
                 formDetail.value[field.id] = linkField.value;
               }
               break;
             case [...memberTypes, ...departmentTypes].includes(field.type):
-              formDetail.value[field.id] = Array.isArray(linkField.value) ? linkField.value : [linkField.value];
+              if ([FieldTypeEnum.MEMBER_MULTIPLE, FieldTypeEnum.DEPARTMENT_MULTIPLE].includes(field.type)) {
+                formDetail.value[field.id] = Array.isArray(linkField.value) ? linkField.value : [linkField.value];
+              } else {
+                formDetail.value[field.id] = linkField.value;
+              }
               field.initialOptions = linkField.initialOptions || [];
+              field.defaultValue = formDetail.value[field.id];
               break;
             default:
               formDetail.value[field.id] = linkField.value;
@@ -869,7 +926,9 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       }
     }
     if (
-      [FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD].includes(props.formKey.value) &&
+      [FormDesignKeyEnum.CONTRACT_PAYMENT, FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD, FormDesignKeyEnum.ORDER].includes(
+        props.formKey.value
+      ) &&
       props.sourceId?.value
     ) {
       // 合同详情下创建计划，自动带入合同信息
@@ -1262,7 +1321,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           },
         ].filter((option, index, self) => self.findIndex((o) => o.id === option.id) === index);
       }
-      if (props.linkFormInfo?.value && linkScenario) {
+      if (Object.keys(props.linkFormInfo?.value || {}).length && linkScenario) {
         // 如果有关联表单信息，则填充关联表单字段值
         fillLinkFormFieldValue(item, linkScenario);
       }
@@ -1276,7 +1335,9 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   function resetForm() {
     formDetail.value = {};
     fieldList.value.forEach((item) => {
-      item.initialOptions = [];
+      if (!item.resourceFieldId) {
+        item.initialOptions = [];
+      }
     });
     initFormFieldConfig(fieldList.value);
     initForm(props.linkScenario?.value);

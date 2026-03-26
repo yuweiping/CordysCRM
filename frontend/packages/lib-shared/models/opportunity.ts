@@ -1,7 +1,6 @@
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
-import type { TableQueryParams } from './common';
-import { ModuleField } from '@lib/shared/models/customer';
-import type {  FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
+import type { ModuleField, TableQueryParams } from './common';
+import type { FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
 
 export interface OpportunityItem {
   id: string; // 商机ID
@@ -76,9 +75,12 @@ export interface OpportunityBillboardDraggedParams {
   stage: string;
 }
 
-export interface UpdateOpportunityStageParams {
+export interface UpdateStageBaseParams {
   id: string;
   name: string;
+}
+
+export interface UpdateOpportunityStageParams {
   rate: string;
 }
 
@@ -87,15 +89,18 @@ export interface UpdateOpportunityStageRollbackParams {
   endRollBack: boolean;
 }
 
-export interface AddOpportunityStageParams {
+export interface StageBaseParams{
   name: string;
   type: 'AFOOT' | 'END';
-  rate: string;
   dropPosition: number;
   targetId: string;
 }
 
-export interface StageConfigItem {
+export interface AddOpportunityStageParams extends StageBaseParams {
+  rate: string;
+}
+
+export interface StageConfigBaseItem{
   id: string;
   createUser: string;
   updateUser: string;
@@ -103,11 +108,14 @@ export interface StageConfigItem {
   updateTime: number;
   name: string;
   type: 'AFOOT' | 'END';
-  rate: string;
   afootRollBack: boolean;
   endRollBack: boolean;
   pos: number;
   organizationId: string;
+}
+
+export interface StageConfigItem extends StageConfigBaseItem {
+  rate: string;
 }
 
 export interface OpportunityStageConfig {
@@ -122,7 +130,7 @@ export interface QuotationQueryParams extends TableQueryParams {
 }
 
 export interface QuotationItem {
-  id: string; 
+  id: string;
   name: string;
   approvalStatus: QuotationStatusEnum;
   opportunityId: string;
@@ -134,8 +142,8 @@ export interface QuotationItem {
   updateTime: number;
   createUserName: string;
   updateUserName: string;
-  moduleFields: ModuleField[]; 
-  products?:any[];
+  moduleFields: ModuleField[];
+  products?: any[];
 }
 
 export interface SaveQuotationParams {
@@ -151,7 +159,7 @@ export interface UpdateQuotationParams extends SaveQuotationParams {
   approvalStatus: QuotationStatusEnum;
 }
 
-export interface ApproveQuotation { 
+export interface ApproveQuotation {
   id: string;
   name: string;
   opportunityId: string;
@@ -161,7 +169,7 @@ export interface ApproveQuotation {
   products: any[];
 }
 
-export interface BatchUpdateQuotationStatusParams{
+export interface BatchUpdateQuotationStatusParams {
   ids: (string | number)[];
   approvalStatus: QuotationStatusEnum;
 }
@@ -172,6 +180,3 @@ export interface BatchOperationResult {
   skip?: number;
   errorMessages?: string;
 }
-
-
-

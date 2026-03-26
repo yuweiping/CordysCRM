@@ -6,7 +6,7 @@ import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEn
 import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
 import { SpecialColumnEnum, TableKeyEnum } from '@lib/shared/enums/tableEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
-import { formatNumberValue, formatNumberValueToString, transformData } from '@lib/shared/method/formCreate';
+import { formatNumberValueToString, transformData } from '@lib/shared/method/formCreate';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
 
 import type { CrmDataTableColumn } from '@/components/pure/crm-table/type';
@@ -55,7 +55,10 @@ export type FormKey =
   | FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD
   | FormDesignKeyEnum.PRICE
   | FormDesignKeyEnum.INVOICE
-  | FormDesignKeyEnum.CONTRACT_INVOICE;
+  | FormDesignKeyEnum.CONTRACT_INVOICE
+  | FormDesignKeyEnum.ORDER
+  | FormDesignKeyEnum.CONTRACT_ORDER
+  | FormDesignKeyEnum.CUSTOMER_ORDER;
 
 export interface FormCreateTableProps {
   formKey: FormKey;
@@ -70,6 +73,7 @@ export interface FormCreateTableProps {
   containerClass: string; // 容器元素类名
   hiddenTotal?: Ref<boolean>;
   opportunityStage?: StageConfigItem[]; // 商机阶段筛选项
+  orderStage?: StageConfigItem[];
   hiddenAllScreen?: boolean;
   hiddenRefresh?: boolean;
 }
@@ -112,6 +116,9 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     [FormDesignKeyEnum.PRICE]: TableKeyEnum.PRICE,
     [FormDesignKeyEnum.INVOICE]: TableKeyEnum.INVOICE,
     [FormDesignKeyEnum.CONTRACT_INVOICE]: TableKeyEnum.CONTRACT_INVOICE,
+    [FormDesignKeyEnum.ORDER]: TableKeyEnum.ORDER,
+    [FormDesignKeyEnum.CONTRACT_ORDER]: TableKeyEnum.CONTRACT_ORDER,
+    [FormDesignKeyEnum.CUSTOMER_ORDER]: TableKeyEnum.ORDER,
   };
   const noPaginationKey = [FormDesignKeyEnum.CUSTOMER_CONTACT];
   // 存储地址类型字段集合
@@ -446,6 +453,37 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
       sortOrder: false,
       sorter: 'default',
       render: (row: any) => row.departmentName || '-',
+    },
+  ];
+
+  const orderInternalColumns: CrmDataTableColumn[] = [
+    {
+      title: t('org.department'),
+      width: 120,
+      key: 'departmentId',
+      ellipsis: {
+        tooltip: true,
+      },
+      sortOrder: false,
+      sorter: true,
+      render: (row: any) => row.departmentName || '-',
+    },
+    {
+      title: t('order.status'),
+      width: 150,
+      key: 'stage',
+      ellipsis: {
+        tooltip: true,
+      },
+      filter: true,
+      sortOrder: false,
+      sorter: true,
+      filterOptions:
+        props.orderStage?.map((e) => ({
+          label: e.name,
+          value: e.id,
+        })) || [],
+      render: props.specialRender?.stage,
     },
   ];
 
@@ -833,6 +871,9 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     [FormDesignKeyEnum.PRICE]: [],
     [FormDesignKeyEnum.INVOICE]: invoiceInternalColumns,
     [FormDesignKeyEnum.CONTRACT_INVOICE]: invoiceInternalColumns,
+    [FormDesignKeyEnum.ORDER]: orderInternalColumns,
+    [FormDesignKeyEnum.CONTRACT_ORDER]: orderInternalColumns,
+    [FormDesignKeyEnum.CUSTOMER_ORDER]: orderInternalColumns,
   };
   const staticColumns: CrmDataTableColumn[] = [
     {
@@ -1046,7 +1087,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               fixed: 'left',
               columnSelectorDisabled: true,
               filedType: field.type,
@@ -1061,7 +1102,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               render: props.specialRender?.[field.businessKey],
               resourceFieldId: field.resourceFieldId,
@@ -1076,6 +1117,9 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                 FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
                 FormDesignKeyEnum.INVOICE,
                 FormDesignKeyEnum.CONTRACT_INVOICE,
+                FormDesignKeyEnum.ORDER,
+                FormDesignKeyEnum.CUSTOMER_ORDER,
+                FormDesignKeyEnum.CONTRACT_ORDER,
               ].includes(props.formKey) &&
                 field.businessKey === 'contractId') ||
               field.businessKey === 'paymentPlanId')
@@ -1086,7 +1130,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               render: props.specialRender?.[field.businessKey],
               resourceFieldId: field.resourceFieldId,
@@ -1100,7 +1144,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               ellipsis: {
                 tooltip: true,
@@ -1120,7 +1164,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               ellipsis: {
                 tooltip: true,
@@ -1137,7 +1181,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               ellipsis: {
                 tooltip: true,
               },
@@ -1154,7 +1198,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               key,
               fieldId: field.id,
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               ellipsis: {
                 tooltip: true,
               },
@@ -1212,7 +1256,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               },
               render: (row: any) => row[key] ?? '-',
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               resourceFieldId: field.resourceFieldId,
             };
@@ -1225,7 +1269,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               fieldId: field.id,
               render: (row: any) => formatNumberValueToString(row[key], field),
               sortOrder: false,
-              sorter,
+              sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
               resourceFieldId: field.resourceFieldId,
             };

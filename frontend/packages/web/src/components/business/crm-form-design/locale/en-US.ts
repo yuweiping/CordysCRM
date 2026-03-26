@@ -111,10 +111,10 @@ export default {
   'crmFormDesign.addRule': 'Add Rule',
   'crmFormDesign.formConfig': 'Form Properties',
   'crmFormDesign.formLayout': 'Form Layout',
-  'crmFormDesign.formLayout1': 'Single Column',
-  'crmFormDesign.formLayout2': 'Two Columns',
-  'crmFormDesign.formLayout3': 'Three Columns',
-  'crmFormDesign.formLayout4': 'Four Columns',
+  'crmFormDesign.formLayout1': '1 C',
+  'crmFormDesign.formLayout2': '2 C',
+  'crmFormDesign.formLayout3': '3 C',
+  'crmFormDesign.formLayout4': '4 C',
   'crmFormDesign.formLabelPosition': 'Field Title Position',
   'crmFormDesign.vertical': 'Vertical',
   'crmFormDesign.horizontal': 'Horizontal',
@@ -125,6 +125,7 @@ export default {
   'crmFormDesign.formActionButtonPosition': 'Form Action Button Position',
   'crmFormDesign.serialNumberRule': 'Serial Number Rule',
   'crmFormDesign.serialNumberRuleTip': 'Changing the rules will reset the count',
+  'crmFormDesign.serialNumberRuleAutoCountTip': '{number} digits, not automatically reset',
   'crmFormDesign.fixedChar': 'Fixed Character',
   'crmFormDesign.submitDate': 'Submission Date',
   'crmFormDesign.autoCount': 'Auto Count',
@@ -187,7 +188,7 @@ export default {
   'crmFormDesign.formulaDiscount': 'Discount',
   'crmFormDesign.formulaPlaceholder':
     'Select the fields and functions below to configure the calculation formula. For example:',
-  'crmFormDesign.formulaHasBeenSet': 'Formula has been set',
+  'crmFormDesign.formulaHasBeenSet': 'Formula set',
   'crmFormDesign.formulaByNameSearchPlaceholder': 'Search by field name',
   'crmFormDesign.formulaFunction': 'Common Functions',
   'crmFormDesign.formulaUsage': 'Function Usage',
@@ -197,6 +198,14 @@ export default {
   'crmFormDesign.formulaSelectUsageTip': 'Please select a function from the left',
   'crmFormDesign.formulaSUMDescription': 'Sum',
   'crmFormDesign.formulaDAYSDescription': 'Calculate the difference in days between two dates',
+  'crmFormDesign.formulaCONCATENATEDescription': 'Combines multiple texts into a single text',
+  'crmFormDesign.formulaTEXTDescription': 'Numeric, date, time, to the text in the specified format',
+  'crmFormDesign.formulaIFSDescription':
+    'In order to check multiple conditions, and returns the first meet the conditions of the corresponding results',
+  'crmFormDesign.formulaTODAYDescription': 'Return current system date (excluding time)',
+  'crmFormDesign.formulaNOWDescription': 'Returns the current system date and time (time stamp)',
+  'crmFormDesign.formulaANDDescription':
+    'Check if multiple conditions are met simultaneously. If all are met, return TRUE; otherwise, return FALSE',
   'crmFormDesign.amount': 'Amount',
   'crmFormDesign.CLUE_TO_CUSTOMER': 'Lead to Account',
   'crmFormDesign.CLUE_TO_OPPORTUNITY': 'Lead to Opportunity',
@@ -206,6 +215,8 @@ export default {
   'crmFormDesign.OPPORTUNITY_TO_RECORD': 'Write Record',
   'crmFormDesign.PLAN_TO_RECORD': 'Plan to Record',
   'crmFormDesign.CONTRACT_TO_INVOICE': 'Add Invoice',
+  'crmFormDesign.CLUE_TO_CONTACT': 'Lead to Contact',
+  'crmFormDesign.CONTRACT_TO_ORDER': 'Create Order',
   'crmFormDesign.tip.CLUE_TO_CUSTOMER':
     'When converting a lead to an account, fill the lead form field content into the account form field',
   'crmFormDesign.tip.CLUE_TO_OPPORTUNITY':
@@ -222,6 +233,10 @@ export default {
     'When performing plan to record operations, fill the plan form field content into the record form fields',
   'crmFormDesign.tip.CONTRACT_TO_INVOICE':
     'When creating an invoice in the contract details, fill the contract form fields into the invoice form fields',
+  'crmFormDesign.tip.CLUE_TO_CONTACT':
+    'When converting a lead to a contact, fill the lead form field content into the contact form fields. Note: The customer name field in the contact form is filled by system logic, please do not configure it!',
+  'crmFormDesign.tip.CONTRACT_TO_ORDER':
+    'When creating an order in the contract details, fill the contract form fields into the order form fields',
   'crmFormDesign.productTable': 'Product Table',
   'crmFormDesign.quotationTable': 'Quotation Table',
   'crmFormDesign.sum': 'Sum',

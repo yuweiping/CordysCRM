@@ -11,6 +11,10 @@ public enum LinkScenarioKey {
      * 线索转客户
      */
     CLUE_TO_CUSTOMER,
+	/**
+	 * 线索转联系人
+	 */
+	CLUE_TO_CONTACT,
     /**
      * 线索转商机
      */
@@ -38,5 +42,9 @@ public enum LinkScenarioKey {
 	/**
 	 * 合同转发票
 	 */
-	CONTRACT_TO_INVOICE
+	CONTRACT_TO_INVOICE,
+	/**
+	 * 合同转订单
+	 */
+	CONTRACT_TO_ORDER,
 }

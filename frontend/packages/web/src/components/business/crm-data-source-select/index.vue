@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
   import { DataTableRowKey, NSelect, SelectOption } from 'naive-ui';
+  import { cloneDeep } from 'lodash-es';
 
   import { FieldDataSourceTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -94,6 +95,7 @@
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: 'crmFormCreate.drawer.contractPaymentPlan',
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: 'crmFormCreate.drawer.contractPaymentRecord',
     [FieldDataSourceTypeEnum.BUSINESS_TITLE]: 'crmFormCreate.drawer.businessTitle',
+    [FieldDataSourceTypeEnum.ORDER]: 'crmFormCreate.drawer.order',
   };
 
   const value = defineModel<DataTableRowKey[]>('value', {
@@ -104,11 +106,12 @@
     default: [],
   });
 
-  const selectedRows = ref<InternalRowData[]>(rows.value);
-  const selectedKeys = ref<DataTableRowKey[]>(value.value);
+  const selectedRows = ref<InternalRowData[]>(cloneDeep(rows.value));
+  const selectedKeys = ref<DataTableRowKey[]>(value.value.map((e) => e));
 
   const dataSourcesModalVisible = ref(false);
   const dataSourceFormFields = ref<FormCreateField[]>([]);
+  const initialRows = ref<InternalRowData[]>([]);
 
   function handleFormInit(fields: FormCreateField[]) {
     dataSourceFormFields.value = fields;
@@ -117,7 +120,7 @@
   function handleDataSourceConfirm() {
     const newRows = selectedRows.value;
     if (rows.value.length !== newRows.length || rows.value.some((item, index) => item.id !== newRows[index].id)) {
-      rows.value = newRows;
+      rows.value = cloneDeep(newRows);
       value.value = newRows.map((e) => e.id) as RowKey[];
       nextTick(() => {
         emit('change', value.value, newRows, dataSourceFormFields.value);
@@ -176,9 +179,11 @@
     () => value.value,
     () => {
       selectedKeys.value = value.value;
-      selectedRows.value = rows.value.filter((item) => value.value.includes(item.id as DataTableRowKey));
-    },
-    { immediate: true }
+      selectedRows.value = initialRows.value
+        .concat(rows.value)
+        .filter((item) => value.value.includes(item.id as DataTableRowKey));
+      rows.value = cloneDeep(selectedRows.value);
+    }
   );
 
   const fullscreenTargetRef = ref();
@@ -208,6 +213,13 @@
       setFullWrapperFullScreenRef();
     }
   );
+
+  onBeforeMount(() => {
+    if (value.value.length === 0) {
+      initialRows.value = cloneDeep(rows.value);
+    }
+    rows.value = rows.value.filter((item) => value.value.includes(item.id as DataTableRowKey));
+  });
 </script>
 
 <style lang="less">

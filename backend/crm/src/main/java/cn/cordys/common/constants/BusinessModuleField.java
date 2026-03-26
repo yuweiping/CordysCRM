@@ -213,7 +213,6 @@ public enum BusinessModuleField {
     QUOTATION_OPPORTUNITY("quotationOpportunity", "opportunityId", Set.of("rules.required", "mobile", "dataSourceType", "readable"), FormKey.QUOTATION.getKey()),
 	QUOTATION_UNTIL_TIME("quotationUntilTime", "untilTime", Set.of("rules.required", "mobile", "readable"), FormKey.QUOTATION.getKey()),
 	QUOTATION_TOTAL_AMOUNT("quotationTotalAmount", "amount", Set.of("rules.required", "mobile", "readable"), FormKey.QUOTATION.getKey()),
-    QUOTATION_PRODUCT_AMOUNT("quotationAmount", "sumAmount", Set.of("rules.required", "mobile", "readable"), FormKey.QUOTATION.getKey()),
 
 
     /*------ start: CONTRACT_PAYMENT_PLAN ------*/
@@ -247,10 +246,6 @@ public enum BusinessModuleField {
     CONTRACT_NAME("contractName", "name", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT.getKey()),
 
     CONTRACT_CUSTOMER_NAME("contractCustomer", "customerId", Set.of("rules.required", "mobile", "readable", "dataSourceType"), FormKey.CONTRACT.getKey()),
-    CONTRACT_PRODUCT_TABLE("contractProducts", "products", Set.of("mobile", "readable"), FormKey.CONTRACT.getKey()),
-    CONTRACT_PRODUCT("contractProduct", "product", Set.of( "mobile", "dataSourceType"), FormKey.CONTRACT.getKey()),
-    CONTRACT_PRODUCT_AMOUNT("contractProductAmount", "price", Set.of("mobile"), FormKey.CONTRACT.getKey()),
-    CONTRACT_PRODUCT_SUM_AMOUNT("contractProductSumAmount", "sumAmount", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT.getKey()),
     CONTRACT_OWNER("contractOwner", "owner", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT.getKey()),
     CONTRACT_NO("contractNo", "number", Set.of("rules.required"), FormKey.CONTRACT.getKey()),
     CONTRACT_START_TIME("contractStartTime", "startTime", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT.getKey()),
@@ -280,9 +275,20 @@ public enum BusinessModuleField {
     CONTRACT_PAYMENT_RECORD_CONTRACT("contractPaymentRecordContract", "contractId", Set.of("rules.required", "dataSourceType", "mobile", "readable"), FormKey.CONTRACT_PAYMENT_RECORD.getKey()),
     CONTRACT_PAYMENT_RECORD_PLAN("contractPaymentRecordPlan", "paymentPlanId", Set.of("dataSourceType", "mobile", "readable"), FormKey.CONTRACT_PAYMENT_RECORD.getKey()),
     CONTRACT_PAYMENT_RECORD_AMOUNT("contractPaymentRecordAmount", "recordAmount", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT_PAYMENT_RECORD.getKey()),
-    CONTRACT_PAYMENT_RECORD_END_TIME("contractPaymentRecordEndTime", "recordEndTime", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT_PAYMENT_RECORD.getKey());
+    CONTRACT_PAYMENT_RECORD_END_TIME("contractPaymentRecordEndTime", "recordEndTime", Set.of("rules.required", "mobile", "readable"), FormKey.CONTRACT_PAYMENT_RECORD.getKey()),
     /*------ end: CONTRACT_PAYMENT_RECORD 合同回款记录  ------*/
 
+    /*------ start: ORDER ------*/
+    ORDER_NAME("orderName", "name", Set.of("rules.required", "mobile", "readable"), FormKey.ORDER.getKey()),
+    ORDER_CUSTOMER("orderCustomer", "customerId", Set.of("dataSourceType"), FormKey.ORDER.getKey()),
+    ORDER_CONTRACT("orderContract", "contractId", Set.of("dataSourceType"), FormKey.ORDER.getKey()),
+    ORDER_OWNER("orderOwner", "owner", Set.of(), FormKey.ORDER.getKey()),
+    ORDER_NO("orderNo", "number", Set.of("rules.required"), FormKey.ORDER.getKey()),
+    ORDER_TOTAL_AMOUNT("orderAmount", "amount", Set.of("rules.required", "mobile", "readable"), FormKey.ORDER.getKey()),
+    /*------ end: ORDER ------*/
+
+
+    ;
 
     /**
      * 业务字段缓存

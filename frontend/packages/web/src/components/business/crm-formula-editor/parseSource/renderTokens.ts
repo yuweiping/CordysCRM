@@ -1,6 +1,6 @@
 import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
 
-import { ARRAY_COLOR, DATE_TIME_COLOR, FUN_COLOR, INPUT_NUMBER_COLOR } from '../config';
+import { ARRAY_COLOR, DATE_TIME_COLOR, FUN_COLOR, INPUT_NUMBER_COLOR, TEXT_COLOR } from '../config';
 import { FieldToken, Token } from '../types';
 import { createCaretText } from '../utils';
 
@@ -106,6 +106,12 @@ function getFormulaNodeColor(token: Token) {
 
     case FieldTypeEnum.DATE_TIME:
       return DATE_TIME_COLOR;
+    case FieldTypeEnum.INPUT:
+    case FieldTypeEnum.DATA_SOURCE:
+    case FieldTypeEnum.DATA_SOURCE_MULTIPLE:
+    case FieldTypeEnum.SERIAL_NUMBER:
+    case FieldTypeEnum.SELECT:
+      return TEXT_COLOR;
 
     default:
       return '';
@@ -120,10 +126,6 @@ export function createFieldNode(token: Token) {
   node.dataset.nodeType = 'field';
   if ((token as FieldToken)?.fieldType) {
     node.dataset.fieldType = (token as FieldToken)?.fieldType;
-  }
-
-  if ((token as FieldToken)?.numberType) {
-    node.dataset.numberType = (token as FieldToken)?.numberType;
   }
 
   node.style.color = getFormulaNodeColor(token);
@@ -144,17 +146,21 @@ export function createFieldNode(token: Token) {
 /**
  * 回显渲染 tokens
  */
-export function renderTokens(tokens: Token[], startIndex = 0): { fragment: DocumentFragment; endIndex: number } {
+export function renderTokens(
+  tokens: Token[],
+  startIndex = 0,
+  stopAtRightParen = false
+): { fragment: DocumentFragment; endIndex: number } {
   const fragment = document.createDocumentFragment();
   let i = startIndex;
 
   while (i < tokens.length) {
     const token = tokens[i];
 
-    // function
+    // ---------- function ----------
     if (token.type === 'function') {
-      // 跳过 function + '('
-      const { fragment: argsFragment, endIndex } = renderTokens(tokens, i + 2);
+      // function 后面按 token 结构是 "("
+      const { fragment: argsFragment, endIndex } = renderTokens(tokens, i + 2, true);
 
       const fnRoot = createFunctionRootNode(token.name!, argsFragment);
 
@@ -164,7 +170,13 @@ export function renderTokens(tokens: Token[], startIndex = 0): { fragment: Docum
       i = endIndex + 1;
     } else if (token.type === 'paren' && token.value === ')') {
       /** ---------- paren end ---------- */
-      return { fragment, endIndex: i };
+      if (stopAtRightParen) {
+        return { fragment, endIndex: i };
+      }
+
+      // 普通表达式里的 )，直接渲染
+      fragment.appendChild(document.createTextNode(')'));
+      i++;
     } else if (token.type === 'field') {
       /** ---------- field ---------- */
       const fieldNode = createFieldNode(token);
@@ -172,7 +184,25 @@ export function renderTokens(tokens: Token[], startIndex = 0): { fragment: Docum
       i++;
     } else {
       /** ---------- other ---------- */
-      fragment.appendChild(document.createTextNode(token.type === 'number' ? String(token.value) : token.value!));
+      let text = '';
+      if (token.type === 'number') {
+        text = String(token.value);
+      } else if (token.type === 'string') {
+        text = `"${token.value ?? ''}"`;
+      } else if (token.type === 'boolean') {
+        text = token.value ? 'TRUE' : 'FALSE';
+      } else if (token.type === 'operator') {
+        text = token.value;
+      } else if (token.type === 'comma') {
+        text = token.value ?? ',';
+      } else if (token.type === 'paren') {
+        // 普通左括号
+        text = token.value;
+      } else {
+        text = String((token as any).value ?? '');
+      }
+
+      fragment.appendChild(document.createTextNode(text));
       i++;
     }
   }
@@ -188,7 +218,7 @@ export function renderTokens(tokens: Token[], startIndex = 0): { fragment: Docum
 export function renderTokensToEditor(editor: HTMLElement, tokens: Token[]) {
   editor.innerHTML = '';
 
-  const { fragment } = renderTokens(tokens);
+  const { fragment } = renderTokens(tokens, 0, false);
   editor.appendChild(fragment);
 
   // 保证结尾一定text node（可输入）

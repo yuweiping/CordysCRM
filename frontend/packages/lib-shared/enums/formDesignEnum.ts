@@ -30,6 +30,10 @@ export enum FormDesignKeyEnum {
   OPPORTUNITY_QUOTATION = 'quotation', // 商机报价单
   OPPORTUNITY_QUOTATION_SNAPSHOT = 'quotationSnapshot', // 商机快照报价单
   BUSINESS_TITLE = 'businessTitle', // 工商抬头(数据源，无表单配置入口)
+  ORDER = 'order', // 订单
+  ORDER_SNAPSHOT = 'orderSnapshot', // 订单快照
+  CONTRACT_ORDER = 'contractOrder', // 合同下的订单
+  CUSTOMER_ORDER = 'customerOrder', // 客户下的订单
   // 全局搜索
   SEARCH_ADVANCED_CLUE = 'searchAdvancedClue', // 线索
   SEARCH_ADVANCED_CUSTOMER = 'searchAdvancedCustomer', // 客户
@@ -94,6 +98,7 @@ export enum FieldDataSourceTypeEnum {
   CONTRACT_PAYMENT = 'PAYMENT_PLAN',
   CONTRACT_PAYMENT_RECORD = 'CONTRACT_PAYMENT_RECORD', // 回款记录
   BUSINESS_TITLE = 'BUSINESS_TITLE', // 工商抬头
+  ORDER = 'ORDER', // 订单
 }
 
 export enum FormLinkScenarioEnum {
@@ -105,4 +110,6 @@ export enum FormLinkScenarioEnum {
   OPPORTUNITY_TO_RECORD = 'OPPORTUNITY_TO_RECORD', // 商机转跟进记录
   PLAN_TO_RECORD = 'PLAN_TO_RECORD', // 跟进计划转跟进记录
   CONTRACT_TO_INVOICE = 'CONTRACT_TO_INVOICE', // 合同开票
+  CLUE_TO_CONTACT = 'CLUE_TO_CONTACT', // 线索转联系人
+  CONTRACT_TO_ORDER = 'CONTRACT_TO_ORDER', // 合同创建订单
 }

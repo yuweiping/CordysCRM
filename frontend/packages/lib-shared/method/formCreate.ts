@@ -1,8 +1,7 @@
-import type { CommonList } from '../models/common';
+import type { CommonList, ModuleField } from '../models/common';
 import { FieldTypeEnum } from '../enums/formDesignEnum';
 import type { FormCreateField, FormDetail } from '@cordys/web/src/components/business/crm-form-create/types';
 import { formatTimeValue, getCityPath, getIndustryPath } from './index';
-import type { ModuleField } from '../models/customer';
 import { useI18n } from '../hooks/useI18n';
 
 export const linkAllAcceptTypes = [FieldTypeEnum.INPUT, FieldTypeEnum.TEXTAREA];
@@ -118,7 +117,7 @@ export function formatNumberValueToString(value: number, item: FormCreateField) 
     }
     if (item.showThousandsSeparator) {
       return item.precision
-        ? `${value.toLocaleString('en-US').split('.')[0]}.${value.toFixed(item.precision).split('.')[1]}`
+        ? `${value.toLocaleString('en-US').split('.')[0]}.${value.toFixed?.(item.precision).split('.')[1]}`
         : value.toLocaleString('en-US');
     }
     return item.precision ? Number(value).toFixed(item.precision) : value.toString();
@@ -184,6 +183,9 @@ export function parseModuleFieldValue(item: FormCreateField, fieldValue: string 
     value = fieldValue ? getIndustryPath(fieldValue as string) : '-';
   } else if (item.type === FieldTypeEnum.INPUT_NUMBER) {
     value = formatNumberValueToString(fieldValue as unknown as number, item);
+    if (value.includes('NaN') || value.includes('%%')) {
+      value = fieldValue.toString();
+    }
   } else if (item.type === FieldTypeEnum.DATE_TIME) {
     value = formatTimeValue(fieldValue as string, item.dateType);
   }
@@ -284,7 +286,7 @@ export function transformData({
     } else if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(field.type) && needParseSubTable) {
       field.subFields?.forEach((subField) => {
         const subFieldData = (
-          item[fieldId] || item.moduleFields.find((mf: any) => mf.fieldId === fieldId)?.fieldValue
+          item[fieldId] || item.moduleFields?.find((mf: any) => mf.fieldId === fieldId)?.fieldValue
         )?.map((subItem: Record<string, any>) => {
           if (subField.resourceFieldId) {
             subItem[`${subField.id}_original`] = subItem[subField.id]; // 备份原始值以供编辑时填充数据源
@@ -341,7 +343,7 @@ export function transformData({
         businessFieldAttr[fieldId] = formatTimeValue(item[fieldId], field.dateType);
       } else if (options && options.length > 0) {
         let name: string | string[] = '';
-        if (item[fieldId] === '') {
+        if (item[fieldId] === '' || item[fieldId] === null) {
           name = '-';
         } else if (dataSourceFieldIds.includes(fieldId)) {
           // 处理数据源字段，需要赋值为数组
@@ -381,10 +383,7 @@ export function transformData({
         // 处理特殊业务 key 映射关系
         businessFieldAttr[specialBusinessKeyMap[fieldId]] = item[specialBusinessKeyMap[fieldId]];
       }
-      if (![FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(field.type)) {
-        // 字段可能会被设置为数据源的显示字段，而数据源显示字段都通过 id 读取，所以这里需要用 id 备份一份数据以供数据源显示字段场景读取
-        businessFieldAttr[field.id] = businessFieldAttr[fieldId] || item[fieldId];
-      }
+      businessFieldAttr[field.id] = businessFieldAttr[fieldId] || item[fieldId];
     }
   });
 
@@ -447,13 +446,23 @@ export function transformData({
         customFieldAttr[field.fieldId] = [t('common.optionNotExist')];
       } else {
         // 多选
-        customFieldAttr[field.fieldId] = field.fieldValue?.map((e) => t('common.optionNotExist'));
+        customFieldAttr[field.fieldId] = field.fieldValue?.map(() => t('common.optionNotExist'));
       }
     } else {
       // 其他类型字段，直接赋值
       customFieldAttr[field.fieldId] = field.fieldValue;
     }
   });
+  // 根据 moduleFields 集合判断 fields 完整字段集合中是否有自定义字段无值，因为无值后台不会在 moduleFields 里返回该字段，需要手动置空
+  fields.forEach((field) => {
+    if (!field.resourceFieldId && !field.businessKey) {
+      const fieldId = field.id;
+      if (!customFieldAttr[fieldId]) {
+        customFieldAttr[fieldId] = undefined;
+      }
+    }
+  });
+
   return {
     ...item,
     ...customFieldAttr,
@@ -501,8 +510,12 @@ export function mergeUniqueOptions(sumInitialOptions: Record<string, any>[], app
       return;
     }
     const optionKey = option.id ?? option.value;
-    if (optionKey !== undefined && !optionMap.has(optionKey)) {
-      optionMap.set(optionKey, option);
+    if (optionKey !== undefined) {
+      if (optionMap.has(optionKey)) {
+        Object.assign(optionMap.get(optionKey) || {}, option);
+      } else {
+        optionMap.set(optionKey, option);
+      }
     }
   });
   sumInitialOptions = Array.from(optionMap.values());

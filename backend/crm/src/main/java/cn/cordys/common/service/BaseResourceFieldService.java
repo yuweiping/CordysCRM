@@ -273,8 +273,9 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         });
         int rowId = 1;
         for (Map<String, Object> subValue : subValues) {
-            String bizId = IDGenerator.nextStr();
-            for (Map.Entry<String, Object> kv : subValue.entrySet()) {
+			// 子表行数据, 如果存在ID, 则使用旧ID作为bizId, 不存在则生成一个唯一ID, 保证行数据关联正确
+            String bizId = subValue.containsKey("id") ? subValue.get("id").toString() : IDGenerator.nextStr();
+			for (Map.Entry<String, Object> kv : subValue.entrySet()) {
                 if (Strings.CS.equals(kv.getKey(), PRICE_SUB_ROW_KEY) && kv.getValue() != null) {
                     T t = supplyNewResource(this::newResourceField, resourceId, kv.getKey(), kv.getValue().toString());
                     setResourceFieldValue(t, "rowId", String.valueOf(rowId));
@@ -430,8 +431,14 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                     // 获取字段解析器
                     AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
                     // 将数据库中的字符串值,转换为对应的对象值
-                    Object objectValue = customFieldResolver.convertToValue(fieldConfig, resourceField.getFieldValue().toString());
-                    resourceField.setFieldValue(objectValue);
+					Object objectValue = null;
+					try {
+						objectValue = customFieldResolver.convertToValue(fieldConfig, resourceField.getFieldValue().toString());
+						resourceField.setFieldValue(objectValue);
+					} catch (Exception e) {
+						log.error("Convert field value error: {}", e.getMessage());
+					}
+
                     if (objectValue == null) {
                         return;
                     }
@@ -882,8 +889,13 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                             return;
                         }
                         AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
-                        Object objectValue = customFieldResolver.convertToValue(fieldConfig, resource.getFieldValue().toString());
-                        rowMap.put(subResource.getFieldId(), objectValue);
+						Object objectValue = null;
+						try {
+							objectValue = customFieldResolver.convertToValue(fieldConfig, resource.getFieldValue().toString());
+							rowMap.put(subResource.getFieldId(), objectValue);
+						} catch (Exception e) {
+							log.error("Convert sub field value error: {}", e.getMessage());
+						}
                         if (objectValue == null || !SourceDetailResolveContext.getSourceMap().containsKey(objectValue.toString())) {
                             return;
                         }
@@ -1004,7 +1016,9 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         if (field.isSerialNumber() && !update) {
             BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
             fieldValue.setFieldId(field.getId());
-            String serialNo = serialNumGenerator.generateByRules(((SerialNumberField) field).getSerialNumberRules(), orgId, getFormKey());
+			BaseModuleFieldValue fv = fieldValueMap.get(field.getId());
+			String serialNo = serialNumGenerator.generateByRules(((SerialNumberField) field).getSerialNumberRules(
+					(fv != null && fv.getFieldValue() != null) ? fv.getFieldValue().toString() : StringUtils.EMPTY), orgId, getFormKey());
             fieldValue.setFieldValue(serialNo);
             return fieldValue;
         }

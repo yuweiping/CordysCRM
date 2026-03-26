@@ -137,6 +137,8 @@
           FormDesignKeyEnum.FOLLOW_RECORD_CUSTOMER,
           FormDesignKeyEnum.BUSINESS,
           FormDesignKeyEnum.INVOICE,
+          FormDesignKeyEnum.CONTACT,
+          FormDesignKeyEnum.ORDER,
         ].includes(props.formKey)
       "
       class="crm-form-design-config-item"
@@ -205,6 +207,24 @@
 
   const formKeyOptions = computed(() => {
     if (props.formKey === FormDesignKeyEnum.CUSTOMER) {
+      return [
+        {
+          label: t('crmFormDesign.clue'),
+          value: FormDesignKeyEnum.CLUE,
+          linkClearPop: false,
+        },
+      ];
+    }
+    if (props.formKey === FormDesignKeyEnum.ORDER) {
+      return [
+        {
+          label: t('crmFormDesign.contract'),
+          value: FormDesignKeyEnum.CONTRACT,
+          linkClearPop: false,
+        },
+      ];
+    }
+    if (props.formKey === FormDesignKeyEnum.CONTACT) {
       return [
         {
           label: t('crmFormDesign.clue'),

@@ -30,7 +30,7 @@
       :fieldConfig="props.fieldConfig"
       :disabled-selection="props.disabledSelection"
       :hide-child-tag="props.hideChildTag"
-      :status="props.feedback ? 'error' : 'success'"
+      :status="props.feedback ? 'error' : undefined"
       @delete="emit('delete', $event)"
       @change="($event, source, fields) => emit('change', $event, source, fields)"
     />
@@ -101,7 +101,7 @@
     ),
   });
 
-  const { propsRes, loadList, setLoadListParams } = useTable(
+  const { propsRes, loadList, setLoadListParams, setAdvanceFilter } = useTable(
     sourceApi[props.fieldConfig.dataSourceType || FieldDataSourceTypeEnum.CUSTOMER],
     {
       columns: [],
@@ -124,6 +124,7 @@
         if (fieldList.value.length === 0) {
           await initFormConfig();
         }
+        setAdvanceFilter(getParams());
         setLoadListParams({
           keyword: val?.[0]?.name || '',
         });
@@ -133,6 +134,9 @@
         );
         value.value = newRows.map((e) => e.id) as (string | number)[];
         emit('change', value.value, newRows, fieldList.value);
+      } else if (val?.some((e) => e.isFormLinkFilled)) {
+        // 这里将表单联动填充的初始化选项 emit 出去，触发 change  让数据源显示字段回显
+        emit('change', value.value, val, fieldList.value);
       }
     },
     {

@@ -1,7 +1,16 @@
 import { IRNode } from '@/components/business/crm-formula/formula-runtime/types';
 
 // ----token类型----
-export type TokenType = 'function' | 'field' | 'number' | 'operator' | 'comma' | 'paren' | 'text';
+export type TokenType =
+  | 'function'
+  | 'field'
+  | 'number'
+  | 'operator'
+  | 'comma'
+  | 'paren'
+  | 'string'
+  | 'boolean'
+  | 'unknown';
 
 export type NumberType = 'number' | 'percent' | 'date';
 
@@ -22,12 +31,21 @@ export interface FieldToken extends BaseToken {
   fieldId: string;
   name: string;
   fieldType?: string;
-  numberType?: NumberType; // 字段的数值类型
 }
 
-export interface TextToken extends BaseToken {
-  type: 'text';
-  value: string;
+export interface StringToken extends BaseToken {
+  type: 'string';
+  value: string; // 不带引号内容
+}
+
+export interface BooleanToken extends BaseToken {
+  type: 'boolean';
+  value: boolean;
+}
+
+export interface UnknownToken extends BaseToken {
+  type: 'unknown';
+  value: string; // 原始字符
 }
 
 export interface NumberToken extends BaseToken {
@@ -36,7 +54,7 @@ export interface NumberToken extends BaseToken {
   numberType?: NumberType;
 }
 
-export type OperatorValue = '+' | '-' | '*' | '/';
+export type OperatorValue = '+' | '-' | '*' | '/' | '=' | '<>' | '>' | '>=' | '<' | '<=';
 
 export interface OperatorToken extends BaseToken {
   type: 'operator';
@@ -55,14 +73,24 @@ export interface ParenToken extends BaseToken {
   value: ParenValue;
 }
 
-export type Token = FunctionToken | FieldToken | NumberToken | OperatorToken | CommaToken | ParenToken | TextToken;
+export type Token =
+  | FunctionToken
+  | FieldToken
+  | NumberToken
+  | OperatorToken
+  | CommaToken
+  | ParenToken
+  | StringToken
+  | BooleanToken
+  | UnknownToken;
 
 // ----AST类型----
-export type ASTNode = FunctionNode | FieldNode | NumberNode | BinaryExpressionNode | EmptyNode;
+export type ASTNode = FunctionNode | FieldNode | BinaryNode | CompareNode | LiteralNode | EmptyNode;
 
 export interface ASTNodeBase {
   startTokenIndex: number;
   endTokenIndex: number;
+  parenthesized?: boolean; // 是否被括号包裹
 }
 
 export interface EmptyNode extends ASTNodeBase {
@@ -80,7 +108,6 @@ export interface FieldNode extends ASTNodeBase {
   fieldId: string;
   name: string;
   fieldType?: string;
-  numberType?: NumberType;
 }
 
 export interface NumberNode extends ASTNodeBase {
@@ -89,9 +116,22 @@ export interface NumberNode extends ASTNodeBase {
   numberType?: NumberType;
 }
 
-export interface BinaryExpressionNode extends ASTNodeBase {
+export interface LiteralNode extends ASTNodeBase {
+  type: 'literal';
+  value: unknown;
+  valueType: 'string' | 'number' | 'boolean';
+}
+
+export interface BinaryNode extends ASTNodeBase {
   type: 'binary';
   operator: '+' | '-' | '*' | '/';
+  left: ASTNode;
+  right: ASTNode;
+}
+
+export interface CompareNode extends ASTNodeBase {
+  type: 'compare';
+  operator: '=' | '<>' | '>' | '>=' | '<' | '<=';
   left: ASTNode;
   right: ASTNode;
 }

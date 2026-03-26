@@ -25,7 +25,10 @@
             value-align="start"
             tooltip-position="top-start"
             readonly
+            :isContractTableDetail="props.isContractTableDetail"
             @openCustomerDetail="emit('showCustomerDrawer', $event)"
+            @openOpportunityDetail="openOpportunityDetail"
+            @openQuotationDetail="openQuotationDetail"
             @init="handleInit"
           />
         </div>
@@ -56,6 +59,15 @@
           :readonly="getReadonlyInvoice"
           @open-business-title-drawer="showBusinessTitleDetail"
         />
+        <OrderTable
+          v-if="activeTab === 'order'"
+          :formKey="FormDesignKeyEnum.CONTRACT_ORDER"
+          :sourceId="props.sourceId"
+          :sourceName="title"
+          is-contract-tab
+          :readonly="getReadonlyInvoice"
+          @open-customer-drawer="emit('showCustomerDrawer', $event)"
+        />
       </CrmCard>
     </div>
     <CrmFormCreateDrawer
@@ -67,6 +79,18 @@
       :link-form-key="FormDesignKeyEnum.CONTRACT"
       :link-form-info="linkFormInfo"
       @saved="() => handleSaved()"
+    />
+    <QuotationDetailDrawer
+      v-model:visible="showQuotationDetailDrawer"
+      :source-id="activeQuotationSourceId"
+      @edit="handleEditQuotation"
+      @refresh="handleSaved()"
+    />
+    <OptOverviewDrawer
+      v-model:show="showOptOverviewDrawer"
+      :detail="activeOpportunity"
+      @refresh="handleSaved()"
+      @open-customer-drawer="emit('showCustomerDrawer', $event)"
     />
   </CrmDrawer>
 </template>
@@ -91,6 +115,9 @@
   import PaymentTable from '@/views/contract/contractPaymentPlan/components/paymentTable.vue';
   import PaymentRecordTable from '@/views/contract/contractPaymentRecord/components/paymentTable.vue';
   import InvoiceTable from '@/views/contract/invoice/components/invoiceTable.vue';
+  import OptOverviewDrawer from '@/views/opportunity/components/optOverviewDrawer.vue';
+  import QuotationDetailDrawer from '@/views/opportunity/components/quotation/detail.vue';
+  import OrderTable from '@/views/order/order/components/orderTable.vue';
 
   import { approvalContract, deleteContract, revokeContract } from '@/api/modules';
   import { contractStatusOptions } from '@/config/contract';
@@ -102,9 +129,11 @@
 
   const props = defineProps<{
     sourceId: string;
+    isContractTableDetail?: boolean;
   }>();
   const emit = defineEmits<{
     (e: 'refresh'): void;
+    (e: 'delete'): void;
     (e: 'showCustomerDrawer', params: { customerId: string; inCustomerPool: boolean; poolId: string }): void;
     (e: 'openBusinessTitleDrawer', params: { id: string }): void;
   }>();
@@ -147,6 +176,11 @@
         name: 'invoice',
         tab: t('module.invoice'),
         permission: ['CONTRACT_INVOICE:READ'],
+      },
+      {
+        name: 'order',
+        tab: t('module.order'),
+        permission: ['ORDER:READ'],
       },
     ].filter((item) => hasAnyPermission(item.permission))
   );
@@ -316,7 +350,7 @@
           await deleteContract(row.id);
           Message.success(t('common.deleteSuccess'));
           visible.value = false;
-          emit('refresh');
+          emit('delete');
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -366,6 +400,30 @@
     await initFormDetail(false, true);
     linkFormInfo.value = linkFormFieldMap.value;
     formCreateDrawerVisible.value = true;
+  }
+
+  const showQuotationDetailDrawer = ref(false);
+  const activeQuotationSourceId = ref('');
+  function openQuotationDetail(params: { id: string }) {
+    showQuotationDetailDrawer.value = true;
+    activeQuotationSourceId.value = params.id;
+  }
+
+  function handleEditQuotation(id: string) {
+    activeFormKey.value = FormDesignKeyEnum.OPPORTUNITY_QUOTATION;
+    activeSourceId.value = id;
+    needInitDetail.value = true;
+    linkFormInfo.value = undefined;
+    formCreateDrawerVisible.value = true;
+  }
+
+  const showOptOverviewDrawer = ref<boolean>(false);
+  const activeOpportunity = ref();
+  function openOpportunityDetail(params: { id: string }) {
+    showOptOverviewDrawer.value = true;
+    activeOpportunity.value = {
+      id: params.id,
+    };
   }
 
   const getReadonlyInvoice = computed(() => {

@@ -23,6 +23,7 @@ import {
   addOpportunity,
   addOptFollowPlan,
   addOptFollowRecord,
+  addOrder,
   addPaymentPlan,
   addPaymentRecord,
   addProduct,
@@ -30,6 +31,7 @@ import {
   addQuotation,
   advancedSearchOptPage,
   ClueTransitionCustomer,
+  deleteOrder,
   geAdvancedCustomerList,
   getAdvancedCluePoolList,
   getAdvancedCustomerContactList,
@@ -61,6 +63,7 @@ import {
   getCustomerFormConfig,
   getCustomerList,
   getCustomerOpportunityPage,
+  getCustomerOrderList,
   getFollowPlanDetail,
   getFollowPLanPage,
   getFollowRecordDetail,
@@ -79,6 +82,12 @@ import {
   getOptFollowPlan,
   getOptFollowRecord,
   getOptFormConfig,
+  getOrderDetail,
+  getOrderDetailSnapshot,
+  getOrderFormConfig,
+  getOrderFormSnapshotConfig,
+  getOrderInContractList,
+  getOrderList,
   getPaymentPlanDetail,
   getPaymentPlanFormConfig,
   getPaymentPlanList,
@@ -111,6 +120,7 @@ import {
   updateOpportunity,
   updateOptFollowPlan,
   updateOptFollowRecord,
+  updateOrder,
   updatePaymentPlan,
   updatePaymentRecord,
   updateProduct,
@@ -186,6 +196,11 @@ export const fullFormSettingList = [
     formKey: FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
   },
   {
+    label: t('module.order'),
+    dataSource: FieldDataSourceTypeEnum.ORDER,
+    formKey: FormDesignKeyEnum.ORDER,
+  },
+  {
     label: t('module.businessTitle'),
     dataSource: FieldDataSourceTypeEnum.BUSINESS_TITLE,
   },
@@ -199,11 +214,13 @@ export const inputDefaultFieldConfig: FormCreateField = {
   fieldWidth: 1,
   showLabel: true,
   defaultValue: '',
+  defaultValueType: 'custom',
   description: '',
   readable: true,
   editable: true,
   mobile: true,
   rules: [],
+  formula: '',
 };
 
 export const textareaDefaultFieldConfig: FormCreateField = {
@@ -238,6 +255,7 @@ export const inputNumberDefaultFieldConfig: FormCreateField = {
   decimalPlaces: false,
   precision: 0,
   showThousandsSeparator: false,
+  min: -999999999,
 };
 
 export const dateTimeDefaultFieldConfig: FormCreateField = {
@@ -595,6 +613,8 @@ export const serialNumberDefaultFieldConfig: FormCreateField = {
   mobile: true,
   rules: [],
   serialNumberRules: ['Opp', '-', 'yyyyMM', '-', 6],
+  prefixType: 'custom',
+  formula: '',
 };
 
 export const linkDefaultFieldConfig: FormCreateField = {
@@ -769,6 +789,10 @@ export const getFormConfigApiMap: Record<FormDesignKeyEnum, (id?: string) => Pro
   [FormDesignKeyEnum.INVOICE_SNAPSHOT]: (id) => getInvoicedFormSnapshotConfig(id),
   [FormDesignKeyEnum.CONTRACT_INVOICE]: getInvoicedFormConfig,
   [FormDesignKeyEnum.BUSINESS_TITLE]: getBusinessTitleModuleForm,
+  [FormDesignKeyEnum.ORDER]: getOrderFormConfig,
+  [FormDesignKeyEnum.CONTRACT_ORDER]: getOrderFormConfig,
+  [FormDesignKeyEnum.CUSTOMER_ORDER]: getOrderFormConfig,
+  [FormDesignKeyEnum.ORDER_SNAPSHOT]: (id) => getOrderFormSnapshotConfig(id),
 };
 
 export const createFormApi: Record<FormDesignKeyEnum, (data: any) => Promise<any>> = {
@@ -809,6 +833,10 @@ export const createFormApi: Record<FormDesignKeyEnum, (data: any) => Promise<any
   [FormDesignKeyEnum.INVOICE_SNAPSHOT]: addInvoiced,
   [FormDesignKeyEnum.CONTRACT_INVOICE]: async () => ({}),
   [FormDesignKeyEnum.BUSINESS_TITLE]: async () => ({}),
+  [FormDesignKeyEnum.ORDER]: addOrder,
+  [FormDesignKeyEnum.ORDER_SNAPSHOT]: addOrder,
+  [FormDesignKeyEnum.CONTRACT_ORDER]: async () => ({}),
+  [FormDesignKeyEnum.CUSTOMER_ORDER]: async () => ({}),
 };
 
 export const updateFormApi: Record<FormDesignKeyEnum, (data: any) => Promise<any>> = {
@@ -849,6 +877,10 @@ export const updateFormApi: Record<FormDesignKeyEnum, (data: any) => Promise<any
   [FormDesignKeyEnum.INVOICE_SNAPSHOT]: updateInvoiced,
   [FormDesignKeyEnum.CONTRACT_INVOICE]: async () => ({}),
   [FormDesignKeyEnum.BUSINESS_TITLE]: async () => ({}),
+  [FormDesignKeyEnum.ORDER]: updateOrder,
+  [FormDesignKeyEnum.ORDER_SNAPSHOT]: updateOrder,
+  [FormDesignKeyEnum.CONTRACT_ORDER]: async () => ({}),
+  [FormDesignKeyEnum.CUSTOMER_ORDER]: async () => ({}),
 };
 
 export const getFormDetailApiMap: Partial<Record<FormDesignKeyEnum, (id: string) => Promise<FormDetail>>> = {
@@ -885,6 +917,10 @@ export const getFormDetailApiMap: Partial<Record<FormDesignKeyEnum, (id: string)
   [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: getPaymentRecordDetail,
   [FormDesignKeyEnum.INVOICE]: getInvoicedDetail,
   [FormDesignKeyEnum.INVOICE_SNAPSHOT]: getInvoicedDetailSnapshot,
+  [FormDesignKeyEnum.ORDER]: getOrderDetail,
+  [FormDesignKeyEnum.CONTRACT_ORDER]: getOrderDetailSnapshot,
+  [FormDesignKeyEnum.CUSTOMER_ORDER]: getOrderDetailSnapshot,
+  [FormDesignKeyEnum.ORDER_SNAPSHOT]: getOrderDetailSnapshot,
 };
 
 export const getFormListApiMap: Partial<Record<FormDesignKeyEnum, (data: any) => Promise<CommonList<any>>>> = {
@@ -915,6 +951,9 @@ export const getFormListApiMap: Partial<Record<FormDesignKeyEnum, (data: any) =>
   [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: getPaymentRecordList,
   [FormDesignKeyEnum.INVOICE]: getInvoicedList,
   [FormDesignKeyEnum.CONTRACT_INVOICE]: getInvoicedInContractList,
+  [FormDesignKeyEnum.ORDER]: getOrderList,
+  [FormDesignKeyEnum.CONTRACT_ORDER]: getOrderInContractList,
+  [FormDesignKeyEnum.CUSTOMER_ORDER]: getCustomerOrderList,
 };
 
 export const dataSourceFilterFormKeyMap: Partial<Record<FieldDataSourceTypeEnum, FormDesignKeyEnum>> = {
@@ -928,4 +967,5 @@ export const dataSourceFilterFormKeyMap: Partial<Record<FieldDataSourceTypeEnum,
   [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: FormDesignKeyEnum.CONTRACT_PAYMENT,
   [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD,
   [FieldDataSourceTypeEnum.QUOTATION]: FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+  [FieldDataSourceTypeEnum.ORDER]: FormDesignKeyEnum.ORDER,
 };

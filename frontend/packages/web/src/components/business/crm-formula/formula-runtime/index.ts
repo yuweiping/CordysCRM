@@ -1,3 +1,3 @@
-import evaluateIR from './evaluator';
+import evaluateIR from './formula-executor/evaluator';
 
 export default evaluateIR;

@@ -83,6 +83,10 @@ const defaultModuleConfig = [
     enable: true,
   },
   {
+    moduleKey: ModuleConfigEnum.ORDER,
+    enable: true,
+  },
+  {
     moduleKey: ModuleConfigEnum.CLUE_MANAGEMENT,
     enable: true,
   },
@@ -351,7 +355,9 @@ const useAppStore = defineStore('app', {
       // const licenseStore = useLicenseStore();
       // if (!licenseStore.hasLicense()) return;
       const res = await getThirdConfigByType(CompanyTypeEnum.SQLBot);
-      await loadScript(res.config?.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
+      if (res.config.sqlBotChatEnable) {
+        await loadScript(res.config?.appSecret as string, { identifier: CompanyTypeEnum.SQLBot });
+      }
     },
 
     // 初始化页面配置

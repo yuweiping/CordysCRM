@@ -153,16 +153,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: 修复pnpm依赖配置（解决vant@4.9.23 workspace依赖问题）
-        run: |
-          cat > frontend/.npmrc << 'EOF'
-          pnpm.link-workspace-packages = false
-          strict-peer-dependencies = false
-          auto-install-peers = true
-          registry = https://registry.npmmirror.com/
-          EOF
-          echo "✅ pnpm配置已创建"
-          cat frontend/.npmrc
           
       - name: 构建并推送
         run: |

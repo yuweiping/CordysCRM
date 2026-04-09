@@ -117,9 +117,9 @@ public class CustomerContactService {
     @Resource
     private LogService logService;
 
-    public PagerWithOption<List<CustomerContactListResponse>> list(CustomerContactPageRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission, Boolean source) {
+    public PagerWithOption<List<CustomerContactListResponse>> list(CustomerContactPageRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
         Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
-        List<CustomerContactListResponse> list = extCustomerContactMapper.list(request, userId, orgId, deptDataPermission, source);
+        List<CustomerContactListResponse> list = extCustomerContactMapper.list(request, userId, orgId, deptDataPermission);
         list = buildListData(list, orgId);
 
         Map<String, List<OptionDTO>> optionMap = getListOptionMap(orgId, list);
@@ -195,10 +195,7 @@ public class CustomerContactService {
     }
 
     /**
-     * ⚠️反射调用; 勿修改入参, 返回, 方法名!
-     *
      * @param id 联系人ID
-     *
      * @return 联系人详情
      */
     public CustomerContactGetResponse get(String id) {
@@ -246,6 +243,44 @@ public class CustomerContactService {
         customerContactGetResponse.setAttachmentMap(moduleFormService.getAttachmentMap(customerContactFormConfig, customerContactFields));
         return customerContactGetResponse;
     }
+
+	/**
+	 * 获取联系人详情（简化版）⚠️反射调用; 勿修改入参, 返回, 方法名!
+	 * @param id 联系人ID
+	 * @return 详情
+	 */
+	public CustomerContactGetResponse getSimple(String id) {
+		CustomerContact customerContact = customerContactMapper.selectByPrimaryKey(id);
+		if (customerContact == null) {
+			return null;
+		}
+		CustomerContactGetResponse response = BeanUtils.copyBean(new CustomerContactGetResponse(), customerContact);
+		List<BaseModuleFieldValue> fvs = customerContactFieldService.getModuleFieldValuesByResourceId(id);
+		response.setModuleFields(fvs);
+		return response;
+	}
+
+	/**
+	 * 批量获取联系人详情 (用于数据源批量查询优化)
+	 * @param ids 联系人ID集合
+	 * @return 联系人详情列表
+	 */
+	public List<CustomerContactGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<CustomerContact> contacts = customerContactMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(contacts)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = customerContactFieldService.getResourceFieldMap(ids, true);
+
+		return contacts.stream().map(contact -> {
+			CustomerContactGetResponse response = BeanUtils.copyBean(new CustomerContactGetResponse(), contact);
+			response.setModuleFields(fieldValueMap.get(contact.getId()));
+			return response;
+		}).toList();
+	}
 
     @OperationLog(module = LogModule.CUSTOMER_CONTACT, type = LogType.ADD, resourceName = "{#request.name}")
     public CustomerContact add(CustomerContactAddRequest request, String userId, String orgId) {

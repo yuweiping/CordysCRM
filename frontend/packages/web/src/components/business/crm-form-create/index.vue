@@ -83,7 +83,7 @@
   import { formKeyMap } from '../crm-data-source-select/config';
   import { FormulaDataSourceMap } from '../crm-formula/formula-runtime/types';
   import { safeParseFormula } from '../crm-formula-editor/utils';
-  import { getFormConfigApiMap } from './config';
+  import { getFormConfigApiMap, multipleValueTypeList } from './config';
 
   const props = defineProps<{
     isEdit?: boolean;
@@ -286,6 +286,20 @@
               ? currentSource?.[currentDatasourceFormField.businessKey]
               : currentSource?.moduleFields?.find((e: any) => e.fieldId === currentDatasourceFormField.id)?.fieldValue;
             if (currentSourceValue === undefined || currentSourceValue === null) {
+              targetField.initialOptions = [];
+              // 处理多选/单选值
+              if (multipleValueTypeList.includes(targetField.type) || targetField.type === FieldTypeEnum.DATA_SOURCE) {
+                formDetail.value[targetField.id] = [];
+              } else {
+                formDetail.value[targetField.id] = '';
+              }
+              if (targetField.showFields?.length) {
+                // 无值清空显示字段
+                const showFields = fieldList.value.filter((f) => targetField.showFields?.includes(f.id));
+                showFields.forEach((field) => {
+                  formDetail.value[field.id] = '';
+                });
+              }
               return;
             }
             // 如果有业务 key，则取业务 key 的值（specialBusinessKeyMap读取特殊业务字段值），否则取字段值
@@ -295,10 +309,14 @@
                     currentDatasourceFormField.businessKey
                 ]
               : currentSource?.[linkField.link];
-            // 处理多选/单选数据源
-            formDetail.value[targetField.id] = Array.isArray(currentSourceValue)
-              ? currentSourceValue
-              : [currentSourceValue];
+            // 处理多选/单选值
+            if (multipleValueTypeList.includes(targetField.type) || targetField.type === FieldTypeEnum.DATA_SOURCE) {
+              formDetail.value[targetField.id] = Array.isArray(currentSourceValue)
+                ? currentSourceValue
+                : [currentSourceValue];
+            } else {
+              formDetail.value[targetField.id] = currentSourceValue;
+            }
             if (!targetField.initialOptions) {
               targetField.initialOptions = Array.isArray(currentSourceValue)
                 ? currentSourceValue.map((e, i) => ({
@@ -312,13 +330,11 @@
                     },
                   ];
             } else if (Array.isArray(currentSourceValue)) {
-              // 多选数据源
-              targetField.initialOptions.push(
-                ...currentSourceValue.map((e, i) => ({
-                  name: currentSourceName[i],
-                  id: e,
-                }))
-              );
+              // 多选
+              targetField.initialOptions = currentSourceValue.map((e, i) => ({
+                name: currentSourceName[i],
+                id: e,
+              }));
             } else {
               targetField.initialOptions = [
                 {

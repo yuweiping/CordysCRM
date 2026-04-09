@@ -44,6 +44,7 @@ import {
   DeletePaymentPlanViewUrl,
   DragPaymentPlanViewUrl,
   BatchApproveContractUrl,
+  BatchUpdateContractUrl,
   ApproveContractUrl,
   RevokeContractUrl,
   PaymentRecordPageUrl,
@@ -144,6 +145,7 @@ import type {
   ContractInvoiceDetail,
 } from '@lib/shared/models/contract';
 import type { BatchOperationResult, BatchUpdateQuotationStatusParams } from '@lib/shared/models/opportunity';
+import type { BatchUpdatePoolAccountParams } from '@lib/shared/models/customer';
 export default function useContractApi(CDR: CordysAxios) {
   // 合同列表
   function getContractList(data: TableQueryParams) {
@@ -217,6 +219,10 @@ export default function useContractApi(CDR: CordysAxios) {
 
   function batchApproveContract(data: BatchUpdateQuotationStatusParams) {
     return CDR.post<BatchOperationResult>({ url: BatchApproveContractUrl, data });
+  }
+
+  function batchUpdateContract(data: BatchUpdatePoolAccountParams) {
+    return CDR.post({ url: BatchUpdateContractUrl, data });
   }
 
   function approvalContract(data: ApprovalContractParams) {
@@ -469,10 +475,10 @@ export default function useContractApi(CDR: CordysAxios) {
   }
 
   // 合同-工商抬头导入
-  function preCheckImportBusinessTitle(file: File) {
+  function preCheckImportBusinessTitle(file: File, importType?: string) {
     return CDR.uploadFile<{ data: ValidateInfo }>(
       { url: PreCheckBusinessTitleImportUrl },
-      { fileList: [file] },
+      { fileList: [file], request: {importType } },
       'file'
     );
   }
@@ -487,8 +493,8 @@ export default function useContractApi(CDR: CordysAxios) {
     );
   }
 
-  function importBusinessTitle(file: File) {
-    return CDR.uploadFile({ url: ImportBusinessTitleUrl }, { fileList: [file] }, 'file');
+  function importBusinessTitle(file: File, importType?: string) {
+    return CDR.uploadFile({ url: ImportBusinessTitleUrl }, { fileList: [file], request: {importType} }, 'file');
   }
 
   // 工商抬头列表
@@ -713,6 +719,7 @@ export default function useContractApi(CDR: CordysAxios) {
     getContractFormConfig,
     getContractFormSnapshotConfig,
     batchApproveContract,
+    batchUpdateContract,
     approvalContract,
     revokeContract,
     getContractStatistic,

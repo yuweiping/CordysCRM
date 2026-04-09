@@ -19,10 +19,15 @@
   import { isEqual } from 'lodash-es';
 
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
-  import { FieldRuleEnum, FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+  import {
+    FieldDataSourceTypeEnum,
+    FieldRuleEnum,
+    FieldTypeEnum,
+    FormDesignKeyEnum,
+  } from '@lib/shared/enums/formDesignEnum';
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
-  import { formatTimeValue, getCityPath, getIndustryPath } from '@lib/shared/method';
+  import { formatTimeValue, getCityPath, getGenerateId, getIndustryPath } from '@lib/shared/method';
   import {
     formatNumberValue,
     formatNumberValueToString,
@@ -182,8 +187,13 @@
     }
   }
 
+  const isProcessingDataSourceChange = ref(false);
+  const isProcessingDataSourceChangeMap = ref<Record<string, boolean>>({});
+
   function makeNewRow() {
-    const newRow: Record<string, any> = {};
+    const newRow: Record<string, any> = {
+      id: getGenerateId(),
+    };
     props.subFields.forEach((field) => {
       const key = field.resourceFieldId ? field.id : field.businessKey || field.id;
       if (field.type === FieldTypeEnum.INPUT_NUMBER) {
@@ -205,8 +215,12 @@
   }
 
   function addLine() {
+    isProcessingDataSourceChange.value = true;
     const newRow = makeNewRow();
     data.value.push(newRow);
+    nextTick(() => {
+      isProcessingDataSourceChange.value = false;
+    });
   }
 
   function applyDataSourceShowFields(
@@ -268,7 +282,6 @@
     );
   });
 
-  const isProcessingDataSourceChange = ref(false);
   function handleDataSourceChange(
     val: any[],
     source: Record<string, any>[],
@@ -277,39 +290,66 @@
     rowIndex: number,
     isPriceSubTableShowSubField?: boolean
   ) {
-    if (isProcessingDataSourceChange.value) {
+    const cellId = `${row.id}-${field.id}`;
+    if (isProcessingDataSourceChange.value || isProcessingDataSourceChangeMap.value[cellId]) {
       // 子表格添加多行会触发 change，避免重复处理
       return;
     }
-    if (source.every((e) => e.isFormLinkFilled)) {
+    isProcessingDataSourceChangeMap.value[cellId] = true;
+    if (source.some((e) => e.isFormLinkFilled && val.includes(e.id))) {
       // 填充时已经有了价格表数据，需要回显字段
       const key = field.businessKey || field.id;
+      if (val.length === 0 || (val.length === 1 && source.find((e) => e.id === val[0])?.parentId)) {
+        // 没有选中子项或没有选中父项，都表示当前为清空
+        row[key] = [];
+        row.price_sub = '';
+        applyDataSourceShowFields(
+          field,
+          [],
+          row,
+          source.filter((e) => e.isFormLinkFilled),
+          row.price_sub
+        );
+        emit('change', data.value);
+        nextTick(() => {
+          isProcessingDataSourceChange.value = false;
+          isProcessingDataSourceChangeMap.value[cellId] = false;
+        });
+        return;
+      }
       for (let i = 0; i < data.value.length; i++) {
         const newRow = data.value[i];
         applyDataSourceShowFields(field, newRow[key], newRow, source, newRow.price_sub); // 回显价格表带出的显示字段
       }
+      nextTick(() => {
+        isProcessingDataSourceChange.value = false;
+        isProcessingDataSourceChangeMap.value[cellId] = false;
+      });
       return;
     }
-    isProcessingDataSourceChange.value = true;
     const key = field.businessKey || field.id;
     const parents = source.filter((s) => !s.parentId);
     if (isPriceSubTableShowSubField && val.filter((e) => parents.some((p) => p.id === e)).length > 0) {
       // 价格表子表格特殊处理，需要填充多行
       const children = source.filter(
-        (s) => s.parentId && data.value.every((r) => r.price_sub !== s.id) // 过滤已存在的行
+        (s) => s.parentId && data.value.every((r) => r.price_sub !== s.id) && val.includes(s.id) // 过滤已存在的行
       );
       if (children.length === 0 && val.length > 0) {
         Message.warning(t('crm.subTable.repeatAdd'));
+        isProcessingDataSourceChange.value = false;
+        isProcessingDataSourceChangeMap.value[cellId] = false;
+        return;
       }
       if (children.length === 0 || !source.some((s) => s.parentId)) {
         // 没有选中子项或没有选中父项，都表示当前为清空
         row[key] = [];
         row.price_sub = '';
         applyDataSourceShowFields(field, [], row, source, row.price_sub);
-        emit('change', data.value);
         nextTick(() => {
           isProcessingDataSourceChange.value = false;
+          isProcessingDataSourceChangeMap.value[cellId] = false;
         });
+        emit('change', data.value);
         return;
       }
       if (children.length > 1) {
@@ -323,12 +363,17 @@
         }
         nextTick(() => {
           // 等待行添加完成后，给新增的行补充行号和选中价格表数据源
+          isProcessingDataSourceChangeMap.value[cellId] = true;
           for (let i = rowIndex + 1; i < rowIndex + children.length; i++) {
             const newRow = data.value[i];
             newRow.price_sub = children[i - rowIndex]?.id;
             newRow[key] = [children[i - rowIndex]?.parentId, newRow.price_sub]; // 选中值为父项以及当前行
             applyDataSourceShowFields(field, newRow[key], newRow, source, newRow.price_sub); // 回显价格表带出的显示字段
           }
+          nextTick(() => {
+            isProcessingDataSourceChange.value = false;
+            isProcessingDataSourceChangeMap.value[cellId] = false;
+          });
         });
       } else {
         // 单选行只有一个父级
@@ -346,22 +391,27 @@
             return 0;
           });
         applyDataSourceShowFields(field, row[key], row, source, row.price_sub);
+        nextTick(() => {
+          isProcessingDataSourceChange.value = false;
+          isProcessingDataSourceChangeMap.value[cellId] = false;
+        });
       }
     } else {
       row[key] = val.filter((e) => parents.some((p) => p.id === e)).length > 0 ? val : [];
       applyDataSourceShowFields(field, val, row, source, row.price_sub);
-      if (row[key].length === 0) {
+      if (row[key].length === 0 && field.dataSourceType === FieldDataSourceTypeEnum.PRICE) {
         // 清空时把行号也清理
         row.price_sub = '';
       }
+      nextTick(() => {
+        isProcessingDataSourceChange.value = false;
+        isProcessingDataSourceChangeMap.value[cellId] = false;
+      });
     }
     sumInitialOptions = mergeUniqueOptions(
       sumInitialOptions,
       source.filter((s) => !sumInitialOptions.some((io) => io.id === s.id))
     );
-    nextTick(() => {
-      isProcessingDataSourceChange.value = false;
-    });
     emit('change', data.value);
   }
 
@@ -659,8 +709,15 @@
               ghost: true,
               class: 'p-[8px_9px]',
               onClick: () => {
+                isProcessingDataSourceChange.value = true;
                 data.value.splice(rowIndex, 1);
+                if (data.value.length === 0) {
+                  sumInitialOptions = [];
+                }
                 emit('change', data.value);
+                nextTick(() => {
+                  isProcessingDataSourceChange.value = false;
+                });
               },
             },
             { default: () => h(CrmIcon, { type: 'iconicon_minus_circle1' }) }

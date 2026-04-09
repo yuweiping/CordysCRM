@@ -56,6 +56,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -142,6 +143,45 @@ public class ProductService {
         productGetResponse.setAttachmentMap(moduleFormService.getAttachmentMap(productFormConfig, productFields));
         return baseService.setCreateAndUpdateUserName(productGetResponse);
     }
+
+	/**
+	 * 获取产品详情（简化版）, ⚠️反射调用; 勿修改入参, 返回, 方法名!
+	 * @param id 产品ID
+	 * @return 产品详情
+	 */
+	public ProductGetResponse getSimple(String id) {
+		Product product = productBaseMapper.selectByPrimaryKey(id);
+		if (product == null) {
+			return null;
+		}
+		ProductGetResponse response = BeanUtils.copyBean(new ProductGetResponse(), product);
+		// 获取模块字段
+		List<BaseModuleFieldValue> fvs = productFieldService.getModuleFieldValuesByResourceId(id);
+		response.setModuleFields(fvs);
+		return response;
+	}
+
+	/**
+	 * 批量获取产品详情 (用于数据源批量查询优化)
+	 * @param ids 产品ID集合
+	 * @return 产品详情列表
+	 */
+	public List<ProductGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<Product> products = productBaseMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(products)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = productFieldService.getResourceFieldMap(ids, true);
+
+		return products.stream().map(product -> {
+			ProductGetResponse response = BeanUtils.copyBean(new ProductGetResponse(), product);
+			response.setModuleFields(fieldValueMap.get(product.getId()));
+			return response;
+		}).toList();
+	}
 
     @OperationLog(module = LogModule.PRODUCT_MANAGEMENT, type = LogType.ADD, resourceName = "{#request.name}", operator = "{#userId}")
     public Product add(ProductEditRequest request, String userId, String orgId) {

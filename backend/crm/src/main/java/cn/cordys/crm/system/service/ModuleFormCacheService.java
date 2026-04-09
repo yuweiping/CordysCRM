@@ -1,16 +1,20 @@
 package cn.cordys.crm.system.service;
 
 import cn.cordys.common.util.CommonBeanFactory;
+import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.request.ModuleFormSaveRequest;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import jakarta.annotation.Resource;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -31,6 +35,7 @@ public class ModuleFormCacheService {
      * @return 表单配置
      */
     @CachePut(value = "form_cache", key = "#currentOrgId + ':' + #saveParam.formKey", unless = "#result == null")
+    @CacheEvict(value = "field_cache", key = "#currentOrgId + ':' + #saveParam.formKey")
     public ModuleFormConfigDTO save(ModuleFormSaveRequest saveParam, String currentUserId, String currentOrgId) {
         return moduleFormService.save(saveParam, currentUserId, currentOrgId);
     }
@@ -61,12 +66,16 @@ public class ModuleFormCacheService {
         ModuleFormConfigDTO businessModuleFormConfig = new ModuleFormConfigDTO();
         businessModuleFormConfig.setFormProp(config.getFormProp());
 
+		// 提前加载价格表子表格字段作为引用集合
+		List<BaseField> subFields = moduleFormService.getSubFieldsBySourceType(FieldSourceType.PRICE.name());
+		Map<String, BaseField> refPriceSubFieldMap = subFields.stream().collect(Collectors.toMap(BaseField::getId, Function.identity(), (p, n) -> p));
+
 		// 设置业务字段参数
-		List<BaseField> flattenFields = moduleFormService.flattenSourceRefFields(config.getFields());
+		List<BaseField> flattenFields = moduleFormService.flattenSourceRefFields(config.getFields(), refPriceSubFieldMap);
 		businessModuleFormConfig.setFields(flattenFields.stream()
 				.peek(moduleFormService::setFieldRefOption)
 				.peek(moduleFormService::setFieldBusinessParam)
-				.peek(moduleFormService::reloadPropOfSubRefFields)
+				.peek(field -> moduleFormService.reloadPropOfSubRefFields(field, refPriceSubFieldMap))
 				.collect(Collectors.toList())
 		);
         return businessModuleFormConfig;

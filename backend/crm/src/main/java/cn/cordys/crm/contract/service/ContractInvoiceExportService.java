@@ -4,6 +4,8 @@ import cn.cordys.common.constants.BusinessModuleField;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.dto.ExportDTO;
 import cn.cordys.common.dto.ExportHeadDTO;
+import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
+import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.service.BaseExportService;
 import cn.cordys.common.util.TimeUtils;
 import cn.cordys.common.util.Translator;
@@ -46,7 +48,7 @@ public class ContractInvoiceExportService extends BaseExportService {
         String orgId = exportDTO.getOrgId();
         PageHelper.startPage(pageRequest.getCurrent(), pageRequest.getPageSize());
         //获取数据
-        List<ContractInvoiceListResponse> allList = extContractInvoiceMapper.list(pageRequest, orgId,  exportDTO.getUserId(), exportDTO.getDeptDataPermission());
+        List<ContractInvoiceListResponse> allList = extContractInvoiceMapper.list(pageRequest, orgId, exportDTO.getUserId(), exportDTO.getDeptDataPermission());
         List<ContractInvoiceListResponse> dataList = contractInvoiceService.buildList(allList, orgId);
         Map<String, BaseField> fieldConfigMap = getFieldConfigMap(FormKey.INVOICE.getKey(), orgId);
 
@@ -81,13 +83,18 @@ public class ContractInvoiceExportService extends BaseExportService {
         systemFieldMap.put("name", data.getName());
         systemFieldMap.put("departmentId", data.getDepartmentName());
         systemFieldMap.put("amount", data.getAmount());
-        systemFieldMap.put("taxRate", data.getTaxRate());
-        systemFieldMap.put("businessTitleId", data.getBusinessTitleId());
+
+        BaseField taxRate = fieldConfigMap.values().stream().filter(field -> Strings.CI.equals(field.getBusinessKey(), "taxRate")).findFirst().orElse(null);
+        if (taxRate != null && data.getTaxRate() != null) {
+            AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(taxRate.getType());
+            systemFieldMap.put("taxRate", customFieldResolver.transformToValue(taxRate, data.getTaxRate().stripTrailingZeros().toPlainString()));
+        }
+        systemFieldMap.put("businessTitleId", data.getBusinessTitleName());
         systemFieldMap.put("approvalStatus", data.getApprovalStatus() == null ? null : Translator.get("contract.approval_status." + data.getApprovalStatus().toLowerCase()));
 
         for (BaseField field : fieldConfigMap.values()) {
             if (Strings.CS.equals(BusinessModuleField.INVOICE_INVOICE_TYPE.getBusinessKey(), field.getBusinessKey())
-                && field instanceof SelectField invoiceTypeField) {
+                    && field instanceof SelectField invoiceTypeField) {
                 String invoiceTypeName = getOptionLabel(data.getInvoiceType(), invoiceTypeField.getOptions());
                 systemFieldMap.put("invoiceType", invoiceTypeName);
             }

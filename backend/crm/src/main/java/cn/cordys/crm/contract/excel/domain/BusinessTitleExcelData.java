@@ -60,10 +60,15 @@ public class BusinessTitleExcelData {
     @ExcelIgnore
     private String registrationNumber;
     /**
-     * 所属地区
+     * 省
      */
     @ExcelIgnore
-    private String area;
+    private String province;
+    /**
+     * 市
+     */
+    @ExcelIgnore
+    private String city;
     /**
      * 企业规模
      */
@@ -74,6 +79,11 @@ public class BusinessTitleExcelData {
      */
     @ExcelIgnore
     private String industry;
+    /**
+     * 备注
+     */
+    @ExcelIgnore
+    private String remark;
 
 
     public List<List<String>> getHead() {

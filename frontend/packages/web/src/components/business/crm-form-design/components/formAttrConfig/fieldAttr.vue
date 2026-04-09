@@ -141,6 +141,17 @@
             @update-value="handleClearDataSourceTypeChange"
           />
         </div>
+        <div class="crm-form-design-config-item">
+          <div class="crm-form-design-config-item-title">
+            {{ t('crmFormDesign.dataSourceTableDisplayField') }}
+          </div>
+          <dataSourceListFieldConfig
+            v-model:value="fieldConfig.listDisplayFields"
+            :fieldConfig="fieldConfig"
+            :disabled="!!fieldConfig.resourceFieldId"
+            @change="handleDataSourceListChange"
+          />
+        </div>
         <div
           v-if="fieldConfig.dataSourceType !== FieldDataSourceTypeEnum.BUSINESS_TITLE"
           class="crm-form-design-config-item"
@@ -592,26 +603,44 @@
           {{ t('common.type') }}
         </div>
         <n-select
-          v-model:value="fieldConfig.locationType"
+          v-model:value="fieldConfig.scope"
           :options="[
             {
-              label: t('crmFormDesign.C'),
-              value: 'C',
+              label: t('crmFormDesign.onlyInChina'),
+              value: 'CN',
             },
             {
-              label: t('crmFormDesign.P'),
+              label: t('crmFormDesign.allCountries'),
+              value: 'ALL',
+            },
+          ]"
+          :disabled="fieldConfig.disabledProps?.includes('locationType') || !!fieldConfig.resourceFieldId"
+        />
+        <n-select
+          v-model:value="fieldConfig.locationType"
+          :options="[
+            ...(fieldConfig.scope === 'ALL'
+              ? [
+                  {
+                    label: t('crmFormDesign.C'),
+                    value: 'C',
+                  },
+                ]
+              : []),
+            {
+              label: fieldConfig.scope === 'ALL' ? t('crmFormDesign.P') : t('crmFormDesign.cn.P'),
               value: 'P',
             },
             {
-              label: t('crmFormDesign.PC'),
+              label: fieldConfig.scope === 'ALL' ? t('crmFormDesign.PC') : t('crmFormDesign.cn.PC'),
               value: 'PC',
             },
             {
-              label: t('crmFormDesign.PCD'),
+              label: fieldConfig.scope === 'ALL' ? t('crmFormDesign.PCD') : t('crmFormDesign.cn.PCD'),
               value: 'PCD',
             },
             {
-              label: t('crmFormDesign.PCDDetail'),
+              label: fieldConfig.scope === 'ALL' ? t('crmFormDesign.PCDDetail') : t('crmFormDesign.cn.PCDDetail'),
               value: 'detail',
             },
           ]"
@@ -663,6 +692,7 @@
                 },
               ]"
               :render-option="renderPrefixTypeOption"
+              :disabled="fieldConfig.disabledProps?.includes('serialNumberRules') || !!fieldConfig.resourceFieldId"
               @update-value="
                 (val) => {
                   fieldConfig.prefixType = val;
@@ -1383,6 +1413,7 @@
   import CrmUserTagSelector from '@/components/business/crm-user-tag-selector/index.vue';
   import DataSourceDisplayFieldModal from './dataSourceDisplayFieldModal.vue';
   import datasourceLinkModal from './datasourceLinkModal.vue';
+  import dataSourceListFieldConfig from './dataSourceListFieldConfig.vue';
   import fieldLinkDrawer from './fieldLinkDrawer.vue';
   import FilterModal from './filterModal.vue';
   import formulaModal from './formulaModal.vue';
@@ -1491,6 +1522,22 @@
   //     fieldConfig.value.defaultValue = null;
   //   }
   // }
+
+  watch(
+    () => fieldConfig.value?.scope,
+    (val) => {
+      if (!val) {
+        fieldConfig.value.scope = 'ALL';
+      }
+      if (val === 'CN' && fieldConfig.value.locationType === 'C') {
+        fieldConfig.value.locationType = 'PCD';
+      }
+    }
+  );
+
+  function handleDataSourceListChange(value: string[], _options: { label: string; value: string }[]) {
+    fieldConfig.value.listDisplayFields = value;
+  }
 
   const memberTypes = computed(() => {
     if ([FieldTypeEnum.MEMBER, FieldTypeEnum.MEMBER_MULTIPLE].includes(fieldConfig.value.type)) {

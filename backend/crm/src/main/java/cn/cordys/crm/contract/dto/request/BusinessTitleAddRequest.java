@@ -47,8 +47,12 @@ public class BusinessTitleAddRequest {
     private String type;
 
     @Size(max = 255)
-    @Schema(description = "所属地区")
-    private String area;
+    @Schema(description = "省")
+    private String province;
+
+    @Size(max = 255)
+    @Schema(description = "城")
+    private String city;
 
     @Size(max = 255)
     @Schema(description = "企业规模")
@@ -58,4 +62,7 @@ public class BusinessTitleAddRequest {
     @Schema(description = "国标行业")
     private String industry;
 
+    @Size(max = 255)
+    @Schema(description = "备注")
+    private String remark;
 }

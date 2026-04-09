@@ -20,7 +20,6 @@ import cn.cordys.common.response.result.CrmHttpResultCode;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
-import cn.cordys.common.uid.SerialNumGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
@@ -38,8 +37,8 @@ import cn.cordys.crm.order.dto.response.OrderStageConfigResponse;
 import cn.cordys.crm.order.dto.response.OrderStatisticResponse;
 import cn.cordys.crm.order.mapper.ExtOrderMapper;
 import cn.cordys.crm.order.mapper.ExtOrderStageConfigMapper;
-import cn.cordys.crm.system.dto.field.SerialNumberField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
+import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
@@ -85,8 +84,6 @@ public class OrderService {
     @Resource
     private LogService logService;
     @Resource
-    private SerialNumGenerator serialNumGenerator;
-    @Resource
     private DataScopeService dataScopeService;
     @Resource
     private ExtOrderStageConfigMapper extOrderStageConfigMapper;
@@ -94,7 +91,6 @@ public class OrderService {
     private BaseMapper<Customer> customerBaseMapper;
 
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999");
-    public static final int MAX_NUMBER_LENGTH = 50;
 
     /**
      * 新建订单
@@ -119,10 +115,6 @@ public class OrderService {
         Order order = new Order();
         BeanUtils.copyBean(order, request);
         order.setId(IDGenerator.nextStr());
-        order.setNumber(createOrderNumber(moduleFormConfigDTO, orgId, request.getNumber()));
-        if (order.getNumber().length() > MAX_NUMBER_LENGTH) {
-            throw new GenericException(Translator.get("order.number.length.exceed"));
-        }
         order.setStage(stageConfigList.getFirst().getId());
         order.setOrganizationId(orgId);
         order.setCreateTime(System.currentTimeMillis());
@@ -145,17 +137,6 @@ public class OrderService {
         saveSnapshot(order, saveModuleFormConfigDTO, response);
 
         return order;
-    }
-
-
-    private String createOrderNumber(ModuleFormConfigDTO moduleFormConfigDTO, String orgId, String prefix) {
-        BaseField numberField = moduleFormConfigDTO.getFields().stream()
-                .filter(field -> field.isSerialNumber() && StringUtils.isNotEmpty(field.getBusinessKey())).findFirst().orElse(null);
-
-        if (numberField != null) {
-            return serialNumGenerator.generateByRules(((SerialNumberField) numberField).getSerialNumberRules(prefix), orgId, FormKey.ORDER.getKey());
-        }
-        return null;
     }
 
 
@@ -261,6 +242,45 @@ public class OrderService {
         List<BaseModuleFieldValue> orderFields = orderFieldService.getModuleFieldValuesByResourceId(id);
         return get(order, orderFields, orderFormConfig);
     }
+
+	/**
+	 * 获取订单详情（⚠️反射调用; 勿修改入参, 返回, 方法名!）
+	 * @param id 订单ID
+	 * @return 订单详情
+	 */
+	public OrderGetResponse getSimple(String id) {
+		Order order = orderMapper.selectByPrimaryKey(id);
+		if (order == null) {
+			return null;
+		}
+		OrderGetResponse response = BeanUtils.copyBean(new OrderGetResponse(), order);
+		List<BaseModuleFieldValue> fvs = orderFieldService.getModuleFieldValuesByResourceId(id);
+		ModuleFormConfigDTO orderFormConfig = getFormConfig(order.getOrganizationId());
+		moduleFormService.processBusinessFieldValues(response, fvs, orderFormConfig);
+		return response;
+	}
+
+	/**
+	 * 批量获取订单详情 (用于数据源批量查询优化)
+	 * @param ids 订单ID集合
+	 * @return 订单详情列表
+	 */
+	public List<OrderGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<Order> orders = orderMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(orders)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = orderFieldService.getResourceFieldMap(ids, true);
+
+		return orders.stream().map(order -> {
+			OrderGetResponse response = BeanUtils.copyBean(new OrderGetResponse(), order);
+			response.setModuleFields(fieldValueMap.get(order.getId()));
+			return response;
+		}).toList();
+	}
 
     /**
      * 编辑订单
@@ -551,6 +571,58 @@ public class OrderService {
         logDTO.setOriginalValue(oldMap);
         logDTO.setModifiedValue(newMap);
         logService.add(logDTO);
+    }
+
+    /**
+     * 批量更新订单
+     *
+     * @param request 批量编辑参数
+     * @param userId  当前用户ID
+     * @param orgId   当前组织ID
+     */
+    public void batchUpdate(ResourceBatchEditRequest request, String userId, String orgId) {
+        BaseField field = orderFieldService.getAndCheckField(request.getFieldId(), orgId);
+        moduleFormService.setFieldBusinessParam(field);
+        List<Order> originOrders = orderMapper.selectByIds(request.getIds());
+        orderFieldService.batchUpdate(request, field, originOrders, Order.class, LogModule.ORDER_INDEX, extOrderMapper::batchUpdate, userId, orgId);
+
+        ModuleFormConfigDTO moduleFormConfigDTO = getFormConfig(orgId);
+        ModuleFormConfigDTO saveModuleFormConfigDTO = JSON.parseObject(JSON.toJSONString(moduleFormConfigDTO), ModuleFormConfigDTO.class);
+
+        LambdaQueryWrapper<OrderSnapshot> delWrapper = new LambdaQueryWrapper<>();
+        delWrapper.in(OrderSnapshot::getOrderId, request.getIds());
+        snapshotBaseMapper.deleteByLambda(delWrapper);
+
+        List<Order> latestOrders = orderMapper.selectByIds(request.getIds());
+        Map<String, Order> latestOrderMap = latestOrders.stream().collect(Collectors.toMap(Order::getId, item -> item));
+        Map<String, List<BaseModuleFieldValue>> fieldMap = orderFieldService.getResourceFieldMap(request.getIds(), true);
+
+        List<OrderSnapshot> snapshots = new ArrayList<>();
+        for (String id : request.getIds()) {
+            Order order = latestOrderMap.get(id);
+            if (order == null) {
+                continue;
+            }
+            List<BaseModuleFieldValue> orderFields = fieldMap.getOrDefault(id, Collections.emptyList());
+            List<BaseModuleFieldValue> resolveFieldValues = moduleFormService.resolveSnapshotFields(orderFields, moduleFormConfigDTO, orderFieldService, id);
+            OrderGetResponse response = get(order, resolveFieldValues, moduleFormConfigDTO);
+            if (CollectionUtils.isNotEmpty(response.getModuleFields())) {
+                response.setModuleFields(response.getModuleFields().stream()
+                        .filter(f -> f.getFieldValue() != null
+                                && StringUtils.isNotBlank(f.getFieldValue().toString())
+                                && !"[]".equals(f.getFieldValue().toString()))
+                        .toList());
+            }
+            OrderSnapshot snapshot = new OrderSnapshot();
+            snapshot.setId(IDGenerator.nextStr());
+            snapshot.setOrderId(id);
+            snapshot.setOrderProp(JSON.toJSONString(saveModuleFormConfigDTO));
+            snapshot.setOrderValue(JSON.toJSONString(response));
+            snapshots.add(snapshot);
+        }
+        if (CollectionUtils.isNotEmpty(snapshots)) {
+            snapshotBaseMapper.batchInsert(snapshots);
+        }
     }
 
     public void download(String id, String userId, String organizationId) {

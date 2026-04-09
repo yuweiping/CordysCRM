@@ -21,7 +21,6 @@ import cn.cordys.common.permission.PermissionUtils;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
-import cn.cordys.common.uid.SerialNumGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
@@ -45,8 +44,8 @@ import cn.cordys.crm.system.constants.DictModule;
 import cn.cordys.crm.system.constants.NotificationConstants;
 import cn.cordys.crm.system.domain.MessageTaskConfig;
 import cn.cordys.crm.system.dto.MessageTaskConfigDTO;
-import cn.cordys.crm.system.dto.field.SerialNumberField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
+import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
 import cn.cordys.crm.system.dto.response.BatchAffectSkipResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
@@ -99,8 +98,6 @@ public class ContractService {
     @Resource
     private LogService logService;
     @Resource
-    private SerialNumGenerator serialNumGenerator;
-    @Resource
     private SqlSessionFactory sqlSessionFactory;
     @Resource
     private CommonNoticeSendService commonNoticeSendService;
@@ -115,6 +112,7 @@ public class ContractService {
     @Resource
     private DictService dictService;
 
+	public static final int MAX_NUMBER_LENGTH = 50;
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999");
 
     /**
@@ -142,7 +140,7 @@ public class ContractService {
         contract.setName(request.getName());
         contract.setCustomerId(request.getCustomerId());
         contract.setOwner(request.getOwner());
-        contract.setNumber(createContractNumber(moduleFormConfigDTO, orgId, request.getNumber()));
+        contract.setNumber(request.getNumber());
         contract.setStage(ContractStage.PENDING_SIGNING.name());
         contract.setOrganizationId(orgId);
         contract.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
@@ -174,16 +172,6 @@ public class ContractService {
         saveSnapshot(contract, saveModuleFormConfigDTO, response);
 
         return contract;
-    }
-
-    private String createContractNumber(ModuleFormConfigDTO moduleFormConfigDTO, String orgId, String prefix) {
-        BaseField numberField = moduleFormConfigDTO.getFields().stream()
-                .filter(field -> field.isSerialNumber() && StringUtils.isNotEmpty(field.getBusinessKey())).findFirst().orElse(null);
-
-        if (numberField instanceof SerialNumberField serialField) {
-            return serialNumGenerator.generateByRules(serialField.getSerialNumberRules(prefix), orgId, FormKey.CONTRACT.getKey());
-        }
-        return null;
     }
 
 
@@ -281,6 +269,46 @@ public class ContractService {
         List<BaseModuleFieldValue> contractFields = contractFieldService.getModuleFieldValuesByResourceId(id);
         return get(contract, contractFields, contractFormConfig);
     }
+
+	/**
+	 * 获取合同详情（⚠️反射调用; 勿修改入参, 返回, 方法名!）
+	 * @param id 合同ID
+	 * @return 合同详情
+	 */
+	public ContractGetResponse getSimple(String id) {
+		Contract contract = contractMapper.selectByPrimaryKey(id);
+		if (contract == null) {
+			return null;
+		}
+		ContractGetResponse response = BeanUtils.copyBean(new ContractGetResponse(), contract);
+		List<BaseModuleFieldValue> fvs = contractFieldService.getModuleFieldValuesByResourceId(id);
+		ModuleFormConfigDTO contractFormConfig = getFormConfig(contract.getOrganizationId());
+		moduleFormService.processBusinessFieldValues(response, fvs, contractFormConfig);
+		return response;
+	}
+
+	/**
+	 * 批量获取合同详情 (用于数据源批量查询优化)
+	 * @param ids 合同ID集合
+	 * @return 合同详情列表
+	 */
+	public List<ContractGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<Contract> contracts = contractMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(contracts)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = contractFieldService.getResourceFieldMap(ids, true);
+
+		return contracts.stream().map(contract -> {
+			ContractGetResponse response = BeanUtils.copyBean(new ContractGetResponse(), contract);
+			response.setModuleFields(fieldValueMap.get(contract.getId()));
+			return response;
+		}).toList();
+	}
+
 
     /**
      * 编辑合同
@@ -823,6 +851,63 @@ public class ContractService {
     }
 
     /**
+     * 批量更新合同
+     *
+     * @param request        批量编辑参数
+     * @param userId         当前用户ID
+     * @param organizationId 当前组织ID
+     */
+    public void batchUpdate(ResourceBatchEditRequest request, String userId, String organizationId) {
+        BaseField field = contractFieldService.getAndCheckField(request.getFieldId(), organizationId);
+        // getAndCheckField 走的是 getConfig()，不会设置 businessKey，需要手动补充
+        moduleFormService.setFieldBusinessParam(field);
+        List<Contract> originContracts = contractMapper.selectByIds(request.getIds());
+        contractFieldService.batchUpdate(request, field, originContracts, Contract.class, LogModule.CONTRACT_INDEX, extContractMapper::batchUpdate, userId, organizationId);
+
+        // 批量更新后重建每条合同的快照
+        ModuleFormConfigDTO moduleFormConfigDTO = getFormConfig(organizationId);
+        ModuleFormConfigDTO saveModuleFormConfigDTO = JSON.parseObject(JSON.toJSONString(moduleFormConfigDTO), ModuleFormConfigDTO.class);
+
+        // 批量删除旧快照（1次）
+        LambdaQueryWrapper<ContractSnapshot> delWrapper = new LambdaQueryWrapper<>();
+        delWrapper.in(ContractSnapshot::getContractId, request.getIds());
+        snapshotBaseMapper.deleteByLambda(delWrapper);
+
+        // 批量重新获取最新合同数据，因为业务字段已更新（1次替代N次）
+        List<Contract> latestContracts = contractMapper.selectByIds(request.getIds());
+        Map<String, Contract> latestContractMap = latestContracts.stream()
+                .collect(Collectors.toMap(Contract::getId, c -> c));
+
+        // 批量获取所有合同的自定义字段值（1次替代N次）
+        Map<String, List<BaseModuleFieldValue>> fieldMap = contractFieldService.getResourceFieldMap(request.getIds(), true);
+
+        // 逐条构建快照，批量写入
+        List<ContractSnapshot> snapshots = new ArrayList<>();
+        for (String id : request.getIds()) {
+            Contract contract = latestContractMap.get(id);
+            if (contract == null) continue;
+            List<BaseModuleFieldValue> contractFields = fieldMap.getOrDefault(id, Collections.emptyList());
+            List<BaseModuleFieldValue> resolveFieldValues = moduleFormService.resolveSnapshotFields(contractFields, moduleFormConfigDTO, contractFieldService, id);
+            ContractGetResponse response = get(contract, resolveFieldValues, moduleFormConfigDTO);
+            // 过滤空值（与 saveSnapshot 保持一致）
+            if (CollectionUtils.isNotEmpty(response.getModuleFields())) {
+                response.setModuleFields(response.getModuleFields().stream()
+                        .filter(f -> f.getFieldValue() != null && StringUtils.isNotBlank(f.getFieldValue().toString()) && !"[]".equals(f.getFieldValue().toString()))
+                        .toList());
+            }
+            ContractSnapshot snapshot = new ContractSnapshot();
+            snapshot.setId(IDGenerator.nextStr());
+            snapshot.setContractId(id);
+            snapshot.setContractProp(JSON.toJSONString(saveModuleFormConfigDTO));
+            snapshot.setContractValue(JSON.toJSONString(response));
+            snapshots.add(snapshot);
+        }
+        if (CollectionUtils.isNotEmpty(snapshots)) {
+            snapshotBaseMapper.batchInsert(snapshots);
+        }
+    }
+
+    /**
      * 校验合同是否存在关联数据
      *
      * @param contractId 合同ID
@@ -853,4 +938,22 @@ public class ContractService {
         ContractStatisticResponse response = extContractMapper.searchStatistic(request, orgId, userId, deptDataPermission);
         return Optional.ofNullable(response).orElse(new ContractStatisticResponse());
     }
+
+	/**
+	 * 通过ID集合获取合同名称
+	 *
+	 * @param ids id集合
+	 * @return 合同名称
+	 */
+	public Object getContractNameByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return StringUtils.EMPTY;
+		}
+		List<Contract> contracts = contractMapper.selectByIds(ids);
+		if (CollectionUtils.isNotEmpty(contracts)) {
+			List<String> names = contracts.stream().map(Contract::getName).toList();
+			return String.join(",", names);
+		}
+		return StringUtils.EMPTY;
+	}
 }

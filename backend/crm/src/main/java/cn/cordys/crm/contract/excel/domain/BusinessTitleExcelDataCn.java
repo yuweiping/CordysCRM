@@ -68,11 +68,17 @@ public class BusinessTitleExcelDataCn extends BusinessTitleExcelData {
     @ExcelProperty("工商注册账号")
     private String registrationNumber;
     /**
-     * 所属地区
+     * 省
      */
     @ColumnWidth(255)
-    @ExcelProperty("所属地区")
-    private String area;
+    @ExcelProperty("省")
+    private String province;
+    /**
+     * 市
+     */
+    @ColumnWidth(255)
+    @ExcelProperty("市")
+    private String city;
     /**
      * 企业规模
      */
@@ -85,7 +91,12 @@ public class BusinessTitleExcelDataCn extends BusinessTitleExcelData {
     @ColumnWidth(255)
     @ExcelProperty("国标行业")
     private String industry;
-
+    /**
+     * 备注
+     */
+    @ColumnWidth(255)
+    @ExcelProperty("备注")
+    private String remark;
 
     @Override
     public List<List<String>> getHead() {

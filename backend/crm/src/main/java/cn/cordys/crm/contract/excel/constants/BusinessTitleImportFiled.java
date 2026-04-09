@@ -20,10 +20,12 @@ public enum BusinessTitleImportFiled {
     PHONE_NUMBER("phoneNumber", "注册电话", "Phone number", BusinessTitleExcelData::getPhoneNumber),
     REGISTERED_CAPITAL("registeredCapital", "注册资本", "Registered capital", BusinessTitleExcelData::getRegisteredCapital),
     COMPANY_SIZE("companySize", "公司规模", "Customer size", BusinessTitleExcelData::getCompanySize),
-    registration_number("registrationNumber", "工商注册账号", "Registration number", BusinessTitleExcelData::getRegistrationNumber),
-    AREA("area", "所属地区", "Area", BusinessTitleExcelData::getArea),
-    Scale("scale", "企业规模", "Scale", BusinessTitleExcelData::getScale),
-    INDUSTRY("industry", "国标行业", "Industry", BusinessTitleExcelData::getIndustry);
+    REGISTRATION_NUMBER("registrationNumber", "工商注册账号", "Registration number", BusinessTitleExcelData::getRegistrationNumber),
+    PROVINCE("province", "省", "Province", BusinessTitleExcelData::getProvince),
+    CITY("city", "市", "City", BusinessTitleExcelData::getCity),
+    SCALE("scale", "企业规模", "Scale", BusinessTitleExcelData::getScale),
+    INDUSTRY("industry", "国标行业", "Industry", BusinessTitleExcelData::getIndustry),
+    REMARK("remark", "备注", "Remark", BusinessTitleExcelData::getRemark);
 
     @Getter
     private final Map<Locale, String> filedLangMap;

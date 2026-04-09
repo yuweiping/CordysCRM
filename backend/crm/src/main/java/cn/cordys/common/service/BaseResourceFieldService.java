@@ -73,6 +73,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
     private static final String ROW_BIZ_ID = "id";
     private static final String DETAIL_FIELD_PARAM_NAME = "moduleFields";
     private static final String PRICE_SUB_ROW_KEY = "price_sub";
+	public static final int MAX_NUMBER_LENGTH = 50;
 
     /**
      * 获取资源字段类型 (T)
@@ -190,17 +191,24 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         // 校验业务字段，字段值是否重复
         businessFieldRepeatCheck(orgId, resource, update ? List.of(resourceId) : List.of(), allFields);
 
+		// 处理字段值
+		Map<String, String> serialNumCache = new HashMap<>(2);
         List<T> customerFields = new ArrayList<>();
         List<V> customerFieldBlobs = new ArrayList<>();
         allFields.stream()
                 .filter(field -> {
                     BaseModuleFieldValue fieldValue = fieldValueMap.get(field.getId());
-                    return (fieldValue != null && fieldValue.valid()) ||
-                            (field.isSerialNumber() && StringUtils.isEmpty(field.getBusinessKey())) || field.isSubField();
+                    return (fieldValue != null && fieldValue.valid()) || field.isSerialNumber() || field.isSubField() || field.includeFormula();
                 })
+                .sorted(Comparator.comparing((BaseField f) -> !f.isSerialNumber()).thenComparing(f -> f.getPos() != null ? f.getPos() : Long.MAX_VALUE))
                 .forEach(field -> {
-                    BaseModuleFieldValue fieldValue = processSpecialFieldValue(field, fieldValueMap, update, orgId);
-                    if (fieldValue == null || fieldValue.getFieldValue() == null || StringUtils.isNotEmpty(field.getResourceFieldId())) {
+					// 引用字段跳过
+					if (StringUtils.isNotEmpty(field.getResourceFieldId())) {
+						return;
+					}
+                    BaseModuleFieldValue fieldValue = processSpecialFieldValue(resource, field, fieldValueMap, serialNumCache, update, orgId);
+					// 空值跳过
+                    if (fieldValue == null || fieldValue.getFieldValue() == null) {
                         return;
                     }
                     // 处理子表格值
@@ -226,7 +234,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                     }
                 });
 
-        // process all attachment field
+        // 处理附件类型字段
         List<BaseModuleFieldValue> attachmentFieldVals = allFields.stream()
                 .filter(field -> {
                     BaseModuleFieldValue fieldValue = fieldValueMap.get(field.getId());
@@ -235,10 +243,10 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         List processVal = attachmentFieldVals.stream().map(val -> (List) val.getFieldValue()).flatMap(List::stream).toList();
         preProcessTempAttachment(orgId, resourceId, userId, processVal);
 
+		// 字段值入库
         if (CollectionUtils.isNotEmpty(customerFields)) {
             getResourceFieldMapper().batchInsert(customerFields);
         }
-
         if (CollectionUtils.isNotEmpty(customerFieldBlobs)) {
             getResourceFieldBlobMapper().batchInsert(customerFieldBlobs);
         }
@@ -409,7 +417,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
     @SuppressWarnings({"unchecked", "rawtypes"})
     public Map<String, List<BaseModuleFieldValue>> getResourceFieldMap(List<String> resourceIds, boolean withBlob) {
         if (CollectionUtils.isEmpty(resourceIds)) {
-            return new HashMap<>();
+            return new HashMap<>(2);
         }
         SourceDetailResolveContext.start();
         try {
@@ -490,7 +498,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
             return resourceMap;
         } catch (Exception e) {
             log.error(e.getMessage(), e);
-            return new HashMap<>();
+            return new HashMap<>(2);
         } finally {
             SourceDetailResolveContext.end();
         }
@@ -524,7 +532,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                 if (!SourceDetailResolveContext.getSourceMap().containsKey(val.toString())) {
                     FieldSourceType sourceType = FieldSourceType.valueOf(sourceField.getDataSourceType());
                     try {
-                        Object sourceObj = fieldSourceServiceProvider.safeGetById(sourceType, val.toString());
+                        Object sourceObj = fieldSourceServiceProvider.safeGetSimpleById(sourceType, val.toString());
                         if (sourceObj != null) {
                             SourceDetailResolveContext.put(val.toString(), JSON.MAPPER.convertValue(sourceObj, Map.class));
                         }
@@ -572,6 +580,9 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
         }
         if (sourceDetailMap.containsKey(DETAIL_FIELD_PARAM_NAME)) {
             List<Map> fvs = (List<Map>) sourceDetailMap.get(DETAIL_FIELD_PARAM_NAME);
+			if (CollectionUtils.isEmpty(fvs)) {
+				return null;
+			}
             for (Map fv : fvs) {
                 if (field.getId().equals(fv.get("fieldId"))) {
                     return fv.get("fieldValue");
@@ -946,6 +957,7 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
     @SuppressWarnings("unchecked")
     private void getSourceDetailMapByIds(List<BaseField> flattenFields, List<T> resourceFields) {
 
+        // 收集所有数据源字段的类型和ID映射关系
         var sourceIdType = flattenFields.stream()
                 .filter(f -> f instanceof DatasourceField ds && CollectionUtils.isNotEmpty(ds.getShowFields()))
                 .collect(Collectors.toMap(
@@ -954,29 +966,52 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
                         (prev, next) -> next
                 ));
 
+        // 按类型分组：遍历resourceFields找到每个id对应的type
+        Map<FieldSourceType, List<String>> groupedIds = new HashMap<>();
         resourceFields.stream()
                 .filter(rf -> sourceIdType.containsKey(rf.getFieldId()) && rf.getFieldValue() != null)
                 .forEach(rf -> {
-                    var value = rf.getFieldValue().toString();
+                    String value = rf.getFieldValue().toString();
                     if (SourceDetailResolveContext.contains(value)) {
                         return;
                     }
-
-                    SourceDetailResolveContext.putPlaceholder(value);
                     try {
-                        var sourceType = FieldSourceType.valueOf(sourceIdType.get(rf.getFieldId()));
-                        var detail = fieldSourceServiceProvider.safeGetById(sourceType, value);
-
-                        if (detail == null) {
-                            SourceDetailResolveContext.remove(value);
-                        } else {
-                            SourceDetailResolveContext.put(value, JSON.MAPPER.convertValue(detail, Map.class));
-                        }
+                        FieldSourceType sourceType = FieldSourceType.valueOf(sourceIdType.get(rf.getFieldId()));
+                        groupedIds.computeIfAbsent(sourceType, k -> new ArrayList<>()).add(value);
                     } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                        SourceDetailResolveContext.remove(value);
+                        log.error("获取数据源类型异常: {}", e.getMessage());
                     }
                 });
+
+        // 批量查询每个类型的数据源详情
+        groupedIds.forEach((sourceType, ids) -> {
+            if (CollectionUtils.isEmpty(ids)) {
+                return;
+            }
+            // 去重
+            List<String> distinctIds = ids.stream().distinct().toList();
+            // 批量查询
+            List<Object> details = fieldSourceServiceProvider.batchGetSimpleByIds(sourceType, distinctIds);
+            if (CollectionUtils.isEmpty(details)) {
+                return;
+            }
+            // 存入缓存上下文
+            for (Object detail : details) {
+                if (detail == null) {
+                    continue;
+                }
+                try {
+                    // 通过反射获取ID字段
+                    Map<String, Object> detailMap = JSON.MAPPER.convertValue(detail, Map.class);
+                    Object idValue = detailMap.get("id");
+                    if (idValue != null) {
+                        SourceDetailResolveContext.put(idValue.toString(), detailMap);
+                    }
+                } catch (Exception e) {
+                    log.error("处理数据源详情异常: {}", e.getMessage());
+                }
+            }
+        });
     }
 
     /**
@@ -1011,18 +1046,38 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
      *
      * @return 字段值
      */
-    private BaseModuleFieldValue processSpecialFieldValue(BaseField field, Map<String, BaseModuleFieldValue> fieldValueMap, boolean update, String orgId) {
-        // 流水号
+    private <K> BaseModuleFieldValue processSpecialFieldValue(K resource, BaseField field, Map<String, BaseModuleFieldValue> fieldValueMap,
+															  Map<String, String> serialNumCache, boolean update, String orgId) {
+        // 流水号 (需缓存, 公式字段要做占位替换)
         if (field.isSerialNumber() && !update) {
-            BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
-            fieldValue.setFieldId(field.getId());
-			BaseModuleFieldValue fv = fieldValueMap.get(field.getId());
-			String serialNo = serialNumGenerator.generateByRules(((SerialNumberField) field).getSerialNumberRules(
-					(fv != null && fv.getFieldValue() != null) ? fv.getFieldValue().toString() : StringUtils.EMPTY), orgId, getFormKey());
-            fieldValue.setFieldValue(serialNo);
-            return fieldValue;
+			if (StringUtils.isNotEmpty(field.getBusinessKey())) {
+				// 流水号作为业务字段, 从业务资源中获取前缀值
+				Object serialNoPrefix = getResourceFieldValue(resource, field.getBusinessKey());
+				String serialNo = serialNumGenerator.generateByRules(((SerialNumberField) field).getSerialNumberRules(
+						serialNoPrefix != null ? serialNoPrefix.toString().replace("${" + field.getName() + "}", StringUtils.EMPTY) : StringUtils.EMPTY),
+						orgId, getFormKey());
+				// 业务流水号字段过长, SQL错误
+				if (serialNo.length() > MAX_NUMBER_LENGTH) {
+					throw new GenericException(Translator.get("number.length.exceed"));
+				}
+				setResourceFieldValue(resource, field.getBusinessKey(), serialNo);
+				serialNumCache.put("${" + field.getName() + "}", serialNo);
+				return null;
+			} else {
+				// 流水号作为自定义字段, 需要统一生成.
+				BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
+				fieldValue.setFieldId(field.getId());
+				BaseModuleFieldValue fv = fieldValueMap.get(field.getId());
+				String serialNo = serialNumGenerator.generateByRules(((SerialNumberField) field).getSerialNumberRules(
+						(fv != null && fv.getFieldValue() != null) ? fv.getFieldValue().toString().replace("${" + field.getName() + "}", StringUtils.EMPTY) : StringUtils.EMPTY),
+						orgId, getFormKey());
+				fieldValue.setFieldValue(serialNo);
+				serialNumCache.put("${" + field.getName() + "}", serialNo);
+				return fieldValue;
+			}
         }
-        // 子表格 {业务字段来源resource, 字段值来源fieldValueMap}
+
+        // 子表格
         if (field.isSubField()) {
             BaseModuleFieldValue fieldValue = new BaseModuleFieldValue();
             fieldValue.setFieldId(field.getId());
@@ -1034,8 +1089,52 @@ public abstract class BaseResourceFieldService<T extends BaseResourceField, V ex
             }
             return fieldValue;
         }
+
+		// 公式字段
+		if (field.includeFormula()) {
+			if (StringUtils.isNotEmpty(field.getBusinessKey())) {
+				// 业务字段直接替换, 公式字段的业务字段不入库.
+				Object serialNo = getResourceFieldValue(resource, field.getBusinessKey());
+				if (serialNo != null) {
+					String strValue = replaceSerialNumberPlaceholder(serialNo.toString(), serialNumCache);
+					setResourceFieldValue(resource, field.getBusinessKey(), strValue);
+				}
+				return null;
+			} else {
+				// 自定义字段需要替换占位符&&入库.
+				BaseModuleFieldValue fieldValue = fieldValueMap.get(field.getId());
+				if (fieldValue != null && fieldValue.getFieldValue() != null) {
+					String strValue = replaceSerialNumberPlaceholder(fieldValue.getFieldValue().toString(), serialNumCache);
+					fieldValue.setFieldValue(strValue);
+				}
+				return fieldValue;
+			}
+		}
+
         // 其他字段直接返回
         return fieldValueMap.get(field.getId());
+    }
+
+    /**
+     * 替换字符串中的流水号占位符
+     *
+     * @param text         包含占位符的字符串，格式如：xxxx${fieldName}
+     * @param serialNumMap 流水号缓存Map
+     *
+     * @return 替换后的字符串，如果未找到对应流水号则保持不变
+     */
+    private String replaceSerialNumberPlaceholder(String text, Map<String, String> serialNumMap) {
+        if (StringUtils.isEmpty(text) || MapUtils.isEmpty(serialNumMap)) {
+            return text;
+        }
+        String result = text;
+        for (Map.Entry<String, String> entry : serialNumMap.entrySet()) {
+            String placeholder = entry.getKey();
+            if (result.contains(placeholder)) {
+                result = result.replace(placeholder, entry.getValue());
+            }
+        }
+        return result;
     }
 
     /**

@@ -3,6 +3,7 @@ package cn.cordys.crm.contract.domain;
 import cn.cordys.common.domain.BaseModel;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 
@@ -49,12 +50,18 @@ public class BusinessTitle extends BaseModel {
     @Schema(description = "组织id")
     private String organizationId;
 
-    @Schema(description = "所属地区")
-    private String area;
+    @Schema(description = "省")
+    private String province;
+
+    @Schema(description = "市")
+    private String city;
 
     @Schema(description = "企业规模")
     private String scale;
 
     @Schema(description = "国标行业")
     private String industry;
+
+    @Schema(description = "备注")
+    private String remark;
 }

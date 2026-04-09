@@ -1,3 +1,4 @@
+import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
 import { IRNodeType } from '@lib/shared/enums/formula';
 
 import { FormCreateField } from '@/components/business/crm-form-create/types';
@@ -54,7 +55,11 @@ export type ValueType = 'number' | 'string' | 'boolean' | 'date' | 'unknown';
 
 export interface FieldMeta {
   valueType: ValueType;
+  name: string;
+  fieldType: FieldTypeEnum;
   numberType?: 'number' | 'percent';
+  defaultValueType?: 'custom' | 'formula';
+  resourceFieldId?: string;
 }
 
 export type FieldTypeMap = Record<string, FieldMeta>;
@@ -83,7 +88,7 @@ export interface EvaluateContext {
   getTableColumnValues(path: string): number[];
   getFieldMeta?(fieldId: string): FieldMeta | undefined;
   resolveFieldRuntimeValue?(fieldId: string, rawValue: any): any;
-
+  needInitDetail?: boolean;
   warn?(msg: string): void;
 }
 
@@ -101,6 +106,7 @@ export interface FormulaExecutorContext {
   formDetail?: Record<string, any>;
   fields?: FormCreateField[];
   formulaDataSource: Record<string, any>;
+  needInitDetail?: boolean;
   evaluationNow?: any;
   decimalPlaces?: number;
   expectedType?: ValueType;

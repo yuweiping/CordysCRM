@@ -116,6 +116,9 @@ export function formatNumberValueToString(value: number, item: FormCreateField) 
       return item.precision ? `${Number(value).toFixed(item.precision)}%` : `${value}%`;
     }
     if (item.showThousandsSeparator) {
+      if (typeof value === 'string') {
+        return value;
+      }
       return item.precision
         ? `${value.toLocaleString('en-US').split('.')[0]}.${value.toFixed?.(item.precision).split('.')[1]}`
         : value.toLocaleString('en-US');
@@ -140,7 +143,7 @@ export function parseModuleFieldValue(item: FormCreateField, fieldValue: string 
     return '-';
   }
   const { t } = useI18n();
-  let value: string | string[] = fieldValue || '';
+  let value: string | string[] = fieldValue;
   if (options) {
     // 若字段值是选项值，则取选项值的name
     if (Array.isArray(fieldValue)) {
@@ -177,7 +180,7 @@ export function parseModuleFieldValue(item: FormCreateField, fieldValue: string 
     } else {
       const country = addressArr[0];
       const rest = addressArr.filter((e, i) => i > 0).join('-');
-      value = rest ? `${getCityPath(country)}-${rest}` : getCityPath(country);
+      value = rest ? `${getCityPath(country, item.scope)}-${rest}` : getCityPath(country, item.scope);
     }
   } else if (item.type === FieldTypeEnum.INDUSTRY) {
     value = fieldValue ? getIndustryPath(fieldValue as string) : '-';
@@ -401,8 +404,9 @@ export function transformData({
         value = '-';
       } else {
         const country = addressArr[0];
+        const scope = fields.find((f) => f.id === field.fieldId)?.scope;
         const rest = addressArr.filter((e, i) => i > 0).join('-');
-        value = rest ? `${getCityPath(country)}-${rest}` : getCityPath(country);
+        value = rest ? `${getCityPath(country, scope)}-${rest}` : getCityPath(country, scope);
       }
       customFieldAttr[field.fieldId] = value;
     } else if (industryFieldIds.includes(field.fieldId)) {
@@ -443,10 +447,10 @@ export function transformData({
       // 处理匹配不到 optionsMap 的数据源/成员/部门字段
       if (typeof field.fieldValue === 'string' || typeof field.fieldValue === 'number') {
         // 单选
-        customFieldAttr[field.fieldId] = [t('common.optionNotExist')];
+        customFieldAttr[field.fieldId] = field.fieldValue !== '' ? [t('common.optionNotExist')] : ['-'];
       } else {
         // 多选
-        customFieldAttr[field.fieldId] = field.fieldValue?.map(() => t('common.optionNotExist'));
+        customFieldAttr[field.fieldId] = field.fieldValue?.map((e) => (e !== '' ? [t('common.optionNotExist')] : '-'));
       }
     } else {
       // 其他类型字段，直接赋值

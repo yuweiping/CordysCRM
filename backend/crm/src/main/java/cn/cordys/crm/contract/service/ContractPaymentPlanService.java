@@ -20,7 +20,6 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.crm.contract.constants.ContractPaymentPlanStatus;
 import cn.cordys.crm.contract.domain.Contract;
 import cn.cordys.crm.contract.domain.ContractPaymentPlan;
-import cn.cordys.crm.contract.domain.ContractPaymentRecord;
 import cn.cordys.crm.contract.dto.request.ContractPaymentPlanAddRequest;
 import cn.cordys.crm.contract.dto.request.ContractPaymentPlanPageRequest;
 import cn.cordys.crm.contract.dto.request.ContractPaymentPlanUpdateRequest;
@@ -43,6 +42,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -211,6 +211,44 @@ public class ContractPaymentPlanService {
 
         return contractPaymentPlanGetResponse;
     }
+
+	/**
+	 * 获取跟进计划详情 （⚠️反射调用; 勿修改入参, 返回, 方法名!）
+	 * @param id 计划ID
+	 * @return 计划详情
+	 */
+	public ContractPaymentPlanGetResponse getSimple(String id) {
+		ContractPaymentPlan contractPaymentPlan = contractPaymentPlanMapper.selectByPrimaryKey(id);
+		if (contractPaymentPlan == null) {
+			return null;
+		}
+		ContractPaymentPlanGetResponse response = BeanUtils.copyBean(new ContractPaymentPlanGetResponse(), contractPaymentPlan);
+		List<BaseModuleFieldValue> fvs = contractPaymentPlanFieldService.getModuleFieldValuesByResourceId(id);
+		response.setModuleFields(fvs);
+		return response;
+	}
+
+	/**
+	 * 批量获取回款计划详情 (用于数据源批量查询优化)
+	 * @param ids 计划ID集合
+	 * @return 回款计划详情列表
+	 */
+	public List<ContractPaymentPlanGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<ContractPaymentPlan> plans = contractPaymentPlanMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(plans)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = contractPaymentPlanFieldService.getResourceFieldMap(ids, true);
+
+		return plans.stream().map(plan -> {
+			ContractPaymentPlanGetResponse response = BeanUtils.copyBean(new ContractPaymentPlanGetResponse(), plan);
+			response.setModuleFields(fieldValueMap.get(plan.getId()));
+			return response;
+		}).toList();
+	}
 
     @OperationLog(module = LogModule.CONTRACT_PAYMENT, type = LogType.ADD, resourceName = "{#request.name}", operator = "{#userId}")
     public ContractPaymentPlan add(ContractPaymentPlanAddRequest request, String userId, String orgId) {

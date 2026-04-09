@@ -31,13 +31,28 @@ export function getValueType(field: FormCreateField): ValueType {
 }
 
 function buildFieldTypeInfo(field: FormCreateField): FieldMeta {
-  return {
+  const baseInfo = {
     valueType: getValueType(field),
-    ...(field.type === FieldTypeEnum.INPUT_NUMBER
-      ? {
-          numberType: field.numberFormat === 'percent' ? 'percent' : 'number',
-        }
-      : {}),
+    fieldType: field.type,
+    name: field.name,
+    resourceFieldId: field.resourceFieldId,
+  };
+
+  const typeSpecificInfo: Record<string, any> = {
+    [FieldTypeEnum.INPUT_NUMBER]: {
+      numberType: field.numberFormat === 'percent' ? 'percent' : 'number',
+    },
+    [FieldTypeEnum.SERIAL_NUMBER]: {
+      defaultValueType: field.prefixType,
+    },
+    [FieldTypeEnum.INPUT]: {
+      defaultValueType: field.defaultValueType,
+    },
+  };
+
+  return {
+    ...baseInfo,
+    ...(typeSpecificInfo[field.type] || {}),
   };
 }
 
@@ -128,13 +143,13 @@ export function executeFormFormula(ctx: FormulaExecutorContext): FormulaExecutor
     formDetail,
     fields = [],
     formulaDataSource,
+    needInitDetail,
     evaluationNow,
     decimalPlaces = 2,
     expectedType,
     cloneIR = true,
     warn,
   } = ctx;
-
   const { ir } = safeParseFormula(formula ?? '');
 
   if (!ir) {
@@ -182,6 +197,7 @@ export function executeFormFormula(ctx: FormulaExecutorContext): FormulaExecutor
       return fieldTypeMap[fieldId];
     },
     resolveFieldRuntimeValue,
+    needInitDetail,
     warn: (msg: string) => {
       warn?.(msg);
     },

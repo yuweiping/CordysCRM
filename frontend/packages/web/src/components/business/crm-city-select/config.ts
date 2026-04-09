@@ -9111,9 +9111,14 @@ export const COUNTRIES_TREE: CascaderOption[] = [
     label: '突尼斯',
     value: 'TUN',
   },
+  {
+    label: '秘鲁',
+    value: 'PER',
+  },
 ];
 
-export function getCountriesByLevel(level?: 'C' | 'P' | 'PC' | 'PCD' | 'detail') {
+export function getCountriesByLevel(level?: 'C' | 'P' | 'PC' | 'PCD' | 'detail', scope?: 'CN' | 'ALL') {
+  const onlyInChina = scope === 'CN';
   switch (level) {
     case 'C':
       // 仅国家层级：去掉所有 children
@@ -9121,15 +9126,15 @@ export function getCountriesByLevel(level?: 'C' | 'P' | 'PC' | 'PCD' | 'detail')
 
     case 'P':
       // 国家 - 省：中国用 CHINA_P，其他国家保留自身结构
-      return [CHINA_P, ...COUNTRIES_TREE];
+      return onlyInChina ? CHINA_P.children : [CHINA_P, ...COUNTRIES_TREE];
 
     case 'PC':
       // 国家 - 省 - 市
-      return [CHINA_PC, ...COUNTRIES_TREE];
+      return onlyInChina ? CHINA_PC.children : [CHINA_PC, ...COUNTRIES_TREE];
 
     case 'PCD':
     default:
       // 国家 - 省 - 市 - 区
-      return [CHINA_PCD, ...COUNTRIES_TREE];
+      return onlyInChina ? CHINA_PCD.children : [CHINA_PCD, ...COUNTRIES_TREE];
   }
 }

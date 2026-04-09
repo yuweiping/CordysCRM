@@ -181,10 +181,14 @@ public class OpportunityService {
         // 联系人
         List<OptionDTO> contactFieldOption = moduleFormService.getBusinessFieldOption(buildList,
                 OpportunityListResponse::getContactId, OpportunityListResponse::getContactName);
-        optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+		if (CollectionUtils.isNotEmpty(contactFieldOption)) {
+			optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+		}
 
         List<OptionDTO> productOption = extProductMapper.getOptions(orgId);
-        optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+		if (CollectionUtils.isNotEmpty(productOption)) {
+			optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+		}
 
         return optionMap;
 
@@ -503,7 +507,6 @@ public class OpportunityService {
 
 
 	/**
-	 * ⚠️反射调用; 勿修改入参, 返回, 方法名!
 	 * @param id 商机ID
 	 * @return 商机详情
 	 */
@@ -563,14 +566,18 @@ public class OpportunityService {
         // 联系人
         List<OptionDTO> contactFieldOption = moduleFormService.getBusinessFieldOption(response,
                 OpportunityDetailResponse::getContactId, OpportunityDetailResponse::getContactName);
-        optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+		if (CollectionUtils.isNotEmpty(contactFieldOption)) {
+			optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+		}
 
         List<OptionDTO> customerOption = moduleFormService.getBusinessFieldOption(response,
                 OpportunityDetailResponse::getCustomerId, OpportunityDetailResponse::getCustomerName);
         optionMap.put(BusinessModuleField.OPPORTUNITY_CUSTOMER_NAME.getBusinessKey(), customerOption);
 
         List<OptionDTO> productOption = extProductMapper.getOptions(response.getOrganizationId());
-        optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+		if (CollectionUtils.isNotEmpty(productOption)) {
+			optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+		}
 
         response.setOptionMap(optionMap);
 
@@ -579,6 +586,46 @@ public class OpportunityService {
 
         return response;
     }
+
+	/**
+	 * 获取商机详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+	 * @param id 商机ID
+	 * @return 商机详情
+	 */
+	public OpportunityDetailResponse getSimple(String id) {
+		OpportunityDetailResponse response = extOpportunityMapper.getDetail(id);
+		if (response == null) {
+			return null;
+		}
+		List<BaseModuleFieldValue> fvs = opportunityFieldService.getModuleFieldValuesByResourceId(id);
+		response.setModuleFields(fvs);
+		return response;
+	}
+
+	/**
+	 * 批量获取商机详情 (用于数据源批量查询优化)
+	 * @param ids 商机ID集合
+	 * @return 商机详情列表
+	 */
+	public List<OpportunityDetailResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		// 批量查询资源基本信息
+		List<Opportunity> opportunities = opportunityMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(opportunities)) {
+			return Collections.emptyList();
+		}
+		// 批量查询自定义字段值
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = opportunityFieldService.getResourceFieldMap(ids, true);
+
+		// 组装结果
+		return opportunities.stream().map(opportunity -> {
+			OpportunityDetailResponse response = BeanUtils.copyBean(new OpportunityDetailResponse(), opportunity);
+			response.setModuleFields(fieldValueMap.get(opportunity.getId()));
+			return response;
+		}).toList();
+	}
 
 
     /**

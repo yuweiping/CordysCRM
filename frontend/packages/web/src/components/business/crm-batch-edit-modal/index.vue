@@ -140,6 +140,13 @@
           :field-config="currentForm"
           :form-detail="form"
         />
+        <Link
+          v-else-if="form.fieldId && [FieldTypeEnum.LINK].includes(currentForm.type)"
+          v-model:value="form.fieldValue"
+          path="fieldValue"
+          :field-config="currentForm"
+          :form-detail="form"
+        />
         <n-form-item v-else path="fieldValue" :label="t('common.batchUpdate')">
           <n-input disabled type="text" :placeholder="t('common.pleaseInput')" :maxlength="255" />
         </n-form-item>
@@ -162,6 +169,7 @@
   // 高级组件
   import dataSource from '@/components/business/crm-form-create/components/advanced/dataSource.vue';
   import Industry from '@/components/business/crm-form-create/components/advanced/industry.vue';
+  import Link from '@/components/business/crm-form-create/components/advanced/link.vue';
   import Location from '@/components/business/crm-form-create/components/advanced/location.vue';
   import Phone from '@/components/business/crm-form-create/components/advanced/phone.vue';
   // 基础组件
@@ -180,11 +188,14 @@
     batchUpdateAccount,
     batchUpdateCluePool,
     batchUpdateContact,
+    batchUpdateContract,
     batchUpdateLead,
     batchUpdateOpenSeaCustomer,
     batchUpdateOpportunity,
+    batchUpdateOrder,
     batchUpdateProduct,
     batchUpdateProductPrice,
+    batchUpdateQuotation,
   } from '@/api/modules';
   import { useUserStore } from '@/store';
 
@@ -204,7 +215,10 @@
       | FormDesignKeyEnum.CUSTOMER
       | FormDesignKeyEnum.PRODUCT
       | FormDesignKeyEnum.CUSTOMER_CONTACT
-      | FormDesignKeyEnum.PRICE;
+      | FormDesignKeyEnum.PRICE
+      | FormDesignKeyEnum.CONTRACT
+      | FormDesignKeyEnum.OPPORTUNITY_QUOTATION
+      | FormDesignKeyEnum.ORDER;
   }>();
 
   const emit = defineEmits<{
@@ -227,6 +241,9 @@
     [FormDesignKeyEnum.CUSTOMER]: batchUpdateAccount,
     [FormDesignKeyEnum.CUSTOMER_CONTACT]: batchUpdateContact,
     [FormDesignKeyEnum.PRICE]: batchUpdateProductPrice,
+    [FormDesignKeyEnum.CONTRACT]: batchUpdateContract,
+    [FormDesignKeyEnum.OPPORTUNITY_QUOTATION]: batchUpdateQuotation,
+    [FormDesignKeyEnum.ORDER]: batchUpdateOrder,
   };
 
   const initForm = {
@@ -244,16 +261,18 @@
   const fieldOptions = computed(
     () =>
       list.value.filter((e) => {
-        const baseCondition = ![
-          FieldTypeEnum.DIVIDER,
-          FieldTypeEnum.PICTURE,
-          FieldTypeEnum.LINK,
-          FieldTypeEnum.SERIAL_NUMBER,
-          FieldTypeEnum.ATTACHMENT,
-          FieldTypeEnum.SUB_PRICE,
-          FieldTypeEnum.SUB_PRODUCT,
-          FieldTypeEnum.FORMULA,
-        ].includes(e.type);
+        const baseCondition =
+          ![
+            FieldTypeEnum.DIVIDER,
+            FieldTypeEnum.PICTURE,
+            FieldTypeEnum.SERIAL_NUMBER,
+            FieldTypeEnum.ATTACHMENT,
+            FieldTypeEnum.SUB_PRICE,
+            FieldTypeEnum.SUB_PRODUCT,
+            FieldTypeEnum.FORMULA,
+          ].includes(e.type) &&
+          !e.resourceFieldId?.length &&
+          e.defaultValueType !== 'formula';
 
         if (props.formKey === FormDesignKeyEnum.CLUE_POOL || props.formKey === FormDesignKeyEnum.CUSTOMER_OPEN_SEA) {
           return baseCondition && e.businessKey !== 'owner';

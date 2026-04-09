@@ -64,10 +64,10 @@
   const city = ref('');
   const detail = ref(''); // 详细地址
 
-  const fieldLabel = computed(() => getCityPath(city.value));
+  const fieldLabel = computed(() => getCityPath(city.value, props.fieldConfig.scope));
 
   const options = computed<CascaderOption[]>(() => {
-    return getCountriesByLevel(props.fieldConfig.locationType);
+    return getCountriesByLevel(props.fieldConfig.locationType, props.fieldConfig.scope);
   });
 
   function handleCityAndDetailChange() {

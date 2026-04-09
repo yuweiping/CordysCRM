@@ -197,6 +197,46 @@ public class ProductPriceService {
         return baseService.setCreateAndUpdateUserName(priceDetail);
     }
 
+	/**
+	 * 获取价格表详情-简化版 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+	 * @param id 价格表ID
+	 * @return 价格表详情
+	 */
+	public ProductPriceGetResponse getSimple(String id) {
+		ProductPrice price = productPriceMapper.selectByPrimaryKey(id);
+		if (price == null) {
+			return null;
+		}
+		ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
+		// 处理自定义字段(包括详情附件)
+		ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), price.getOrganizationId());
+		List<BaseModuleFieldValue> fvs = productPriceFieldService.getModuleFieldValuesByResourceId(id);
+		moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
+		return response;
+	}
+
+	/**
+	 * 批量获取价格表详情 (用于数据源批量查询优化)
+	 * @param ids 价格表ID集合
+	 * @return 价格表详情列表
+	 */
+	public List<ProductPriceGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<ProductPrice> prices = productPriceMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(prices)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
+
+		return prices.stream().map(price -> {
+			ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
+			response.setModuleFields(fieldValueMap.get(price.getId()));
+			return response;
+		}).toList();
+	}
+
     /**
      * 删除价格表
      *

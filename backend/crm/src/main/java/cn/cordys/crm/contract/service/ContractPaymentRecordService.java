@@ -26,8 +26,12 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.domain.*;
 import cn.cordys.crm.contract.dto.request.ContractPaymentRecordAddRequest;
 import cn.cordys.crm.contract.dto.request.ContractPaymentRecordPageRequest;
+import cn.cordys.crm.contract.dto.request.ContractPaymentRecordStatisticRequest;
 import cn.cordys.crm.contract.dto.request.ContractPaymentRecordUpdateRequest;
-import cn.cordys.crm.contract.dto.response.*;
+import cn.cordys.crm.contract.dto.response.ContractPaymentRecordGetResponse;
+import cn.cordys.crm.contract.dto.response.ContractPaymentRecordResponse;
+import cn.cordys.crm.contract.dto.response.ContractPaymentRecordStatisticResponse;
+import cn.cordys.crm.contract.dto.response.CustomerPaymentRecordStatisticResponse;
 import cn.cordys.crm.contract.mapper.ExtContractPaymentRecordMapper;
 import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.dto.field.SerialNumberField;
@@ -130,10 +134,6 @@ public class ContractPaymentRecordService {
         if (StringUtils.isEmpty(paymentRecord.getOwner())) {
             paymentRecord.setOwner(currentUser);
         }
-        List<String> rules = moduleFieldExtService.getSerialFieldRulesByKey(FormKey.CONTRACT_PAYMENT_RECORD.getKey(), currentOrg, BusinessModuleField.CONTRACT_PAYMENT_RECORD_NO.getKey(), request.getNo());
-        if (CollectionUtils.isNotEmpty(rules)) {
-            paymentRecord.setNo(serialNumGenerator.generateByRules(rules, currentOrg, FormKey.CONTRACT_PAYMENT_RECORD.getKey()));
-        }
         paymentRecord.setCreateUser(currentUser);
         paymentRecord.setCreateTime(System.currentTimeMillis());
         paymentRecord.setUpdateUser(currentUser);
@@ -177,12 +177,12 @@ public class ContractPaymentRecordService {
     }
 
     public ContractPaymentRecordGetResponse getWithDataPermissionCheck(String id, String currentUser, String currentOrg) {
-        ContractPaymentRecordGetResponse response = get(id, currentOrg);
+        ContractPaymentRecordGetResponse response = get(id);
         dataScopeService.checkDataPermission(currentUser, currentOrg, response.getOwner(), PermissionConstants.CONTRACT_PAYMENT_RECORD_READ);
         return response;
     }
 
-    public ContractPaymentRecordGetResponse get(String id, String currentOrg) {
+    public ContractPaymentRecordGetResponse get(String id) {
         ContractPaymentRecord paymentRecord = contractPaymentRecordMapper.selectByPrimaryKey(id);
         if (paymentRecord == null) {
             throw new GenericException(Translator.get("record.not.exist"));
@@ -214,7 +214,7 @@ public class ContractPaymentRecordService {
         recordDetail.setAttachmentMap(moduleFormService.getAttachmentMap(recordFormConf, recordDetail.getModuleFields()));
 
         if (recordDetail.getOwner() != null) {
-            UserDeptDTO userDeptDTO = baseService.getUserDeptMapByUserId(recordDetail.getOwner(), currentOrg);
+            UserDeptDTO userDeptDTO = baseService.getUserDeptMapByUserId(recordDetail.getOwner(), paymentRecord.getOrganizationId());
             if (userDeptDTO != null) {
                 recordDetail.setDepartmentId(userDeptDTO.getDeptId());
                 recordDetail.setDepartmentName(userDeptDTO.getDeptName());
@@ -222,6 +222,45 @@ public class ContractPaymentRecordService {
         }
         return recordDetail;
     }
+
+	/**
+	 * 获取回款记录详情（⚠️反射调用; 勿修改入参, 返回, 方法名!）
+	 * @param id 回款记录ID
+	 * @return 回款记录详情
+	 */
+	public ContractPaymentRecordGetResponse getSimple(String id) {
+		ContractPaymentRecord paymentRecord = contractPaymentRecordMapper.selectByPrimaryKey(id);
+		if (paymentRecord == null) {
+			return null;
+		}
+		ContractPaymentRecordGetResponse response = BeanUtils.copyBean(new ContractPaymentRecordGetResponse(), paymentRecord);
+		List<BaseModuleFieldValue> fvs = contractPaymentRecordFieldService.getModuleFieldValuesByResourceId(id);
+		response.setModuleFields(fvs);
+		return response;
+	}
+
+	/**
+	 * 批量获取回款记录详情 (用于数据源批量查询优化)
+	 * @param ids 回款记录ID集合
+	 * @return 回款记录详情列表
+	 */
+	public List<ContractPaymentRecordGetResponse> batchGetSimpleByIds(List<String> ids) {
+		if (CollectionUtils.isEmpty(ids)) {
+			return Collections.emptyList();
+		}
+		List<ContractPaymentRecord> records = contractPaymentRecordMapper.selectByIds(ids);
+		if (CollectionUtils.isEmpty(records)) {
+			return Collections.emptyList();
+		}
+		Map<String, List<BaseModuleFieldValue>> fieldValueMap = contractPaymentRecordFieldService.getResourceFieldMap(ids, true);
+
+		return records.stream().map(record -> {
+			ContractPaymentRecordGetResponse response = BeanUtils.copyBean(new ContractPaymentRecordGetResponse(), record);
+			response.setModuleFields(fieldValueMap.get(record.getId()));
+			return response;
+		}).toList();
+	}
+
 
     public ResourceTabEnableDTO getTabEnableConfig(String userId, String orgId) {
         List<RolePermissionDTO> rolePermissions = permissionCache.getRolePermissions(userId, orgId);
@@ -498,7 +537,7 @@ public class ContractPaymentRecordService {
      * @param deptDataPermission
      * @return
      */
-    public ContractPaymentRecordStatisticResponse searchStatistic(BaseCondition request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
+    public ContractPaymentRecordStatisticResponse searchStatistic(ContractPaymentRecordStatisticRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
         ContractPaymentRecordStatisticResponse response = extContractPaymentRecordMapper.searchStatistic(request, orgId, userId, deptDataPermission);
         return Optional.ofNullable(response).orElse(new ContractPaymentRecordStatisticResponse());
     }

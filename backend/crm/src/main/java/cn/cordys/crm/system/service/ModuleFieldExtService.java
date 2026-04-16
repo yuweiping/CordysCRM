@@ -8,9 +8,9 @@ import cn.cordys.crm.system.constants.FieldType;
 import cn.cordys.crm.system.domain.ModuleField;
 import cn.cordys.crm.system.domain.ModuleFieldBlob;
 import cn.cordys.crm.system.domain.ModuleForm;
+import cn.cordys.crm.system.dto.field.DatasourceField;
 import cn.cordys.crm.system.dto.field.DateTimeField;
 import cn.cordys.crm.system.dto.field.FormulaField;
-import cn.cordys.crm.system.dto.field.SerialNumberField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.field.base.HasOption;
 import cn.cordys.crm.system.dto.field.base.OptionProp;
@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -99,22 +100,6 @@ public class ModuleFieldExtService {
 		return allFields.stream().filter(BaseField::isAttachment)
 				.map(BaseField::getId)
 				.toList();
-	}
-
-	/**
-	 * 获取流水号字段规则
-	 * @param formKey 表单Key
-	 * @param currentOrg 当前组织
-	 * @param internalKey 字段Key
-	 * @return 字段规则集合
-	 */
-	public List<String> getSerialFieldRulesByKey(String formKey, String currentOrg, String internalKey, String formulaPrefix) {
-		ModuleFieldBlob blob = getFieldBlobByKey(formKey, currentOrg, internalKey);
-		if (blob == null) {
-			return new ArrayList<>();
-		}
-		SerialNumberField serialNumberField = JSON.parseObject(blob.getProp(), SerialNumberField.class);
-		return serialNumberField.getSerialNumberRules(formulaPrefix);
 	}
 
 	/**
@@ -291,10 +276,86 @@ public class ModuleFieldExtService {
 		List<ModuleField> totalFields = fieldMapper.selectListByLambda(totalFieldWrapper);
 		ModuleFieldBlob moduleFieldBlob = fieldBlobMapper.selectByPrimaryKey(totalFields.getFirst().getId());
 		FormulaField formulaField = JSON.parseObject(moduleFieldBlob.getProp(), FormulaField.class);
-		if (formulaField != null && StringUtils.isNotEmpty(formulaField.getFormula())) {
+		if (formulaField != null && StringUtils.isNotEmpty(formulaField.getFormula()) && StringUtils.isNotEmpty(quotationAmountId)) {
 			formulaField.setFormula(formulaField.getFormula().replace("sumAmount", quotationAmountId));
 		}
 		moduleFieldBlob.setProp(JSON.toJSONString(formulaField));
 		fieldBlobMapper.updateById(moduleFieldBlob);
+	}
+
+	public void refreshFormulaOldReferencedId() {
+		List<ModuleForm> allForms = formMapper.selectAll(null);
+		allForms.forEach(form -> {
+			Map<String, String> oldToNewMap = new HashMap<>(8);
+
+			// 外层数据源
+			LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
+			fieldWrapper.eq(ModuleField::getType, FieldType.DATA_SOURCE.name()).eq(ModuleField::getFormId, form.getId());
+			List<ModuleField> sourceFields = fieldMapper.selectListByLambda(fieldWrapper);
+			List<ModuleFieldBlob> moduleFieldBlobs = fieldBlobMapper.selectByIds(sourceFields.stream().map(ModuleField::getId).toList());
+			for (ModuleFieldBlob fieldBlob : moduleFieldBlobs) {
+				DatasourceField sourceField = JSON.parseObject(fieldBlob.getProp(), DatasourceField.class);
+				if (CollectionUtils.isEmpty(sourceField.getShowFields())) {
+					continue;
+				}
+				sourceField.getShowFields().forEach(sf -> oldToNewMap.put(sf, sourceField.getId() + "_ref_" + sf));
+			}
+
+			// 子表格数据源
+			LambdaQueryWrapper<ModuleField> subFieldWrapper = new LambdaQueryWrapper<>();
+			subFieldWrapper.like(ModuleField::getType, "SUB_").eq(ModuleField::getFormId, form.getId());
+			List<ModuleField> subFields = fieldMapper.selectListByLambda(subFieldWrapper);
+			List<ModuleFieldBlob> subFieldBlobs = fieldBlobMapper.selectByIds(subFields.stream().map(ModuleField::getId).toList());
+			for (ModuleFieldBlob fieldBlob : subFieldBlobs) {
+				SubField subField = JSON.parseObject(fieldBlob.getProp(), SubField.class);
+				if (CollectionUtils.isEmpty(subField.getSubFields())) {
+					continue;
+				}
+				subField.getSubFields().forEach(sbf -> {
+					if (sbf instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields())) {
+						sourceField.getShowFields().forEach(sf -> oldToNewMap.put(sf, sourceField.getId() + "_ref_" + sf));
+					}
+				});
+			}
+
+			/*
+			 * 替换公式字段中的旧引用ID (外层计算字段 & 子表格计算字段)
+			 */
+			LambdaQueryWrapper<ModuleField> formulaFieldWrapper = new LambdaQueryWrapper<>();
+			formulaFieldWrapper.eq(ModuleField::getType, FieldType.FORMULA.name()).eq(ModuleField::getFormId, form.getId());
+			List<ModuleField> formulaFields = fieldMapper.selectListByLambda(formulaFieldWrapper);
+			List<ModuleFieldBlob> formulaFieldBlobs = fieldBlobMapper.selectByIds(formulaFields.stream().map(ModuleField::getId).toList());
+			for (ModuleFieldBlob fieldBlob : formulaFieldBlobs) {
+				FormulaField formulaField = JSON.parseObject(fieldBlob.getProp(), FormulaField.class);
+				if (StringUtils.isEmpty(formulaField.getFormula())) {
+					continue;
+				}
+				oldToNewMap.keySet().forEach(oldId -> {
+					if (formulaField.getFormula().contains(oldId)) {
+						formulaField.setFormula(formulaField.getFormula().replace(oldId, oldToNewMap.get(oldId)));
+					}
+				});
+				fieldBlob.setProp(JSON.toJSONString(formulaField));
+				fieldBlobMapper.updateById(fieldBlob);
+			}
+
+			for (ModuleFieldBlob fieldBlob : subFieldBlobs) {
+				SubField subField = JSON.parseObject(fieldBlob.getProp(), SubField.class);
+				if (CollectionUtils.isEmpty(subField.getSubFields())) {
+					continue;
+				}
+				subField.getSubFields().forEach(sbf -> {
+					if (sbf instanceof FormulaField formulaField && StringUtils.isNotEmpty(formulaField.getFormula())) {
+						oldToNewMap.keySet().forEach(oldId -> {
+							if (formulaField.getFormula().contains(oldId)) {
+								formulaField.setFormula(formulaField.getFormula().replace(oldId, oldToNewMap.get(oldId)));
+							}
+						});
+					}
+				});
+				fieldBlob.setProp(JSON.toJSONString(subField));
+				fieldBlobMapper.updateById(fieldBlob);
+			}
+		});
 	}
 }

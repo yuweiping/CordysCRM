@@ -31,6 +31,7 @@
   import {
     formatNumberValue,
     formatNumberValueToString,
+    getFieldItemId,
     mergeUniqueOptions,
     normalizeNumber,
   } from '@lib/shared/method/formCreate';
@@ -157,6 +158,8 @@
           return labels && labels.length ? labels.join(', ') : '-';
         }
         return '-';
+      case FieldTypeEnum.INPUT_MULTIPLE:
+        return Array.isArray(value) ? value.join(', ') || '-' : value || '-';
       case FieldTypeEnum.INDUSTRY:
         return value ? getIndustryPath(value) : '-';
       default:
@@ -230,21 +233,21 @@
     source: Record<string, any>[],
     rowId?: string
   ) {
-    if (field.showFields?.length && val) {
+    if (field.showFields?.length && val.length) {
       // 数据源显示字段联动
       const showFields = props.subFields.filter((f) => f.resourceFieldId === field.id);
       const targetSource = source.filter((e) => !e.parentId).find((e) => val.includes(e.id)); // 子表格数据源是单选，所以目标数据源只有一个
       showFields.forEach((sf) => {
         let fieldVal: string | string[] = '';
         if (targetSource) {
-          const sourceFieldVal = targetSource[sf.id]; // 数据源的显示字段都使用id 读取
+          const sourceFieldVal = targetSource[getFieldItemId(sf)]; // 数据源的显示字段都使用id 读取
           if (sf.subTableFieldId) {
             // 如果数据源显示字段是数据源的子表格字段，则需要 rowId 定位数据源子表格的行
             const subTableData = targetSource[sf.subTableFieldId];
             if (Array.isArray(subTableData) && rowId) {
               const subTableRow = subTableData.find((stRow) => stRow.id === rowId);
               if (subTableRow) {
-                fieldVal = subTableRow[sf.id];
+                fieldVal = subTableRow[getFieldItemId(sf)];
               }
             }
           } else {
@@ -258,6 +261,12 @@
         } else {
           row[sf.id] = fieldVal;
         }
+      });
+    } else if (field.showFields?.length) {
+      // 没有选中数据源时，清空显示字段
+      const showFields = props.subFields.filter((f) => f.resourceFieldId === field.id);
+      showFields.forEach((sf) => {
+        row[sf.id] = sf.type === FieldTypeEnum.INPUT_NUMBER ? null : '';
       });
     }
   }

@@ -39,11 +39,7 @@
               class="crm-form-design--composition-item-tools"
             >
               <n-tooltip
-                v-if="
-                  ![FieldTypeEnum.SERIAL_NUMBER, FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(
-                    item.type
-                  ) && !item.resourceFieldId
-                "
+                v-if="![FieldTypeEnum.SERIAL_NUMBER].includes(item.type) && !item.resourceFieldId"
                 :delay="300"
                 :show-arrow="false"
                 class="crm-form-design--composition-item-tools-tip"
@@ -127,7 +123,10 @@
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import CrmFormCreateComponents from '@/components/business/crm-form-create/components';
   import { FormCreateField } from '@/components/business/crm-form-create/types';
+  import { remapFormulaFieldIds } from '@/components/business/crm-formula-editor/parseSource/remapFormulaFieldIds';
   import dataTable from './dataTable.vue';
+
+  import { resolveFieldId } from '../../crm-formula-editor/utils';
 
   const props = defineProps<{
     formConfig: FormConfig;
@@ -225,6 +224,7 @@
       ...cloneDeep(item),
       id: getGenerateId(),
       name: t(item.name),
+      isNew: true,
     };
     if (
       [FieldTypeEnum.CHECKBOX, FieldTypeEnum.RADIO, FieldTypeEnum.SELECT, FieldTypeEnum.SELECT_MULTIPLE].includes(
@@ -259,12 +259,18 @@
 
   function copyItem(item: FormCreateField) {
     const res: FormCreateField = {
-      ...item,
+      ...cloneDeep(item),
       id: getGenerateId(),
       internalKey: undefined,
       businessKey: undefined,
       disabledProps: [],
+      isNew: true,
     };
+    const dataSourceHasShowFieldItems: FormCreateField[] = [];
+    const subFieldIdMap: Record<string, string> = {};
+    const isCopySubTable = [FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type);
+    const oldSubFields = isCopySubTable ? cloneDeep(res.subFields || []) : [];
+
     if (
       [FieldTypeEnum.CHECKBOX, FieldTypeEnum.RADIO, FieldTypeEnum.SELECT].includes(item.type) &&
       item.options?.length === 0
@@ -284,19 +290,88 @@
         },
       ];
       res.customOptions = [...res.options];
+    } else if (isCopySubTable) {
+      res.subFields = res.subFields?.map((e) => {
+        const nextId = e.resourceFieldId ? e.id : getGenerateId();
+
+        const newItem = {
+          ...cloneDeep(e),
+          id: nextId,
+          internalKey: undefined,
+          businessKey: undefined,
+          disabledProps: [],
+          isNew: true,
+        };
+        if (res.sumColumns?.includes(e.id)) {
+          res.sumColumns = res.sumColumns?.filter((id) => id !== e.id).concat(newItem.id); // 如果原来有配置合计字段，复制后替换成新的字段 id
+        }
+        if ([FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(e.type) && e.showFields?.length) {
+          dataSourceHasShowFieldItems.push(newItem);
+        }
+        return newItem;
+      });
     }
 
-    list.value.push(cloneDeep(res));
+    // 子表格重置一下数据源显示字段父级 id
+    dataSourceHasShowFieldItems.forEach((d) => {
+      d.showFields?.forEach((dId) => {
+        const newDatasourceShowField = res.subFields?.find((e) => e.id.includes(dId));
+        if (newDatasourceShowField) {
+          if (res.sumColumns?.includes(newDatasourceShowField.id)) {
+            res.sumColumns = res.sumColumns
+              ?.filter((id) => id !== newDatasourceShowField.id)
+              .concat(`${d.id}_ref_${newDatasourceShowField.id.split('_ref_')[1]}`); // 如果原来有配置合计字段，复制后替换成新的字段 id
+          }
+          newDatasourceShowField.id = `${d.id}_ref_${newDatasourceShowField.id.split('_ref_')[1]}`;
+          newDatasourceShowField.resourceFieldId = d.id;
+        }
+      });
+    });
+
+    if (isCopySubTable) {
+      oldSubFields.forEach((oldSubField, index) => {
+        const nextSubField = res.subFields?.[index];
+        if (!nextSubField) {
+          return;
+        }
+        subFieldIdMap[resolveFieldId(oldSubField, true)] = resolveFieldId(nextSubField, true);
+      });
+
+      res.subFields = res.subFields?.map((subField) => {
+        if (subField.type !== FieldTypeEnum.FORMULA || !subField.formula) {
+          return subField;
+        }
+
+        return {
+          ...subField,
+          formula: remapFormulaFieldIds(subField.formula, subFieldIdMap, res.subFields || []),
+        };
+      });
+    }
+
+    list.value.push(res);
+    activeItem.value = res;
+    nextTick(() => {
+      const el = document.getElementById(res.id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
   }
 
   function deleteItem(item: FormCreateField) {
-    list.value = list.value.filter((e) => e.id !== item.id);
+    let newList = list.value.filter((e) => e.id !== item.id);
     if (activeItem.value?.id === item.id) {
       activeItem.value = null;
     }
     if (item.type === FieldTypeEnum.DATA_SOURCE && item.showFields?.length) {
       // 删除字段时，同时删除数据源字段关联的显示字段
-      list.value.filter((e) => !item.showFields?.some((id) => id === e.id));
+      newList = newList.filter(
+        (e) =>
+          !item.showFields?.some((id) => {
+            return id === e.id || id === e.id.split('_ref_')[1]; // 数据源显示字段 id 是拼接_ref_的
+          })
+      );
     }
     if (item.resourceFieldId) {
       // 删除引用的数据源字段时，同时删除数据源配置的字段 id
@@ -311,6 +386,7 @@
     ) {
       activeItem.value = null;
     }
+    list.value = newList;
   }
 
   defineExpose({

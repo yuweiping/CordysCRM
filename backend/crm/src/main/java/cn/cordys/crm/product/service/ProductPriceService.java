@@ -15,7 +15,10 @@ import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
-import cn.cordys.common.util.*;
+import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.JSON;
+import cn.cordys.common.util.ServiceUtils;
+import cn.cordys.common.util.Translator;
 import cn.cordys.crm.opportunity.domain.OpportunityQuotationField;
 import cn.cordys.crm.opportunity.domain.OpportunityQuotationFieldBlob;
 import cn.cordys.crm.product.domain.ProductPrice;
@@ -228,11 +231,15 @@ public class ProductPriceService {
 		if (CollectionUtils.isEmpty(prices)) {
 			return Collections.emptyList();
 		}
+		ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), prices.getFirst().getOrganizationId());
 		Map<String, List<BaseModuleFieldValue>> fieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
 
 		return prices.stream().map(price -> {
 			ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
-			response.setModuleFields(fieldValueMap.get(price.getId()));
+			List<BaseModuleFieldValue> fvs = fieldValueMap.get(price.getId());
+			if (CollectionUtils.isNotEmpty(fvs)) {
+				moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
+			}
 			return response;
 		}).toList();
 	}

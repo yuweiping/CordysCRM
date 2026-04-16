@@ -427,7 +427,7 @@ public class ClueService {
 		}).toList();
 	}
 
-    @OperationLog(module = LogModule.CLUE_INDEX, type = LogType.ADD, resourceName = "{#request.name}")
+    @OperationLog(module = LogModule.CLUE_INDEX, type = LogType.ADD)
     public Clue add(ClueAddRequest request, String userId, String orgId) {
         productService.checkProductList(request.getProducts());
         Clue clue = BeanUtils.copyBean(new Clue(), request);
@@ -449,7 +449,12 @@ public class ClueService {
         clueFieldService.saveModuleField(clue, orgId, userId, request.getModuleFields(), false);
 
         clueMapper.insert(clue);
-        baseService.handleAddLog(clue, request.getModuleFields());
+        baseService.handleAddLogWithResourceName(clue, request.getModuleFields());
+
+		// 消息通知
+		commonNoticeSendService.sendNotice(NotificationConstants.Module.CLUE,
+				NotificationConstants.Event.CLUE_ADD, clue.getName(), userId,
+				orgId, List.of(clue.getOwner()), true);
         return clue;
     }
 
@@ -1151,11 +1156,14 @@ public class ClueService {
                     clue.setStage(ClueStatus.NEW.name());
                     clue.setInSharedPool(false);
                     logs.add(new LogDTO(currentOrg, clue.getId(), currentUser, LogType.ADD, LogModule.CLUE_INDEX, clue.getName()));
+					// 消息通知 (异步)
+					commonNoticeSendService.sendNotice(NotificationConstants.Module.CLUE, NotificationConstants.Event.CLUE_ADD, clue.getName(), currentUser,
+							currentOrg, List.of(clue.getOwner()), true);
                 });
                 clueMapper.batchInsert(clues);
                 clueFieldMapper.batchInsert(clueFields.stream().map(field -> BeanUtils.copyBean(new ClueField(), field)).toList());
                 clueFieldBlobMapper.batchInsert(clueFieldBlobs.stream().map(field -> BeanUtils.copyBean(new ClueFieldBlob(), field)).toList());
-                // record logs
+                // 日志
                 logService.batchAdd(logs);
             };
             CustomFieldImportEventListener<Clue> eventListener = new CustomFieldImportEventListener<>(fields, Clue.class, currentOrg, currentUser,

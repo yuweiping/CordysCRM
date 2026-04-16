@@ -11,7 +11,6 @@ import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.utils.ConditionFilterUtils;
-import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.clue.domain.CluePool;
 import cn.cordys.crm.clue.domain.CluePoolRecycleRule;
 import cn.cordys.crm.clue.dto.response.ClueListResponse;
@@ -82,7 +81,7 @@ public class AdvancedCluePoolSearchService extends BaseSearchService<BasePageReq
         if (!enabledModules.contains(ModuleKey.CLUE.getKey())) {
             throw new GenericException(SystemResultCode.MODULE_ENABLE);
         }
-        ConditionFilterUtils.parseCondition(request);
+        ConditionFilterUtils.parseCondition(request, FormKey.CLUE.getKey());
         // 查询重复线索池线索列表
         Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
         List<AdvancedCluePoolResponse> list = extClueMapper.cluePoolList(request, orgId);

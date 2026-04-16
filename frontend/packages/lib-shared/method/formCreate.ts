@@ -138,6 +138,13 @@ export function initFieldValue(field: FormCreateField, value: string | number | 
   return value;
 }
 
+export function getFieldItemId(field: FormCreateField) {
+  if (field.resourceFieldId) {
+    return field.id.split('_ref_')[1]; // 处理数据源显示字段
+  }
+  return field.id;
+}
+
 export function parseModuleFieldValue(item: FormCreateField, fieldValue: string | string[], options?: any[]) {
   if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
     return '-';
@@ -292,7 +299,7 @@ export function transformData({
           item[fieldId] || item.moduleFields?.find((mf: any) => mf.fieldId === fieldId)?.fieldValue
         )?.map((subItem: Record<string, any>) => {
           if (subField.resourceFieldId) {
-            subItem[`${subField.id}_original`] = subItem[subField.id]; // 备份原始值以供编辑时填充数据源
+            subItem[`${subField.id}_original`] = subItem[field.id]; // 备份原始值以供编辑时填充数据源
             subItem[subField.id] = parseModuleFieldValue(
               subField,
               subItem[subField.id],

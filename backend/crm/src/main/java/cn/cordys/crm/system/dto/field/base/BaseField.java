@@ -97,10 +97,16 @@ public abstract class BaseField {
     @Schema(description = "禁止修改的参数")
     private Set<String> disabledProps;
 
-	@Schema(description = "引用的数据源字段ID")
+	/**
+	 * 引用字段特有属性
+	 */
+	@Schema(description = "引用字段关联的数据源ID")
 	private String resourceFieldId;
 
-	@Schema(description = "引用的子表格字段ID")
+	/**
+	 * 子表格字段特有属性
+	 */
+	@Schema(description = "该字段所属子表格ID, 仅子表格字段使用, 用来区分该字段是外层字段还是子表格字段")
 	private String subTableFieldId;
 
     @JsonIgnore
@@ -125,6 +131,7 @@ public abstract class BaseField {
         return Strings.CS.equals(type, FieldType.SERIAL_NUMBER.name());
     }
 
+	@JsonIgnore
 	public boolean includeFormula() {
 		if (Strings.CS.equals(type, FieldType.INPUT.name())) {
 			return StringUtils.isNotEmpty(((InputField) this).getFormula());
@@ -195,7 +202,7 @@ public abstract class BaseField {
     @JsonIgnore
     public boolean multiple() {
         return Strings.CS.equalsAny(type, FieldType.CHECKBOX.name(), FieldType.SELECT_MULTIPLE.name(),
-                FieldType.INPUT_MULTIPLE.name(), FieldType.MEMBER_MULTIPLE.name(), FieldType.DEPARTMENT_MULTIPLE.name(), FieldType.DATA_SOURCE_MULTIPLE.name());
+                FieldType.INPUT_MULTIPLE.name(), FieldType.MEMBER_MULTIPLE.name(), FieldType.DEPARTMENT_MULTIPLE.name(), FieldType.DATA_SOURCE_MULTIPLE.name(), FieldType.ATTACHMENT.name());
     }
 
     @JsonIgnore
@@ -216,6 +223,11 @@ public abstract class BaseField {
 
 	@JsonIgnore
 	public String idOrBusinessKey() {
-		return this.getBusinessKey() != null ? this.getBusinessKey() : this.getId();
+		return hasBusinessKey() ? this.getBusinessKey() : this.getId();
 	}
+
+	@JsonIgnore
+    public boolean hasBusinessKey() {
+        return StringUtils.isNotBlank(this.getBusinessKey());
+    }
 }

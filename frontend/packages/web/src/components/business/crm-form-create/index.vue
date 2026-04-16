@@ -65,6 +65,7 @@
   import { getCityPath, getGenerateId, getIndustryPath } from '@lib/shared/method';
   import {
     dataSourceTypes,
+    getFieldItemId,
     linkAllAcceptTypes,
     mergeUniqueOptions,
     multipleTypes,
@@ -295,7 +296,9 @@
               }
               if (targetField.showFields?.length) {
                 // 无值清空显示字段
-                const showFields = fieldList.value.filter((f) => targetField.showFields?.includes(f.id));
+                const showFields = fieldList.value.filter((f) =>
+                  targetField.showFields?.includes(f.id.split('_ref_')[1])
+                );
                 showFields.forEach((field) => {
                   formDetail.value[field.id] = '';
                 });
@@ -619,7 +622,7 @@
         formDetail.value[field.id] =
           field.businessKey && specialBusinessKeyMap[field.businessKey]
             ? target?.[specialBusinessKeyMap[field.businessKey]]
-            : target?.[field.businessKey || field.id];
+            : target?.[field.businessKey || getFieldItemId(field)];
       });
     }
 

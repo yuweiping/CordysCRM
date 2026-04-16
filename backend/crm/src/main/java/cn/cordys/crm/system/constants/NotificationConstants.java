@@ -67,6 +67,9 @@ public class NotificationConstants {
         @Schema(description = "message.customer_follow_up_plan_due")
         String CUSTOMER_FOLLOW_UP_PLAN_DUE = "CUSTOMER_FOLLOW_UP_PLAN_DUE";
         //----线索管理----
+		//新建线索
+		@Schema(description = "message.clue_add")
+		String CLUE_ADD = "CLUE_ADD";
         //自动移入线索池
         @Schema(description = "message.clue_automatic_move_pool")
         String CLUE_AUTOMATIC_MOVE_POOL = "CLUE_AUTOMATIC_MOVE_POOL";
@@ -88,22 +91,19 @@ public class NotificationConstants {
         //分配线索
         @Schema(description = "message.clue_distributed")
         String CLUE_DISTRIBUTED = "CLUE_DISTRIBUTED";
-        //导入线索
-        @Schema(description = "message.clue_import")
-        String CLUE_IMPORT = "CLUE_IMPORT";
         //跟进计划到期
         @Schema(description = "message.clue_follow_up_plan_due")
         String CLUE_FOLLOW_UP_PLAN_DUE = "CLUE_FOLLOW_UP_PLAN_DUE";
         //-------商机管理----
+		//新建商机
+		@Schema(description = "message.business_add")
+		String BUSINESS_ADD = "BUSINESS_ADD";
         //商机删除
         @Schema(description = "message.business_deleted")
         String BUSINESS_DELETED = "BUSINESS_DELETED";
         //商机转移
         @Schema(description = "message.business_transfer")
         String BUSINESS_TRANSFER = "BUSINESS_TRANSFER";
-        //商机导入
-        @Schema(description = "message.business_import")
-        String BUSINESS_IMPORT = "BUSINESS_IMPORT";
         //跟进计划提醒
         @Schema(description = "message.business_follow_up_plan_due")
         String BUSINESS_FOLLOW_UP_PLAN_DUE = "BUSINESS_FOLLOW_UP_PLAN_DUE";
@@ -190,6 +190,10 @@ public class NotificationConstants {
         @Schema(description = "message.customer_follow_up_plan_due_text")
         String CUSTOMER_FOLLOW_UP_PLAN_DUE_TEXT = "CUSTOMER_FOLLOW_UP_PLAN_DUE_TEXT";
 
+		//请注意！${OPERATOR}新建${customerName}线索给您，请知悉！
+		@Schema(description = "message.clue_add_text")
+		String CLUE_ADD_TEXT = "CLUE_ADD_TEXT";
+
         //请注意！根据系统规则，您负责的${clueName}的销售线索，已被移入线索池！
         @Schema(description = "message.clue_automatic_move_pool_text")
         String CLUE_AUTOMATIC_MOVE_POOL_TEXT = "CLUE_AUTOMATIC_MOVE_POOL_TEXT";
@@ -218,13 +222,13 @@ public class NotificationConstants {
         @Schema(description = "message.clue_distributed_text")
         String CLUE_DISTRIBUTED_TEXT = "CLUE_DISTRIBUTED_TEXT";
 
-        //请注意！${OPERATOR}已成功导入${count}条线索，请及时领取！
-        @Schema(description = "message.clue_import_text")
-        String CLUE_IMPORT_TEXT = "CLUE_IMPORT_TEXT";
-
         //请注意！您创建的${clueName}线索跟进计划，已到预定时间，请及时跟进！
         @Schema(description = "message.clue_follow_up_plan_due_text")
         String CLUE_FOLLOW_UP_PLAN_DUE_TEXT = "CLUE_FOLLOW_UP_PLAN_DUE_TEXT";
+
+		//请注意！${OPERATOR}新建${customerName}客户给您，请知悉！
+		@Schema(description = "message.business_add_text")
+		String BUSINESS_ADD_TEXT = "BUSINESS_ADD_TEXT";
 
         //请注意！您负责的${businessName}商机，已被${OPERATOR}删除！
         @Schema(description = "message.business_deleted_text")
@@ -233,10 +237,6 @@ public class NotificationConstants {
         //请注意！${OPERATOR}将${businessName}商机转移给您，请知悉！
         @Schema(description = "message.business_transfer_text")
         String BUSINESS_TRANSFER_TEXT = "BUSINESS_TRANSFER_TEXT";
-
-        //请注意！${OPERATOR}已成功导入${count}条线索，请及时领取！
-        @Schema(description = "message.business_import_text")
-        String BUSINESS_IMPORT_TEXT = "BUSINESS_IMPORT_TEXT";
 
         //请注意！您创建的${businessName}商机跟进计划，已到预定时间，请及时跟进！
         @Schema(description = "message.business_follow_up_plan_due_text")

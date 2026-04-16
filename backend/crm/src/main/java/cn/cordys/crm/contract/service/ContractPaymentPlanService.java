@@ -41,11 +41,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -250,7 +246,7 @@ public class ContractPaymentPlanService {
 		}).toList();
 	}
 
-    @OperationLog(module = LogModule.CONTRACT_PAYMENT, type = LogType.ADD, resourceName = "{#request.name}", operator = "{#userId}")
+    @OperationLog(module = LogModule.CONTRACT_PAYMENT, type = LogType.ADD, operator = "{#userId}")
     public ContractPaymentPlan add(ContractPaymentPlanAddRequest request, String userId, String orgId) {
         ContractPaymentPlan contractPaymentPlan = BeanUtils.copyBean(new ContractPaymentPlan(), request);
         if (StringUtils.isBlank(request.getOwner())) {
@@ -269,7 +265,7 @@ public class ContractPaymentPlanService {
         contractPaymentPlanFieldService.saveModuleField(contractPaymentPlan, orgId, userId, request.getModuleFields(), false);
         contractPaymentPlanMapper.insert(contractPaymentPlan);
 		// 日志
-        baseService.handleAddLog(contractPaymentPlan, request.getModuleFields());
+        baseService.handleAddLogWithResourceName(contractPaymentPlan, request.getModuleFields());
         return contractPaymentPlan;
     }
 

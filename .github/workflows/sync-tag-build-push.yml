@@ -40,7 +40,7 @@ jobs:
           UPSTREAM_REPO: "https://github.com/1Panel-dev/CordysCRM.git"
         run: |
           git remote add upstream $UPSTREAM_REPO 2>/dev/null || true
-          git fetch upstream --tags --prune
+          git fetch upstream --tags --prune 2>/dev/null || true
 
       - name: 核心判断：是否有新tag
         id: check-tag

@@ -52,6 +52,8 @@ export interface FormCreateApiProps {
   linkFormKey?: Ref<FormDesignKeyEnum | undefined>; // 关联表单key
   linkScenario?: Ref<FormLinkScenarioEnum | undefined>; // 关联表单场景
   isContractTableDetail?: boolean;
+  hiddenFieldIds?: string[]; // 需要隐藏的字段id列表
+  editableFieldIds?: string[]; // 可编辑的字段id列表
 }
 
 export default function useFormCreateApi(props: FormCreateApiProps) {
@@ -290,9 +292,13 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   // 用于快照保存表单配置
   const needModuleFormConfigParamsType = [
     FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+    FormDesignKeyEnum.OPPORTUNITY_QUOTATION_SNAPSHOT,
     FormDesignKeyEnum.CONTRACT,
+    FormDesignKeyEnum.CONTRACT_SNAPSHOT,
     FormDesignKeyEnum.INVOICE,
+    FormDesignKeyEnum.INVOICE_SNAPSHOT,
     FormDesignKeyEnum.ORDER,
+    FormDesignKeyEnum.ORDER_SNAPSHOT,
   ];
 
   function initFormShowControl(value?: any) {
@@ -570,6 +576,14 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         fieldInfo: item,
         tooltipPosition: 'top-end',
       });
+    } else if (item.type === FieldTypeEnum.INPUT) {
+      descriptions.value.push({
+        label: item.name,
+        value: parseFormDetailValue(item, form),
+        slotName: FieldTypeEnum.INPUT,
+        fieldInfo: item,
+        tooltipPosition: 'top-end',
+      });
     } else {
       descriptions.value.push({
         label: item.name,
@@ -596,6 +610,12 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       collaborationType.value = form.collaborationType;
       formDescriptionShowControlRulesSet(form);
       fieldList.value.forEach((item) => {
+        if (props.hiddenFieldIds?.includes(item.id)) {
+          return;
+        }
+        if (props.editableFieldIds?.includes(item.id)) {
+          item.editable = true;
+        }
         const value = item.businessKey
           ? form[item.businessKey]
           : form.moduleFields?.find((mf) => mf.fieldId === item.id)?.fieldValue;
@@ -885,6 +905,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       const asyncApi = getFormDetailApiMap[props.formKey.value];
       if (!asyncApi || !props.sourceId?.value) return;
       const res = await asyncApi(props.sourceId?.value);
+      detail.value = res;
       formDetail.value = {};
       if (needInitFormDescription) {
         await initFormDescription(res);
@@ -1401,7 +1422,8 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     form: Record<string, any>,
     isContinue: boolean,
     callback?: (_isContinue: boolean, res: any) => void,
-    noReset = false
+    noReset = false,
+    isReview = false
   ) {
     try {
       loading.value = true;
@@ -1447,13 +1469,17 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       let res;
       if (props.sourceId?.value && props.needInitDetail?.value) {
         res = await updateFormApi[props.formKey.value](params);
-        Message.success(t('common.updateSuccess'));
+        if (!isReview) {
+          Message.success(t('common.updateSuccess'));
+        }
       } else {
         res = await createFormApi[props.formKey.value](params);
-        if (props.formKey.value === FormDesignKeyEnum.CLUE_TRANSITION_CUSTOMER) {
-          Message.success(t('clue.transferredToCustomer'));
-        } else {
-          Message.success(t('common.createSuccess'));
+        if (!isReview) {
+          if (props.formKey.value === FormDesignKeyEnum.CLUE_TRANSITION_CUSTOMER) {
+            Message.success(t('clue.transferredToCustomer'));
+          } else {
+            Message.success(t('common.createSuccess'));
+          }
         }
       }
       if (callback) {

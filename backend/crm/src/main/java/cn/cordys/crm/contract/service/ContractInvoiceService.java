@@ -6,7 +6,6 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
-import cn.cordys.common.constants.CommonResultCode;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.PermissionConstants;
 import cn.cordys.common.domain.BaseModuleFieldValue;
@@ -16,26 +15,31 @@ import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
 import cn.cordys.common.permission.PermissionUtils;
+import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
+import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
+import cn.cordys.crm.approval.annotation.HitApproval;
+import cn.cordys.crm.approval.constants.ApprovalFormTypeEnum;
+import cn.cordys.crm.approval.constants.ApprovalStatus;
+import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
+import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
+import cn.cordys.crm.approval.dto.ResourceApprovalPostUpdateParam;
+import cn.cordys.crm.approval.dto.ResourceSnapshotApprovalParam;
+import cn.cordys.crm.approval.service.ApprovalFlowService;
 import cn.cordys.crm.contract.constants.BusinessTitleConstants;
-import cn.cordys.crm.contract.constants.ContractApprovalStatus;
-import cn.cordys.crm.contract.domain.BusinessTitle;
-import cn.cordys.crm.contract.domain.Contract;
-import cn.cordys.crm.contract.domain.ContractInvoice;
-import cn.cordys.crm.contract.domain.ContractInvoiceSnapshot;
+import cn.cordys.crm.contract.domain.*;
 import cn.cordys.crm.contract.dto.request.ContractInvoiceAddRequest;
-import cn.cordys.crm.contract.dto.request.ContractInvoiceApprovalRequest;
 import cn.cordys.crm.contract.dto.request.ContractInvoicePageRequest;
 import cn.cordys.crm.contract.dto.request.ContractInvoiceUpdateRequest;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceGetResponse;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceListResponse;
 import cn.cordys.crm.contract.mapper.ExtContractInvoiceMapper;
-import cn.cordys.crm.opportunity.constants.ApprovalState;
 import cn.cordys.crm.system.constants.DictModule;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
@@ -48,6 +52,7 @@ import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -60,6 +65,7 @@ import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
+@Slf4j
 public class ContractInvoiceService {
 
     @Resource
@@ -90,6 +96,8 @@ public class ContractInvoiceService {
     private BusinessTitleService businessTitleService;
     @Resource
     private DictService dictService;
+    @Resource
+    private ApprovalFlowService approvalFlowService;
 
     /**
      * 合同列表
@@ -135,6 +143,7 @@ public class ContractInvoiceService {
      * @return
      */
     @OperationLog(module = LogModule.CONTRACT_INVOICE, type = LogType.ADD)
+	@HitApproval(formKey = FormKey.INVOICE, executeType = ExecuteTimingEnum.CREATE, resourceId = "#{request.id}")
     public ContractInvoice add(ContractInvoiceAddRequest request, String operatorId, String orgId) {
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
@@ -165,10 +174,7 @@ public class ContractInvoiceService {
         invoice.setCreateUser(operatorId);
         invoice.setUpdateTime(System.currentTimeMillis());
         invoice.setUpdateUser(operatorId);
-        invoice.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
-        if (!dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
-            invoice.setApprovalStatus(ContractApprovalStatus.NONE.name());
-        }
+        invoice.setApprovalStatus(ApprovalStatus.NONE.name());
 
         if (StringUtils.isBlank(request.getOwner())) {
             invoice.setOwner(operatorId);
@@ -215,6 +221,7 @@ public class ContractInvoiceService {
      * @return
      */
     @OperationLog(module = LogModule.CONTRACT_INVOICE, type = LogType.UPDATE, resourceId = "{#request.id}")
+	@HitApproval(formKey = FormKey.INVOICE, executeType = ExecuteTimingEnum.EDIT, resourceId = "{#request.id}", updateType = "{#request.updateType}")
     public ContractInvoice update(ContractInvoiceUpdateRequest request, String userId, String orgId) {
         ContractInvoice originContractInvoice = invoiceMapper.selectByPrimaryKey(request.getId());
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
@@ -249,11 +256,7 @@ public class ContractInvoiceService {
             // 保留不可更改的字段
             invoice.setCreateUser(originContractInvoice.getCreateUser());
             invoice.setCreateTime(originContractInvoice.getCreateTime());
-            if (dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
-                invoice.setApprovalStatus(ContractApprovalStatus.APPROVING.name());
-            } else {
-                invoice.setApprovalStatus(originContractInvoice.getApprovalStatus());
-            }
+			invoice.setApprovalStatus(originContractInvoice.getApprovalStatus());
 
             updateFields(moduleFields, invoice, orgId, userId);
             invoiceMapper.update(invoice);
@@ -338,6 +341,10 @@ public class ContractInvoiceService {
             throw new GenericException(Translator.get("resource.not.exist"));
         }
         dataScopeService.checkDataPermission(userId, orgId, getResponse.getOwner(), PermissionConstants.CONTRACT_INVOICE_READ);
+		if (Strings.CI.equals(getResponse.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
+			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
+			getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
+		}
         return getResponse;
     }
 
@@ -347,6 +354,10 @@ public class ContractInvoiceService {
             throw new GenericException(Translator.get("resource.not.exist"));
         }
         dataScopeService.checkDataPermission(userId, orgId, getResponse.getOwner(), PermissionConstants.CONTRACT_INVOICE_READ);
+		if (Strings.CI.equals(getResponse.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
+			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
+			getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
+		}
         return getResponse;
     }
 
@@ -453,6 +464,9 @@ public class ContractInvoiceService {
 
         Map<String, UserDeptDTO> userDeptMap = baseService.getUserDeptMapByUserIds(ownerIds, orgId);
 
+		List<String> approvingResourceIds = list.stream().filter(item -> Strings.CI.contains(item.getApprovalStatus(), ApprovalStatus.APPROVING.name())).map(ContractInvoiceListResponse::getId).toList();
+		Map<String, Boolean> firstNodeApprovedMap = baseService.getApprovingResourceFirstNodeApproved(approvingResourceIds, orgId);
+
         list.forEach(item -> {
             UserDeptDTO userDeptDTO = userDeptMap.get(item.getOwner());
             if (userDeptDTO != null) {
@@ -466,6 +480,7 @@ public class ContractInvoiceService {
             // 获取自定义字段
             List<BaseModuleFieldValue> invoiceFields = resolvefieldValueMap.get(item.getId());
             item.setModuleFields(invoiceFields);
+			item.setFirstApproved(firstNodeApprovedMap.get(item.getId()));
         });
         return baseService.setCreateUpdateOwnerUserName(list);
     }
@@ -492,6 +507,23 @@ public class ContractInvoiceService {
         }
     }
 
+	/**
+	 * 获取发票详情（⚠️反射调用; 勿修改入参, 返回, 方法名!）
+	 * @param id 发票ID
+	 * @return 发票详情
+	 */
+	public ContractInvoiceGetResponse getSimple(String id) {
+		ContractInvoice contractInvoice = contractInvoiceMapper.selectByPrimaryKey(id);
+		if (contractInvoice == null) {
+			return null;
+		}
+		ContractInvoiceGetResponse response = BeanUtils.copyBean(new ContractInvoiceGetResponse(), contractInvoice);
+		List<BaseModuleFieldValue> fvs = invoiceFieldService.getModuleFieldValuesByResourceId(id);
+		ModuleFormConfigDTO formConfig = getFormConfig(contractInvoice.getOrganizationId());
+		moduleFormService.processBusinessFieldValues(response, fvs, formConfig);
+		return response;
+	}
+
     public ResourceTabEnableDTO getTabEnableConfig(String userId, String orgId) {
         List<RolePermissionDTO> rolePermissions = permissionCache.getRolePermissions(userId, orgId);
         return PermissionUtils.getTabEnableConfig(userId, PermissionConstants.CONTRACT_INVOICE_READ, rolePermissions);
@@ -499,13 +531,32 @@ public class ContractInvoiceService {
 
     public void batchDelete(List<String> ids, String userId, String orgId) {
         List<ContractInvoice> invoices = contractInvoiceMapper.selectByIds(ids);
-        List<String> owners = getOwners(invoices);
+
+        // 校验状态权限，过滤出有权限操作的发票
+        List<String> permittedIds = approvalFlowService.filterResourcesWithPermission(
+                ApprovalFormTypeEnum.INVOICE.getValue(),
+                invoices,
+                PermissionConstants.CONTRACT_INVOICE_DELETE,
+				orgId,
+                ContractInvoice::getId,
+                ContractInvoice::getApprovalStatus
+        );
+
+        if (CollectionUtils.isEmpty(permittedIds)) {
+            return;
+        }
+
+        List<ContractInvoice> permittedInvoices = invoices.stream()
+                .filter(i -> permittedIds.contains(i.getId()))
+                .collect(Collectors.toList());
+
+        List<String> owners = getOwners(permittedInvoices);
         dataScopeService.checkDataPermission(userId, orgId, owners, PermissionConstants.CONTRACT_INVOICE_DELETE);
 
-        // 删除客户
-        contractInvoiceMapper.deleteByIds(ids);
+        // 删除发票
+        contractInvoiceMapper.deleteByIds(permittedIds);
 
-        List<LogDTO> logs = invoices.stream()
+        List<LogDTO> logs = permittedInvoices.stream()
                 .map(invoice ->
                         new LogDTO(orgId, invoice.getId(), userId, LogType.DELETE, LogModule.CONTRACT_INVOICE, invoice.getName())
                 )
@@ -524,97 +575,6 @@ public class ContractInvoiceService {
         return invoices.stream().map(ContractInvoice::getOwner)
                 .distinct()
                 .toList();
-    }
-
-    /**
-     * 审核通过/不通过
-     *
-     * @param request
-     * @param userId
-     */
-    public void approvalContractInvoice(ContractInvoiceApprovalRequest request, String userId, String orgId) {
-        ContractInvoice invoice = invoiceMapper.selectByPrimaryKey(request.getId());
-        if (invoice == null) {
-            throw new GenericException(Translator.get("invoice.not.exist"));
-        }
-
-        checkApprovalConfig(orgId);
-
-        dataScopeService.checkDataPermission(userId, orgId, invoice.getOwner(), PermissionConstants.CONTRACT_INVOICE_APPROVAL);
-
-        String state = invoice.getApprovalStatus();
-        invoice.setApprovalStatus(request.getApprovalStatus());
-        invoice.setUpdateTime(System.currentTimeMillis());
-        invoice.setUpdateUser(userId);
-        invoiceMapper.update(invoice);
-
-        updateStatusSnapshot(request.getId(), request.getApprovalStatus());
-
-        // 添加日志上下文
-        LogDTO logDTO = getApprovalLogDTO(orgId, request.getId(), userId, invoice.getName(), state, request.getApprovalStatus());
-        logService.add(logDTO);
-    }
-
-    private void checkApprovalConfig(String orgId) {
-        if (!dictService.isDictConfigEnable(DictModule.INVOICE_APPROVAL.name(), orgId)) {
-            // 未开启审批
-            throw new GenericException(CommonResultCode.APPROVAL_NOT_ENABLED_ERROR);
-        }
-    }
-
-    public String revoke(String id, String userId, String orgId) {
-        ContractInvoice invoice = invoiceMapper.selectByPrimaryKey(id);
-        if (invoice == null) {
-            throw new GenericException(Translator.get("invoice.not.exist"));
-        }
-
-        checkApprovalConfig(orgId);
-
-        dataScopeService.checkDataPermission(userId, orgId, invoice.getOwner(), PermissionConstants.CONTRACT_INVOICE_UPDATE);
-
-        String originApprovalStatus = invoice.getApprovalStatus();
-        if (!Strings.CI.equals(invoice.getCreateUser(), userId) || !Strings.CI.equals(invoice.getApprovalStatus(), ApprovalState.APPROVING.toString())) {
-            return invoice.getApprovalStatus();
-        }
-        invoice.setApprovalStatus(ApprovalState.REVOKED.toString());
-        invoice.setUpdateUser(userId);
-        invoice.setUpdateTime(System.currentTimeMillis());
-        invoiceMapper.update(invoice);
-
-        //更新快照
-        updateStatusSnapshot(id, ApprovalState.REVOKED.toString());
-
-        // 添加日志上下文
-        LogDTO logDTO = getApprovalLogDTO(orgId, id, userId, invoice.getName(), originApprovalStatus, ApprovalState.REVOKED.toString());
-        logService.add(logDTO);
-
-        return invoice.getApprovalStatus();
-    }
-
-    private LogDTO getApprovalLogDTO(String orgId, String id, String userId, String response, String originStatus, String newState) {
-        LogDTO logDTO = new LogDTO(orgId, id, userId, LogType.APPROVAL, LogModule.CONTRACT_INVOICE, response);
-        Map<String, String> oldMap = new HashMap<>();
-        oldMap.put("approvalStatus", Translator.get("contract.approval_status." + originStatus.toLowerCase()));
-        logDTO.setOriginalValue(oldMap);
-        Map<String, String> newMap = new HashMap<>();
-        newMap.put("approvalStatus", Translator.get("contract.approval_status." + newState.toLowerCase()));
-        logDTO.setModifiedValue(newMap);
-        return logDTO;
-    }
-
-    private void updateStatusSnapshot(String id, String approvalStatus) {
-        LambdaQueryWrapper<ContractInvoiceSnapshot> delWrapper = new LambdaQueryWrapper<>();
-        delWrapper.eq(ContractInvoiceSnapshot::getInvoiceId, id);
-        List<ContractInvoiceSnapshot> invoiceSnapshots = snapshotBaseMapper.selectListByLambda(delWrapper);
-        ContractInvoiceSnapshot first = invoiceSnapshots.getFirst();
-        if (first != null) {
-            ContractInvoiceGetResponse response = JSON.parseObject(first.getInvoiceValue(), ContractInvoiceGetResponse.class);
-            if (StringUtils.isNotBlank(approvalStatus)) {
-                response.setApprovalStatus(approvalStatus);
-            }
-            first.setInvoiceValue(JSON.toJSONString(response));
-            snapshotBaseMapper.update(first);
-        }
     }
 
     public BigDecimal calculateCustomerInvoiceAmount(String customerId, String userId, String orgId) {
@@ -647,4 +607,109 @@ public class ContractInvoiceService {
         }
         return businessFormConfig;
     }
+
+	/**
+	 * ⚠️反射调用: 由审批执行操作统一调用, 勿修改
+	 * @param param 参数
+	 */
+	public void updateSnapshotApprovalStatus(ResourceSnapshotApprovalParam param) {
+		ContractInvoiceSnapshot snapshotCriteria = new ContractInvoiceSnapshot();
+		snapshotCriteria.setInvoiceId(param.getResourceId());
+		ContractInvoiceSnapshot snapshot = snapshotBaseMapper.selectOne(snapshotCriteria);
+		if (snapshot != null) {
+			ContractInvoiceGetResponse response = JSON.parseObject(snapshot.getInvoiceValue(), ContractInvoiceGetResponse.class);
+			response.setApprovalStatus(param.getApprovalStatus());
+			snapshot.setInvoiceValue(JSON.toJSONString(response));
+			snapshotBaseMapper.update(snapshot);
+		}
+	}
+
+	/**
+	 * ⚠️反射调用: 由审批执行后置操作统一调用, 勿修改
+	 * @param postFieldParam 参数
+	 */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	public void updateApprovalPostField(ResourceApprovalPostUpdateParam postFieldParam) {
+		ModuleFormConfigDTO formConfig = getFormConfig(OrganizationContext.getOrganizationId());
+		List<BaseField> fields = formConfig.getFields();
+		Map<String, BaseField> fieldConfigMap = fields.stream().collect(Collectors.toMap(BaseField::getId, f -> f));
+		ContractInvoice contractInvoice = contractInvoiceMapper.selectByPrimaryKey(postFieldParam.getResourceId());
+		List<ContractInvoiceField> contractInvoiceFields = new ArrayList<>();
+		List<ContractInvoiceFieldBlob> contractInvoiceFieldBlobs = new ArrayList<>();
+		ContractInvoiceSnapshot snapshotCriteria = new ContractInvoiceSnapshot();
+		snapshotCriteria.setInvoiceId(postFieldParam.getResourceId());
+		ContractInvoiceSnapshot snapshot = snapshotBaseMapper.selectOne(snapshotCriteria);
+		ContractInvoiceGetResponse response = new ContractInvoiceGetResponse();
+		if (snapshot != null) {
+			response = JSON.parseObject(snapshot.getInvoiceValue(), ContractInvoiceGetResponse.class);
+		}
+		for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postFieldParam.getFields()) {
+			if (!fieldConfigMap.containsKey(fieldUpdateParam.getFieldId()) || fieldUpdateParam.getFieldValue() == null) {
+				return;
+			}
+			BaseField fieldConfig = fieldConfigMap.get(fieldUpdateParam.getFieldId());
+			AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
+			if (fieldConfig.hasBusinessKey()) {
+				// 业务主表字段
+				invoiceFieldService.setResourceFieldValue(contractInvoice, fieldConfig.getBusinessKey(), fieldUpdateParam.getFieldValue());
+			} else {
+				// 快照自定义字段
+				Optional<BaseModuleFieldValue> findField = response.getModuleFields().stream().filter(fieldValue -> Strings.CI.equals(fieldValue.getFieldId(), fieldUpdateParam.getFieldId())).findAny();
+				if (findField.isPresent()) {
+					findField.get().setFieldValue(fieldUpdateParam.getFieldValue());
+				} else {
+					BaseModuleFieldValue fv = new BaseModuleFieldValue();
+					fv.setFieldId(fieldUpdateParam.getFieldId());
+					fv.setFieldValue(fieldUpdateParam.getFieldValue());
+					response.getModuleFields().add(fv);
+				}
+				if (fieldConfig.isBlob()) {
+					// 自定义大表
+					invoiceFieldService.getResourceFieldBlobMapper().deleteByLambda(new LambdaQueryWrapper<ContractInvoiceFieldBlob>()
+							.eq(ContractInvoiceFieldBlob::getFieldId, fieldUpdateParam.getFieldId()).eq(ContractInvoiceFieldBlob::getResourceId, postFieldParam.getResourceId()));
+					ContractInvoiceFieldBlob field = new ContractInvoiceFieldBlob();
+					field.setId(IDGenerator.nextStr());
+					field.setResourceId(postFieldParam.getResourceId());
+					field.setFieldId(fieldUpdateParam.getFieldId());
+					field.setFieldValue(customFieldResolver.convertToString(fieldConfig, fieldUpdateParam.getFieldValue()));
+					contractInvoiceFieldBlobs.add(field);
+				} else {
+					// 自定义表
+					invoiceFieldService.getResourceFieldMapper().deleteByLambda(new LambdaQueryWrapper<ContractInvoiceField>()
+							.eq(ContractInvoiceField::getFieldId, fieldUpdateParam.getFieldId()).eq(ContractInvoiceField::getResourceId, postFieldParam.getResourceId()));
+					ContractInvoiceField field = new ContractInvoiceField();
+					field.setId(IDGenerator.nextStr());
+					field.setResourceId(postFieldParam.getResourceId());
+					field.setFieldId(fieldUpdateParam.getFieldId());
+					field.setFieldValue(customFieldResolver.convertToString(fieldConfig, fieldUpdateParam.getFieldValue()));
+					contractInvoiceFields.add(field);
+				}
+			}
+		}
+		contractInvoiceMapper.updateById(contractInvoice);
+		if (CollectionUtils.isNotEmpty(contractInvoiceFields)) {
+			invoiceFieldService.getResourceFieldMapper().batchInsert(contractInvoiceFields);
+		}
+		if (CollectionUtils.isNotEmpty(contractInvoiceFieldBlobs)) {
+			invoiceFieldService.getResourceFieldBlobMapper().batchInsert(contractInvoiceFieldBlobs);
+		}
+		// 更新快照
+		if (snapshot != null) {
+			ContractInvoiceGetResponse snapshotRes = get(contractInvoice, response.getModuleFields(), formConfig);
+			snapshot.setInvoiceValue(JSON.toJSONString(snapshotRes));
+			snapshotBaseMapper.update(snapshot);
+		}
+	}
+
+	/**
+	 * 处理旧版本审批状态 (APPROVING => NONE)
+	 */
+	public void handleOldApprovalData() {
+		List<ContractInvoice> invoices = contractInvoiceMapper.selectListByLambda(new LambdaQueryWrapper<ContractInvoice>().eq(ContractInvoice::getApprovalStatus, ApprovalStatus.APPROVING.name()));
+		invoices.forEach(invoice -> {
+			ResourceSnapshotApprovalParam param = ResourceSnapshotApprovalParam.builder().resourceId(invoice.getId()).approvalStatus(ApprovalStatus.NONE.name()).build();
+			updateSnapshotApprovalStatus(param);
+		});
+		extContractInvoiceMapper.updateOldApprovalStatusNone();
+	}
 }

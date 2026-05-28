@@ -1,8 +1,8 @@
 import { AttachmentInfo } from '@cordys/web/src/components/business/crm-form-create/types';
-import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
-import { ContractBusinessTitleStatusEnum, type ContractInvoiceStatusEnum } from '@lib/shared/enums/contractEnum';
+import { ContractBusinessTitleStatusEnum } from '@lib/shared/enums/contractEnum';
 import type { ModuleField, TableQueryParams } from './common';
 import type { FormDesignConfigDetailParams } from './system/module';
+import { ProcessStatusEnum } from '@lib/shared/enums/process';
 
 // 合同列表项
 export interface ContractItem {
@@ -12,8 +12,9 @@ export interface ContractItem {
   customerName: string;
   amount: number;
   alreadyPayAmount: number;
-  approvalStatus: QuotationStatusEnum;
+  approvalStatus: ProcessStatusEnum;
   stage: string;
+  stageName: string;
   owner: string;
   ownerName: string;
   createUser: string;
@@ -228,7 +229,7 @@ export interface ContractInvoiceItem {
   moduleFields: ModuleField[]; // 自定义字段
   recordAmount: number;
   recordEndTime: number;
-  approvalStatus: ContractInvoiceStatusEnum;
+  approvalStatus: ProcessStatusEnum;
 }
 export interface SaveContractInvoiceParams {
   name: string;

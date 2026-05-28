@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -143,9 +144,15 @@ public class OrganizationUserController {
         return organizationUserService.getUserOptions(OrganizationContext.getOrganizationId());
     }
 
+    @GetMapping(value = "/admin/option")
+    @Operation(summary = "获取管理员用户下拉option")
+    public List<OptionDTO> getAdminUserList() {
+        return organizationUserService.getAdminUserOptions(OrganizationContext.getOrganizationId());
+    }
+
     @GetMapping(value = "/role/option")
     @Operation(summary = "获取用户角色下拉option")
-    @RequiresPermissions(PermissionConstants.SYS_ORGANIZATION_READ)
+    @RequiresPermissions(value = {PermissionConstants.SYS_ORGANIZATION_READ, PermissionConstants.PROCESS_SETTING_READ}, logical = Logical.OR)
     public List<OptionDTO> getUserRoleList() {
         List<RoleListResponse> list = roleService.list(OrganizationContext.getOrganizationId());
         return list.stream().map(role -> new OptionDTO(role.getId(), role.getName())).toList();

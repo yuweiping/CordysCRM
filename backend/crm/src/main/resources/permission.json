@@ -129,6 +129,24 @@
             "license": true
           }
         ]
+      },
+      {
+        "id": "PROCESS_SETTING",
+        "name": "permission.process_setting.name",
+        "permissions": [
+          {
+            "id": "PROCESS_SETTING:READ"
+          },
+          {
+            "id": "PROCESS_SETTING:ADD"
+          },
+          {
+            "id": "PROCESS_SETTING:UPDATE"
+          },
+          {
+            "id": "PROCESS_SETTING:DELETE"
+          }
+        ]
       }
     ]
   },
@@ -341,9 +359,6 @@
             "name": "permission.opportunity_management.opportunity_quotation.download"
           },
           {
-            "id": "OPPORTUNITY_QUOTATION:APPROVAL"
-          },
-          {
             "id": "OPPORTUNITY_QUOTATION:VOIDED"
           }
         ]
@@ -539,10 +554,6 @@
             "license": false
           },
           {
-            "id": "CONTRACT:APPROVAL",
-            "license": false
-          },
-          {
             "id": "CONTRACT:PAYMENT"
           }
         ]
@@ -640,10 +651,7 @@
           },
           {
             "id": "CONTRACT_INVOICE:EXPORT"
-          },
-          {
-            "id": "CONTRACT_INVOICE:APPROVAL"
-           }
+          }
         ]
       }
     ]

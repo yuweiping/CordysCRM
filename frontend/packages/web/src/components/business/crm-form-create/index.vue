@@ -43,6 +43,9 @@
           {{ formConfig.optBtnContent[1].text }}
         </n-button>
       </template>
+      <n-button v-if="reviewAction.visible" type="primary" ghost @click="handleReview">
+        {{ reviewAction.text }}
+      </n-button>
       <n-button v-if="formConfig.optBtnContent[2].enable" secondary @click="emit('cancel')">
         {{ formConfig.optBtnContent[2].text }}
       </n-button>
@@ -80,6 +83,7 @@
 
   import { getDatasourceRefDetailList } from '@/api/modules';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
+  import useFormReviewAction from '@/hooks/useFormReviewAction';
 
   import { formKeyMap } from '../crm-data-source-select/config';
   import { FormulaDataSourceMap } from '../crm-formula/formula-runtime/types';
@@ -101,6 +105,7 @@
     (e: 'cancel'): void;
     (e: 'init', title: string, formViewSize?: FormViewSize): void;
     (e: 'saved', isContinue: boolean, res: any): void;
+    (e: 'review', res: any): void;
   }>();
 
   const { t } = useI18n();
@@ -138,6 +143,7 @@
     saveForm,
     initForm,
     initFormShowControl,
+    detail,
   } = useFormCreateApi({
     formKey,
     sourceId,
@@ -147,6 +153,13 @@
     linkFormInfo,
     linkFormKey,
     linkScenario,
+  });
+
+  const { reviewAction, initApprovalReviewConfig } = useFormReviewAction({
+    formKey,
+    isEdit: computed(() => props.isEdit),
+    approvalStatus: computed(() => detail.value?.approvalStatus),
+    detail,
   });
 
   function getItemComponent(item: FormCreateField) {
@@ -552,7 +565,7 @@
     fieldList.value.forEach((item) => {
       if ([FieldTypeEnum.FORMULA, FieldTypeEnum.INPUT, FieldTypeEnum.SERIAL_NUMBER].includes(item.type)) {
         const { fields } = safeParseFormula(item.formula ?? '');
-        fields.forEach((e: any) => {
+        fields?.forEach((e: any) => {
           let options = [];
           const targetField = fieldMap.get(e.fieldId);
 
@@ -685,29 +698,56 @@
     });
   }
 
+  function scrollToFirstError(errors: any[]) {
+    const firstErrorId = errors[0]?.[0]?.field;
+    if (firstErrorId) {
+      const fieldElement = document.getElementById(firstErrorId);
+      fieldElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function buildSavePayload() {
+    const result = cloneDeep(formDetail.value);
+    fieldList.value.forEach((item) => {
+      if ([FieldTypeEnum.SUB_PRODUCT, FieldTypeEnum.SUB_PRICE].includes(item.type) && item.subFields?.length) {
+        item.subFields.forEach((subField) => {
+          transformSubFieldsValue(subField, result[item.id]);
+        });
+      } else {
+        transformFieldValue(item, result, item.id);
+      }
+    });
+    return result;
+  }
+
   function handleSave(isContinue = false) {
     formRef.value?.validate((errors) => {
       if (!errors) {
-        const result = cloneDeep(formDetail.value);
-        fieldList.value.forEach((item) => {
-          if ([FieldTypeEnum.SUB_PRODUCT, FieldTypeEnum.SUB_PRICE].includes(item.type) && item.subFields?.length) {
-            item.subFields.forEach((subField) => {
-              transformSubFieldsValue(subField, result[item.id]);
-            });
-          } else {
-            transformFieldValue(item, result, item.id);
-          }
-        });
+        const result = buildSavePayload();
         saveForm(result, isContinue, (_isContinue, res) => {
           emit('saved', isContinue, res);
         });
       } else {
-        // 滚动到报错的位置
-        const firstErrorId = errors[0]?.[0]?.field;
-        if (firstErrorId) {
-          const fieldElement = document.getElementById(firstErrorId);
-          fieldElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        scrollToFirstError(errors);
+      }
+    });
+  }
+
+  function handleReview() {
+    formRef.value?.validate((errors) => {
+      if (!errors) {
+        const result = buildSavePayload();
+        saveForm(
+          result,
+          false,
+          (_isContinue, res) => {
+            emit('review', res);
+          },
+          false,
+          true
+        );
+      } else {
+        scrollToFirstError(errors);
       }
     });
   }
@@ -727,6 +767,7 @@
   );
 
   onBeforeMount(async () => {
+    const initApprovalReviewConfigPromise = initApprovalReviewConfig();
     await initFormConfig();
     emit('init', formCreateTitle.value, formConfig.value.viewSize);
     if (props.sourceId && props.needInitDetail) {
@@ -734,6 +775,7 @@
     }
     initForm(props.linkScenario);
     initFormulaDataSourceRemark();
+    await initApprovalReviewConfigPromise;
   });
 </script>
 

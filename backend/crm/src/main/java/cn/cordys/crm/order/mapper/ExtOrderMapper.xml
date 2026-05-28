@@ -15,6 +15,7 @@
         cc.name as customerName,
         so.amount,
         so.stage,
+        so.approval_status,
         so.`owner`,
         so.create_user,
         so.create_time,
@@ -85,9 +86,15 @@
         <include refid="viewCombine">
             <property name="combineSearch" value="request.viewCombineSearch"/>
         </include>
-        <include refid="sort">
-            <property name="sort" value="request.sort"/>
-        </include>
+
+        <if test="request.board">
+            order by so.pos desc
+        </if>
+        <if test="!request.board">
+            <include refid="sort">
+                <property name="sort" value="request.sort"/>
+            </include>
+        </if>
     </select>
 
     <select id="getListByIds" resultType="cn.cordys.crm.order.dto.response.OrderListResponse">
@@ -176,7 +183,7 @@
                     </when>
                     <otherwise>
                         <if test="condition.name not in
-                            {'name', 'owner', 'createTime', 'updateTime', 'customerId', 'contractId', 'createUser', 'updateUser',
+                            {'name', 'owner', 'approvalStatus', 'createTime', 'updateTime', 'customerId', 'contractId', 'createUser', 'updateUser',
                              'departmentId', 'number', 'stage', 'amount', 'startTime', 'endTime'}">
                             <if test="condition.blob">
                                 left join sales_order_field_blob ${tablePrefix}_${i}
@@ -199,7 +206,7 @@
 
     <sql id="fieldSortJoin">
         <if test="${sort} != null and ${sort}.valid() and ${sort}.name not in
-                {'name', 'number', 'owner', 'name', 'amount', 'stage', 'update_user', 'create_time', 'customer_id',
+                {'name', 'number', 'owner', 'name', 'approval_status', 'amount', 'stage', 'update_user', 'create_time', 'customer_id',
                  'contract_id', 'update_time', 'create_user', 'department_id'}">
             <bind name="sortName" value="${sort}.name"/>
             left join sales_order_field sort_table
@@ -255,6 +262,12 @@
                         <include refid="cn.cordys.common.mapper.CommonMapper.dataSourceCondition">
                             <property name="condition" value="condition"/>
                             <property name="column" value="cc.id"/>
+                        </include>
+                    </when>
+                    <when test="condition.name == 'approvalStatus'">
+                        <include refid="cn.cordys.common.mapper.CommonMapper.condition">
+                            <property name="condition" value="condition"/>
+                            <property name="column" value="so.approval_status"/>
                         </include>
                     </when>
                     <when test="condition.name == 'contractId'">
@@ -381,6 +394,9 @@
                 <choose>
                     <when test="${sort}.name == 'name'">
                         so.`name` ${sortType}, so.id ASC
+                    </when>
+                    <when test="${sort}.name == 'approval_status'">
+                        FIELD(so.approval_status, 'NONE', 'PENDING', 'APPROVING', 'APPROVED', 'REVOKED', 'UNAPPROVED') ${sortType}, so.id ASC
                     </when>
                     <when test="${sort}.name == 'contract_id'">
                         c.`name` ${sortType}, so.id ASC
@@ -514,4 +530,22 @@
         </include>
 
     </select>
+
+
+    <select id="selectNextPos" resultType="java.lang.Long">
+        select pos from sales_order where stage = #{stage} and organization_id = #{orgId}
+        order by pos desc limit 1
+    </select>
+
+    <update id="moveUpStageOrder">
+        update sales_order set pos = pos + #{pos} where pos &gt; #{end} and stage = #{stage}
+    </update>
+
+    <update id="moveDownStageOrder">
+        update sales_order set pos = pos + #{pos} where pos &gt;= #{end} and stage = #{stage}
+    </update>
+
+    <update id="updateOldApprovalStatusNone">
+        update sales_order set approval_status = 'NONE';
+    </update>
 </mapper>

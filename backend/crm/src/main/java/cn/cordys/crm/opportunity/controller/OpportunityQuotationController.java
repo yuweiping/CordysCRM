@@ -9,10 +9,7 @@ import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.utils.ConditionFilterUtils;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.opportunity.domain.OpportunityQuotation;
-import cn.cordys.crm.opportunity.dto.request.OpportunityQuotationAddRequest;
-import cn.cordys.crm.opportunity.dto.request.OpportunityQuotationBatchRequest;
-import cn.cordys.crm.opportunity.dto.request.OpportunityQuotationEditRequest;
-import cn.cordys.crm.opportunity.dto.request.OpportunityQuotationPageRequest;
+import cn.cordys.crm.opportunity.dto.request.*;
 import cn.cordys.crm.opportunity.dto.response.OpportunityQuotationGetResponse;
 import cn.cordys.crm.opportunity.dto.response.OpportunityQuotationListResponse;
 import cn.cordys.crm.opportunity.service.OpportunityQuotationService;
@@ -82,7 +79,7 @@ public class OpportunityQuotationController {
     @RequiresPermissions(PermissionConstants.OPPORTUNITY_QUOTATION_READ)
     @Operation(summary = "获取报价单快照详情")
     public OpportunityQuotationGetResponse getSnapshot(@PathVariable("id") String id) {
-        return opportunityQuotationService.getSnapshot(id);
+        return opportunityQuotationService.getSnapshot(id, OrganizationContext.getOrganizationId());
     }
 
     //查询详情
@@ -90,7 +87,7 @@ public class OpportunityQuotationController {
     @RequiresPermissions(PermissionConstants.OPPORTUNITY_QUOTATION_READ)
     @Operation(summary = "获取报价单详情")
     public OpportunityQuotationGetResponse get(@PathVariable("id") String id) {
-        return opportunityQuotationService.get(id);
+        return opportunityQuotationService.get(id, OrganizationContext.getOrganizationId());
     }
 
     @GetMapping("/module/form/snapshot/{id}")
@@ -111,15 +108,15 @@ public class OpportunityQuotationController {
     @GetMapping("/voided/{id}")
     @RequiresPermissions(PermissionConstants.OPPORTUNITY_QUOTATION_VOIDED)
     @Operation(summary = "作废报价单")
-    public String voidQuotation(@PathVariable("id") String id) {
-        return opportunityQuotationService.voidQuotation(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
+    public void voidQuotation(@PathVariable("id") String id) {
+        opportunityQuotationService.voidQuotation(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 
     //批量作废报价单
     @PostMapping("/batch/voided")
     @RequiresPermissions(PermissionConstants.OPPORTUNITY_QUOTATION_VOIDED)
     @Operation(summary = "批量作废报价单")
-    public BatchAffectReasonResponse batchVoidQuotation(@Validated @RequestBody OpportunityQuotationBatchRequest request) {
+    public BatchAffectReasonResponse batchVoidQuotation(@Validated @RequestBody OpportunityQuotationBatchVoidedRequest request) {
         return opportunityQuotationService.batchVoidQuotation(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 

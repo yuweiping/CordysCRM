@@ -32,6 +32,18 @@ public abstract class BaseModuleLogService {
     @Resource
     private BaseMapper<Product> productMapper;
 
+    protected String oldValue;
+
+    protected String newValue;
+
+    public void setOldValue(String oldValue) {
+        this.oldValue = oldValue;
+    }
+
+    public void setNewValue(String newValue) {
+        this.newValue = newValue;
+    }
+
     /**
      * 翻译字段名称
      * 赋值旧值名称和新值名称
@@ -162,11 +174,11 @@ public abstract class BaseModuleLogService {
             String originDifferColumn = differ.getColumn();
             String differColumn = differ.getColumn();
             String prefix = differ.getColumn();
-            // 子表字段处理
-            if (StringUtils.isNotBlank(differ.getColumn()) && differ.getColumn().contains("-")) {
-                differColumn = originDifferColumn.substring(differ.getColumn().lastIndexOf("-") + 1);
-                prefix = originDifferColumn.substring(0, originDifferColumn.lastIndexOf("-"));
-            }
+			// 子表字段处理
+			if (StringUtils.isNotBlank(differ.getColumn()) && differ.getColumn().contains("-")) {
+				differColumn = originDifferColumn.substring(differ.getColumn().lastIndexOf("-") + 1);
+				prefix = originDifferColumn.substring(0, originDifferColumn.lastIndexOf("-"));
+			}
             BaseField moduleField = moduleFieldMap.get(differ.getColumn());
             if (moduleField != null) {
                 differ.setColumnName(moduleField.getName());

@@ -1,6 +1,6 @@
-import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
 import type { ModuleField, TableQueryParams } from './common';
 import type { FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
+import { ProcessStatusEnum } from '@lib/shared/enums/process';
 
 export interface OpportunityItem {
   id: string; // 商机ID
@@ -64,11 +64,11 @@ export interface UpdateStageParams {
   failureReason?: string | null; // 失败原因
 }
 
-export interface OpportunityPageQueryParams extends TableQueryParams {
+export interface StageBoardPageQueryParams extends TableQueryParams {
   board?: boolean; // 是否是看板模式
 }
 
-export interface OpportunityBillboardDraggedParams {
+export interface StageBoardDraggedParams {
   dragNodeId: string;
   dropNodeId: string;
   dropPosition: number;
@@ -132,7 +132,8 @@ export interface QuotationQueryParams extends TableQueryParams {
 export interface QuotationItem {
   id: string;
   name: string;
-  approvalStatus: QuotationStatusEnum;
+  approvalStatus: ProcessStatusEnum;
+  invalid: boolean;
   opportunityId: string;
   opportunityName: string;
   amount: number;
@@ -156,14 +157,14 @@ export interface SaveQuotationParams {
 
 export interface UpdateQuotationParams extends SaveQuotationParams {
   id: string;
-  approvalStatus: QuotationStatusEnum;
+  approvalStatus: ProcessStatusEnum;
 }
 
 export interface ApproveQuotation {
   id: string;
   name: string;
   opportunityId: string;
-  approvalStatus: QuotationStatusEnum;
+  approvalStatus: ProcessStatusEnum;
   moduleFormConfigDTO?: FormDesignConfigDetailParams;
   moduleFields: ModuleField[];
   products: any[];
@@ -171,7 +172,11 @@ export interface ApproveQuotation {
 
 export interface BatchUpdateQuotationStatusParams {
   ids: (string | number)[];
-  approvalStatus: QuotationStatusEnum;
+  approvalStatus: ProcessStatusEnum;
+}
+
+export interface  BatchVoidQuotationStatusParams {
+  ids: (string | number)[];
 }
 
 export interface BatchOperationResult {

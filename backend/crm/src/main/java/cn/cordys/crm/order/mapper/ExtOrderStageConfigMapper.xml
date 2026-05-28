@@ -4,7 +4,7 @@
 <mapper namespace="cn.cordys.crm.order.mapper.ExtOrderStageConfigMapper">
 
 
-    <select id="getStageConfigList" resultType="cn.cordys.crm.order.dto.response.OrderStageConfigResponse">
+    <select id="getStageConfigList" resultType="cn.cordys.common.dto.stage.StageConfigResponse">
         select id, name, type, afoot_roll_back, end_roll_back, pos
         from sales_order_stage_config
         where organization_id = #{orgId}

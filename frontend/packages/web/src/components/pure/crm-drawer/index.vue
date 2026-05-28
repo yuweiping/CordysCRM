@@ -8,6 +8,7 @@
     class="crm-drawer"
     @after-leave="emit('cancel')"
     @esc="emit('esc')"
+    @mask-click="emit('maskClick')"
   >
     <n-drawer-content
       :title="props.title"
@@ -42,11 +43,7 @@
           </div>
         </slot>
       </template>
-      <div
-        v-if="!props.disabledWidthDrag && typeof drawerWidth === 'number'"
-        class="crm-drawer-handle"
-        @mousedown="startResize"
-      >
+      <div v-if="!props.disabledWidthDrag" class="crm-drawer-handle" @mousedown="startResize">
         <CrmIcon type="iconicon_move" class="absolute left-[-3px] top-[50%] w-[14px]" :size="14" />
       </div>
       <n-spin :show="props.loading" class="h-full">
@@ -93,6 +90,7 @@
   import { ChevronBackOutline } from '@vicons/ionicons5';
 
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import type { FormViewSize } from '@lib/shared/models/system/module';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
 
@@ -117,6 +115,7 @@
       noPadding?: boolean; // 无内边距
       disabledWidthDrag?: boolean; // 禁止拖拽宽度
       minWidth?: number;
+      viewSize?: FormViewSize;
     }>(),
     {
       placement: 'right',
@@ -134,6 +133,7 @@
     (e: 'confirm'): void;
     (e: 'cancel'): void;
     (e: 'esc'): void;
+    (e: 'maskClick'): void;
   }>();
 
   const show = defineModel<boolean>('show', {
@@ -141,45 +141,77 @@
     default: false,
   });
 
+  const getWindowWidth = () => window.innerWidth;
+
+  function calculateWidth(width?: string | number) {
+    if (typeof width === 'number') {
+      return width;
+    }
+    if (!width || typeof width !== 'string') {
+      return 0;
+    }
+    const match = width.trim().match(/^(\d+(?:\.\d+)?)%$/);
+    if (!match) {
+      return 0;
+    }
+    return Math.round((Number(match[1]) / 100) * getWindowWidth());
+  }
+
   const resizing = ref(false); // 是否正在拖拽
-  const drawerWidth = ref(props.width); // 抽屉初始宽度
+  const drawerInitWidth = computed(() => {
+    switch (props.viewSize) {
+      case 'small':
+        return '50%';
+      case 'medium':
+        return '75%';
+      case 'large':
+        return '100%';
+      default:
+        return props.width;
+    }
+  });
+  const drawerWidth = ref(drawerInitWidth.value); // 抽屉初始宽度
+
   /**
    * 鼠标单击开始监听拖拽移动
    */
   const startResize = (event: MouseEvent) => {
+    let initialWidth = 0;
     if (typeof drawerWidth.value === 'number') {
-      resizing.value = true;
-      const startX = event.clientX;
-      const initialWidth = drawerWidth.value;
-
-      // 计算鼠标移动距离
-      const handleMouseMove = (_event: MouseEvent) => {
-        if (resizing.value) {
-          const newWidth = initialWidth + (startX - _event.clientX); // 新的宽度等于当前抽屉宽度+鼠标移动的距离
-          if (typeof props.width === 'number' && newWidth >= 480 && newWidth <= window.innerWidth * 0.9) {
-            // 最大最小宽度限制，最小宽度为480，最大宽度为视图窗口宽度的90%
-            drawerWidth.value = newWidth;
-          }
-        }
-      };
-
-      // 松开鼠标按键，拖拽结束
-      const handleMouseUp = () => {
-        if (resizing.value) {
-          // 如果当前是在拖拽，则重置拖拽状态，且移除鼠标监听事件
-          resizing.value = false;
-          window.removeEventListener('mousemove', handleMouseMove);
-          window.removeEventListener('mouseup', handleMouseUp);
-        }
-      };
-
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      initialWidth = drawerWidth.value;
+    } else {
+      initialWidth = calculateWidth(drawerWidth.value);
     }
+    resizing.value = true;
+    const startX = event.clientX;
+
+    // 计算鼠标移动距离
+    const handleMouseMove = (_event: MouseEvent) => {
+      if (resizing.value) {
+        const newWidth = initialWidth + (startX - _event.clientX); // 新的宽度等于当前抽屉宽度+鼠标移动的距离
+        if (newWidth >= (props.minWidth || 480) && newWidth <= window.innerWidth) {
+          // 最大最小宽度限制，最小宽度为480，最大宽度为视图窗口宽度的90%
+          drawerWidth.value = newWidth;
+        }
+      }
+    };
+
+    // 松开鼠标按键，拖拽结束
+    const handleMouseUp = () => {
+      if (resizing.value) {
+        // 如果当前是在拖拽，则重置拖拽状态，且移除鼠标监听事件
+        resizing.value = false;
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
   };
 
   watch(
-    () => props.width,
+    () => drawerInitWidth.value,
     (newWidth) => {
       drawerWidth.value = newWidth;
     },

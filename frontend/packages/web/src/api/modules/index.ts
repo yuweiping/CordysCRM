@@ -16,6 +16,7 @@ import useLoginApi from '@lib/shared/api/modules/system/login';
 import useMessageApi from '@lib/shared/api/modules/system/message';
 import useModuleApi from '@lib/shared/api/modules/system/module';
 import useOrgApi from '@lib/shared/api/modules/system/org';
+import useProcessApi from '@lib/shared/api/modules/system/process';
 import useRoleApi from '@lib/shared/api/modules/system/role';
 
 import useDiscreteApi from '@/hooks/useDiscreteApi';
@@ -47,6 +48,7 @@ const dashboardApi = useDashboard(CDR);
 const opportunityApi = useOpportunityApi(CDR);
 const contractApi = useContractApi(CDR);
 const orderApi = useOrderApi(CDR);
+const processApi = useProcessApi(CDR);
 
 export const {
   getOrderFormConfig,
@@ -70,6 +72,7 @@ export const {
   dragOrderView,
   updateOrderStatus,
   updateOrderStatusRollback,
+  sortOrder,
   sortOrderStatus,
   addOrderStatus,
   getOrderStatusConfig,
@@ -522,7 +525,15 @@ export const {
   getContractDetailSnapshot,
   getInvoicedDetailSnapshot,
   getContractStatistic,
+  sortContract,
   getPaymentRecordStatistic,
+  updateContractStatus,
+  updateContractStatusRollback,
+  sortContractStatus,
+  addContractStatus,
+  getContractStatusConfig,
+  deleteContractStatus,
+  updateContractStage,
 } = contractApi;
 
 export const {
@@ -668,6 +679,7 @@ export const {
   getUserDetail,
   batchEditUser,
   getUserOptions,
+  getAdminOptions,
   getRoleOptions,
   sortDepartment,
   deleteUserCheck,
@@ -759,3 +771,30 @@ export const {
   agentApplicationOptions,
   getMkApplication,
 } = agentApi;
+
+export const {
+  getApprovalProcessList,
+  getApprovalPermissions,
+  addApprovalProcess,
+  updateApprovalProcess,
+  approvalProcessDetail,
+  deleteApprovalProcess,
+  toggleApprovalProcess,
+  getApprovalConfigDetail,
+  getResourceApprovingDetail,
+  reviewResource,
+  revokeResource,
+  getProcessedApprovalList,
+  getPendingApprovalList,
+  getInitiatedApprovalList,
+  getCcApprovalList,
+  rejectApproval,
+  backApproval,
+  addSignApproval,
+  getApprovalResourceDetail,
+  getTodoStatistic,
+  revokeApproval,
+  batchRejectApproval,
+  agreeApproval,
+  batchAgreeApproval,
+} = processApi;

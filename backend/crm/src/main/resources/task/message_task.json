@@ -204,6 +204,20 @@
   },
   {
     "organizationId": "",
+    "module": "ORDER",
+    "moduleName": "",
+    "messageTaskDetailDTOList": [
+      {
+        "event": "ORDER_APPROVAL",
+        "eventName": "",
+        "emailEnable": false,
+        "sysEnable": false,
+        "weComEnable": false
+      }
+    ]
+  },
+  {
+    "organizationId": "",
     "module": "CONTRACT",
     "moduleName": "",
     "messageTaskDetailDTOList": [
@@ -244,6 +258,20 @@
       },
       {
         "event": "CONTRACT_PAYMENT_EXPIRING",
+        "eventName": "",
+        "emailEnable": false,
+        "sysEnable": false,
+        "weComEnable": false
+      },
+      {
+        "event": "CONTRACT_APPROVAL",
+        "eventName": "",
+        "emailEnable": false,
+        "sysEnable": false,
+        "weComEnable": false
+      },
+      {
+        "event": "INVOICE_APPROVAL",
         "eventName": "",
         "emailEnable": false,
         "sysEnable": false,

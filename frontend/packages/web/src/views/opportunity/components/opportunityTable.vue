@@ -168,7 +168,7 @@
 
   <CrmBatchEditModal
     v-model:visible="showEditModal"
-    v-model:field-list="fieldList"
+    v-model:field-list="editFieldList"
     :ids="checkedRowKeys"
     :form-key="FormDesignKeyEnum.BUSINESS"
     @refresh="handleRefresh"
@@ -200,6 +200,7 @@
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
+  import { OpenDetailType } from '@/components/business/crm-stage-board/types';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
   import TransferModal from '@/components/business/crm-transfer-modal/index.vue';
   import TransferForm from '@/components/business/crm-transfer-modal/transferForm.vue';
@@ -357,7 +358,11 @@
   }
 
   const showEditModal = ref(false);
+  const { initFormConfig: initEditFormConfig, fieldList: editFieldList } = useFormCreateApi({
+    formKey: ref(FormDesignKeyEnum.BUSINESS),
+  });
   function handleBatchEdit() {
+    initEditFormConfig();
     showEditModal.value = true;
   }
 
@@ -1015,7 +1020,7 @@
     }
   }
 
-  function handleOpenDetail(type: 'customer' | 'opportunity', item: any) {
+  function handleOpenDetail(type: OpenDetailType, item: any) {
     if (type === 'customer') {
       showCustomerDrawer(item);
     } else if (type === 'opportunity') {
@@ -1039,6 +1044,11 @@
   }
 
   function removeItemFromList(id: string) {
+    if (activeShowType.value === 'billboard') {
+      billboardRef.value?.refresh();
+      getStatistic();
+      return;
+    }
     propsRes.value.data = propsRes.value.data.filter((item) => item.id !== id);
     propsRes.value.crmPagination = {
       ...propsRes.value.crmPagination,

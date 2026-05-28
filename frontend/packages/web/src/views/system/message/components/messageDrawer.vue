@@ -234,6 +234,14 @@
       },
     ];
 
+    const todoListMessage = [
+      {
+        value: 'APPROVAL',
+        label: t('system.message.todoList'),
+        count: messageCount.value?.APPROVAL || 0,
+      },
+    ];
+
     const baseMessageTypes = [
       {
         value: SystemResourceMessageTypeEnum.CLUE,
@@ -256,6 +264,11 @@
         count: messageCount.value[SystemResourceMessageTypeEnum.CONTRACT] || 0,
       },
       {
+        value: SystemResourceMessageTypeEnum.ORDER,
+        label: t('module.order'),
+        count: messageCount.value[SystemResourceMessageTypeEnum.ORDER] || 0,
+      },
+      {
         value: SystemResourceMessageTypeEnum.SYSTEM,
         label: t('system.message.system'),
         count: messageCount.value[SystemResourceMessageTypeEnum.SYSTEM] || 0,
@@ -265,7 +278,11 @@
     if (isAnnouncementTab) {
       return allMessage;
     }
-    return [...allMessage, ...baseMessageTypes.filter(({ value }) => enabledModuleKeys.has(value) || value)];
+    return [
+      ...allMessage,
+      ...todoListMessage,
+      ...baseMessageTypes.filter(({ value }) => enabledModuleKeys.has(value) || value),
+    ];
   });
 
   async function initMessageCount() {

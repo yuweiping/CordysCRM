@@ -1,8 +1,8 @@
 package cn.cordys.crm.order.mapper;
 
-import cn.cordys.crm.opportunity.dto.request.StageRollBackRequest;
-import cn.cordys.crm.order.dto.request.OrderStageUpdateRequest;
-import cn.cordys.crm.order.dto.response.OrderStageConfigResponse;
+import cn.cordys.common.dto.stage.StageConfigResponse;
+import cn.cordys.common.dto.stage.StageRollBackRequest;
+import cn.cordys.common.dto.stage.StageUpdateRequest;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -10,7 +10,7 @@ import java.util.List;
 public interface ExtOrderStageConfigMapper {
 
 
-    List<OrderStageConfigResponse> getStageConfigList(@Param("orgId") String orgId);
+    List<StageConfigResponse> getStageConfigList(@Param("orgId") String orgId);
 
     int countStageConfig(@Param("orgId") String orgId);
 
@@ -20,7 +20,7 @@ public interface ExtOrderStageConfigMapper {
 
     void updateRollBack(@Param("request") StageRollBackRequest request, @Param("orgId") String orgId);
 
-    void updateStageConfig(@Param("request") OrderStageUpdateRequest request, @Param("userId") String userId);
+    void updateStageConfig(@Param("request") StageUpdateRequest request, @Param("userId") String userId);
 
     void updatePos(@Param("id") String id, @Param("pos") Long pos);
 }

@@ -242,5 +242,12 @@ public class PermissionConstants {
     public static final String ORDER_DELETE = "ORDER:DELETE";
     public static final String ORDER_DOWNLOAD = "ORDER:DOWNLOAD";
     /*------ end: ORDER_ROLE ------*/
+
+    /*------ start: PROCESS_SETTING ------*/
+    public static final String PROCESS_SETTING_READ = "PROCESS_SETTING:READ";
+    public static final String PROCESS_SETTING_ADD = "PROCESS_SETTING:ADD";
+    public static final String PROCESS_SETTING_UPDATE = "PROCESS_SETTING:UPDATE";
+    public static final String PROCESS_SETTING_DELETE = "PROCESS_SETTING:DELETE";
+    /*------ end: PROCESS_SETTING ------*/
 }
 

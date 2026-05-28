@@ -9,6 +9,7 @@
     :title="props.detail?.name"
     :form-key="FormDesignKeyEnum.CLUE_POOL"
     :show-tab-setting="true"
+    :formViewSize="formViewSize"
     @button-select="handleSelect"
     @saved="() => (refreshKey += 1)"
   >
@@ -22,6 +23,8 @@
           :column="layout === 'vertical' ? 3 : undefined"
           :label-width="layout === 'vertical' ? 'auto' : undefined"
           :value-align="layout === 'vertical' ? 'start' : undefined"
+          :readonly="!hasAnyPermission(['CLUE_MANAGEMENT_POOL:UPDATE'])"
+          @init="handleDescriptionInit"
         />
       </div>
     </template>
@@ -58,7 +61,8 @@
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { characterLimit } from '@lib/shared/method';
   import type { CluePoolListItem } from '@lib/shared/models/clue';
-  import type { TransferParams } from '@lib/shared/models/customer';
+  import type { CollaborationType, TransferParams } from '@lib/shared/models/customer';
+  import type { FormConfig, FormViewSize } from '@lib/shared/models/system/module';
 
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import FollowDetail from '@/components/business/crm-follow-detail/index.vue';
@@ -72,6 +76,7 @@
   import { defaultTransferForm } from '@/config/opportunity';
   import useModal from '@/hooks/useModal';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
+  import { hasAnyPermission } from '@/utils/permission';
 
   import { ClueRouteEnum } from '@/enums/routeEnum';
 
@@ -248,4 +253,14 @@
       enable: true,
     },
   ];
+
+  const formViewSize = ref<FormViewSize>('large');
+  function handleDescriptionInit(
+    _collaborationType?: CollaborationType,
+    _sourceName?: string,
+    detail?: Record<string, any>,
+    config?: FormConfig
+  ) {
+    formViewSize.value = config?.viewSize || 'large';
+  }
 </script>

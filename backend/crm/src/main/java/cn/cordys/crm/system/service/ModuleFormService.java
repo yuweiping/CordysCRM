@@ -502,28 +502,34 @@ public class ModuleFormService {
         var staticOptions = new HashMap<String, List<OptionDTO>>(4);
         var idTypeMap = new HashMap<String, String>(8);
         for (var field : allFields) {
-            var key = getOptionKey(showFields, field);
-            switch (field) {
-                case RadioField radioField when Strings.CS.equals(field.getType(), FieldType.RADIO.name()) ->
-                        staticOptions.put(key, optionPropToDto(radioField.getOptions()));
-                case CheckBoxField checkBoxField when Strings.CS.equals(field.getType(), FieldType.CHECKBOX.name()) ->
-                        staticOptions.put(key, optionPropToDto(checkBoxField.getOptions()));
-                case HasOption optionField when Strings.CS.equalsAny(field.getType(), FieldType.SELECT.name(), FieldType.SELECT_MULTIPLE.name()) ->
-                        staticOptions.put(key, optionPropToDto(optionField.getOptions()));
-                default -> {
-                }
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.DATA_SOURCE.name(), FieldType.DATA_SOURCE_MULTIPLE.name()) && field instanceof DatasourceField sourceField) {
-                idTypeMap.put(key, sourceField.getDataSourceType());
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.MEMBER.name(), FieldType.MEMBER_MULTIPLE.name())) {
-                idTypeMap.put(key, FieldType.MEMBER.name());
-            }
-            if (Strings.CS.equalsAny(field.getType(), FieldType.DEPARTMENT.name(), FieldType.DEPARTMENT_MULTIPLE.name())) {
-                idTypeMap.put(key, FieldType.DEPARTMENT.name());
+            putOptionMap(staticOptions, idTypeMap, field, field.getId());
+            if (StringUtils.isNotBlank(field.getBusinessKey())) {
+                putOptionMap(staticOptions, idTypeMap, field, field.getBusinessKey());
             }
         }
         return new OptionMetadata(staticOptions, idTypeMap);
+    }
+
+    private void putOptionMap(HashMap<String, List<OptionDTO>> staticOptions, HashMap<String, String> idTypeMap, BaseField field, String key) {
+        switch (field) {
+            case RadioField radioField when Strings.CS.equals(field.getType(), FieldType.RADIO.name()) ->
+                    staticOptions.put(key, optionPropToDto(radioField.getOptions()));
+            case CheckBoxField checkBoxField when Strings.CS.equals(field.getType(), FieldType.CHECKBOX.name()) ->
+                    staticOptions.put(key, optionPropToDto(checkBoxField.getOptions()));
+            case HasOption optionField when Strings.CS.equalsAny(field.getType(), FieldType.SELECT.name(), FieldType.SELECT_MULTIPLE.name()) ->
+                    staticOptions.put(key, optionPropToDto(optionField.getOptions()));
+            default -> {
+            }
+        }
+        if (Strings.CS.equalsAny(field.getType(), FieldType.DATA_SOURCE.name(), FieldType.DATA_SOURCE_MULTIPLE.name()) && field instanceof DatasourceField sourceField) {
+            idTypeMap.put(key, sourceField.getDataSourceType());
+        }
+        if (Strings.CS.equalsAny(field.getType(), FieldType.MEMBER.name(), FieldType.MEMBER_MULTIPLE.name())) {
+            idTypeMap.put(key, FieldType.MEMBER.name());
+        }
+        if (Strings.CS.equalsAny(field.getType(), FieldType.DEPARTMENT.name(), FieldType.DEPARTMENT_MULTIPLE.name())) {
+            idTypeMap.put(key, FieldType.DEPARTMENT.name());
+        }
     }
 
     private Map<String, List<String>> collectOptionIds(List<BaseModuleFieldValue> allFieldValues, Map<String, String> idTypeMap) {
@@ -887,7 +893,7 @@ public class ModuleFormService {
                 }
             }
 
-            if (field instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()) && CollectionUtils.isNotEmpty(sourceField.getRefFields())) {
+            if (field instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields())) {
 				// 兼容新旧引用字段
                 List<String> oldRefIds = sourceField.getShowFields().stream().map(splitRefId(sourceField.getId())).distinct().toList();
                 List<ModuleFieldBlob> reloadFieldBlobs = moduleFieldBlobMapper.selectByIds(oldRefIds);
@@ -901,6 +907,16 @@ public class ModuleFormService {
 				// 合并可能引用的字段属性 (数据源引用字段 & 价格表子表格字段)
 				reloadFieldMap.putAll(priceSubFieldMap);
 
+				// 兼容处理旧版本引用字段没有refFields属性的情况，直接从showFields解析出引用字段并设置属性
+				if (CollectionUtils.isEmpty(sourceField.getRefFields())) {
+					sourceField.setRefFields(new ArrayList<>());
+					for (String showFieldKey : sourceField.getShowFields()) {
+						BaseField refField = reloadFieldMap.get(showFieldKey);
+						refField.setResourceFieldId(sourceField.getId());
+						sourceField.getRefFields().add(refField);
+					}
+				}
+
 				// 平铺引用字段
                 sourceField.getRefFields().forEach(oldRefField -> {
 					// 兼容旧引用字段
@@ -910,7 +926,7 @@ public class ModuleFormService {
 						return;
 					}
 					BaseField combineField = combineFieldsProps(oldRefField, refField);
-					combineField.setPos(oldRefField.getPos() == null ? flatFields.size() : oldRefField.getPos());
+					combineField.setPos(oldRefField.getPos() == null ? sourceField.getPos() : oldRefField.getPos());
                     flatFields.add(flatFields.size(), combineField);
                 });
             }
@@ -2264,5 +2280,45 @@ public class ModuleFormService {
 			int idx = fieldId.indexOf(sourceId + REF_UNDERLINE);
 			return idx >= 0 ? fieldId.substring(idx + sourceId.length() + REF_UNDERLINE.length()) : fieldId;
 		};
+	}
+
+	/**
+	 * 获取业务数据详情
+	 * @param formKey 表单Key
+	 * @param resourceId 资源ID
+	 * @return 通用的条件值
+	 */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	public List<BaseModuleFieldValue> compressResourceDetail(String formKey, String resourceId) {
+		List<BaseModuleFieldValue> fvs = new ArrayList<>();
+		Object resourceDetail = fieldSourceServiceProvider.safeGetSimpleById(formKey, resourceId);
+		if (resourceDetail == null) {
+			return fvs;
+		}
+		Map<String, Object> detailMap = JSON.MAPPER.convertValue(resourceDetail, Map.class);
+		if (org.apache.commons.collections.MapUtils.isEmpty(detailMap)) {
+			return fvs;
+		}
+
+		detailMap.forEach((k, v) -> {
+			if (Strings.CI.equals(BaseResourceFieldService.DETAIL_FIELD_PARAM_NAME, k)) {
+				List<Map> moduleFieldValues = (List<Map>) v;
+				if (org.apache.commons.collections.CollectionUtils.isNotEmpty(moduleFieldValues)) {
+					for (Map mfv : moduleFieldValues) {
+						BaseModuleFieldValue bfv = new BaseModuleFieldValue();
+						bfv.setFieldId(mfv.get("fieldId").toString());
+						bfv.setFieldValue(mfv.get("fieldValue"));
+						fvs.add(bfv);
+					}
+				}
+			} else {
+				BaseModuleFieldValue bfv = new BaseModuleFieldValue();
+				bfv.setFieldId(k);
+				bfv.setFieldValue(v);
+				fvs.add(bfv);
+			}
+		});
+
+		return fvs;
 	}
 }

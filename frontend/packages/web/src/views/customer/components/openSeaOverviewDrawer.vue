@@ -8,6 +8,7 @@
     :title="sourceName"
     :form-key="FormDesignKeyEnum.CUSTOMER"
     :source-id="props.sourceId"
+    :formViewSize="formViewSize"
     @button-select="handleButtonSelect"
     @saved="() => (refreshKey += 1)"
   >
@@ -24,6 +25,7 @@
           :column="layout === 'vertical' ? 3 : undefined"
           :label-width="layout === 'vertical' ? 'auto' : undefined"
           :value-align="layout === 'vertical' ? 'start' : undefined"
+          :readonly="!hasAnyPermission(['CUSTOMER_MANAGEMENT_POOL:UPDATE'])"
           @init="handleDescriptionInit"
         />
       </div>
@@ -57,6 +59,7 @@
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { CollaborationType } from '@lib/shared/models/customer';
+  import type { FormConfig, FormViewSize } from '@lib/shared/models/system/module';
 
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import FollowDetail from '@/components/business/crm-follow-detail/index.vue';
@@ -74,6 +77,7 @@
   } from '@/api/modules';
   import useModal from '@/hooks/useModal';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
+  import { hasAnyPermission } from '@/utils/permission';
 
   import { CustomerRouteEnum } from '@/enums/routeEnum';
 
@@ -248,7 +252,14 @@
   }
 
   const sourceName = ref('');
-  function handleDescriptionInit(_collaborationType?: CollaborationType, _sourceName?: string) {
+  const formViewSize = ref<FormViewSize>('large');
+  function handleDescriptionInit(
+    _collaborationType?: CollaborationType,
+    _sourceName?: string,
+    detail?: Record<string, any>,
+    config?: FormConfig
+  ) {
     sourceName.value = _sourceName || '';
+    formViewSize.value = config?.viewSize || 'large';
   }
 </script>

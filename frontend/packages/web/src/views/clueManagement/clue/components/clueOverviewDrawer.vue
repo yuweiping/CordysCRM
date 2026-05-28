@@ -10,6 +10,7 @@
     :title="sourceName"
     :form-key="FormDesignKeyEnum.CLUE"
     :show-tab-setting="false"
+    :formViewSize="formViewSize"
     @button-select="handleSelect"
     @saved="
       (res) => {
@@ -28,6 +29,7 @@
           :column="layout === 'vertical' ? 3 : undefined"
           :label-width="layout === 'vertical' ? 'auto' : undefined"
           :value-align="layout === 'vertical' ? 'start' : undefined"
+          :readonly="!hasAnyPermission(['CLUE_MANAGEMENT:UPDATE'])"
           @init="handleDescriptionInit"
           @open-customer-detail="emit('openCustomerDrawer', $event)"
         />
@@ -94,6 +96,7 @@
   import { characterLimit } from '@lib/shared/method';
   import type { ClueListItem } from '@lib/shared/models/clue';
   import type { CollaborationType, TransferParams } from '@lib/shared/models/customer';
+  import type { FormConfig, FormViewSize } from '@lib/shared/models/system/module';
 
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import FollowDetail from '@/components/business/crm-follow-detail/index.vue';
@@ -315,7 +318,14 @@
     emit('remove');
   }
 
-  function handleDescriptionInit(_collaborationType?: CollaborationType, _sourceName?: string) {
+  const formViewSize = ref<FormViewSize>('large');
+  function handleDescriptionInit(
+    _collaborationType?: CollaborationType,
+    _sourceName?: string,
+    detail?: Record<string, any>,
+    config?: FormConfig
+  ) {
     sourceName.value = _sourceName || '';
+    formViewSize.value = config?.viewSize || 'large';
   }
 </script>

@@ -9,6 +9,7 @@ import cn.cordys.common.dto.ExportDTO;
 import cn.cordys.common.dto.ExportSelectRequest;
 import cn.cordys.common.dto.ResourceTabEnableDTO;
 import cn.cordys.common.dto.condition.BaseCondition;
+import cn.cordys.common.dto.stage.StageSortRequest;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.utils.ConditionFilterUtils;
@@ -24,7 +25,7 @@ import cn.cordys.crm.order.dto.response.OrderListResponse;
 import cn.cordys.crm.order.service.OrderService;
 import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
-import cn.cordys.crm.system.dto.response.BatchAffectSkipResponse;
+import cn.cordys.crm.system.dto.response.BatchAffectReasonResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.security.SessionUtils;
@@ -84,7 +85,7 @@ public class ContractController {
         return contractService.update(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 
-    @PostMapping("/stage/update")
+    @PostMapping("/update/stage")
     @RequiresPermissions(PermissionConstants.CONTRACT_STAGE)
     @Operation(summary = "更新合同阶段")
     public void updateStage(@Validated @RequestBody ContractStageRequest request) {
@@ -131,34 +132,12 @@ public class ContractController {
         return contractService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission, false);
     }
 
-
-    @PostMapping("/approval")
-    @RequiresPermissions(PermissionConstants.CONTRACT_APPROVAL)
-    @Operation(summary = "审核通过/不通过")
-    public void approval(@Validated @RequestBody ContractApprovalRequest request) {
-        contractService.approvalContract(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
-    }
-
-    @GetMapping("/revoke/{id}")
-    @Operation(summary = "撤销审批")
-    public String revoke(@PathVariable("id") String id) {
-        return contractService.revoke(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
-    }
-
-    @PostMapping("/batch/approval")
-    @RequiresPermissions(PermissionConstants.CONTRACT_APPROVAL)
-    @Operation(summary = "批量审核通过/不通过")
-    public BatchAffectSkipResponse batchApproval(@Validated @RequestBody ContractApprovalBatchRequest request) {
-        return contractService.batchApprovalContract(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
-    }
-
     @PostMapping("/batch/update")
     @RequiresPermissions(PermissionConstants.CONTRACT_UPDATE)
     @Operation(summary = "批量更新合同")
-    public void batchUpdate(@Validated @RequestBody ResourceBatchEditRequest request) {
-        contractService.batchUpdate(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
+    public BatchAffectReasonResponse batchUpdate(@Validated @RequestBody ResourceBatchEditRequest request) {
+        return contractService.batchUpdate(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
-
 
     @PostMapping("/contract-payment-plan/page")
     @RequiresPermissions({PermissionConstants.CONTRACT_READ, PermissionConstants.CONTRACT_PAYMENT_PLAN_READ})
@@ -279,5 +258,11 @@ public class ContractController {
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
                 OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_READ);
         return contractService.searchStatistic(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), deptDataPermission);
+    }
+
+    @PostMapping("/sort")
+    @Operation(summary = "合同阶段看板拖拽排序")
+    public void sortModule(@Validated @RequestBody StageSortRequest request) {
+        contractService.sort(request, SessionUtils.getUserId());
     }
 }

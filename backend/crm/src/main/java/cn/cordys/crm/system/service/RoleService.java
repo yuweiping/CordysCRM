@@ -5,7 +5,6 @@ import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
-import cn.cordys.common.constants.InternalRole;
 import cn.cordys.common.constants.RoleDataScope;
 import cn.cordys.common.dto.RoleDataScopeDTO;
 import cn.cordys.common.exception.GenericException;
@@ -364,11 +363,9 @@ public class RoleService {
     }
 
     public List<PermissionDefinitionItem> getPermissionSetting(String id) {
-        // 获取角色
-        Role role = roleMapper.selectByPrimaryKey(id);
         // 获取该角色拥有的权限
-        Set<String> permissionIds = getPermissionIdSetByRoleId(role.getId());
-        return getPermissionDefinitionItems(role, permissionIds);
+        Set<String> permissionIds = getPermissionIdSetByRoleId(id);
+        return getPermissionDefinitionItems(permissionIds);
     }
 
     /**
@@ -377,10 +374,10 @@ public class RoleService {
      * @return
      */
     public List<PermissionDefinitionItem> getPermissionSetting() {
-        return getPermissionDefinitionItems(null, Set.of());
+        return getPermissionDefinitionItems(Set.of());
     }
 
-    private List<PermissionDefinitionItem> getPermissionDefinitionItems(Role role, Set<String> permissionIds) {
+    private List<PermissionDefinitionItem> getPermissionDefinitionItems(Set<String> permissionIds) {
         // 获取所有的权限
         List<PermissionDefinitionItem> permissionDefinitions = getPermissionDefinitions();
         // 设置勾选项
@@ -400,11 +397,9 @@ public class RoleService {
                         // 有 name 字段翻译 name 字段
                         p.setName(Translator.get(p.getName()));
                     } else {
-                        p.setName(translateDefaultPermissionName(p));
+                        p.setName(translateDefaultPermissionName(p.getId()));
                     }
-                    // 管理员默认勾选全部二级权限位
-                    if (permissionIds.contains(p.getId()) ||
-                            (role != null && Strings.CS.equals(role.getId(), InternalRole.ORG_ADMIN.getValue()))) {
+                    if (permissionIds.contains(p.getId())) {
                         p.setEnable(true);
                     } else {
                         // 如果权限有未勾选，则二级菜单设置为未勾选
@@ -449,12 +444,12 @@ public class RoleService {
     /**
      * 翻译默认的权限名称
      *
-     * @param p
+     * @param permissionId
      *
      * @return
      */
-    public String translateDefaultPermissionName(Permission p) {
-        String[] idSplit = p.getId().split(":");
+    public String translateDefaultPermissionName(String permissionId) {
+        String[] idSplit = permissionId.split(":");
         String permissionKey = idSplit[idSplit.length - 1];
         String permissionName = "permission." + permissionKey.toLowerCase();
         return Translator.get(permissionName);

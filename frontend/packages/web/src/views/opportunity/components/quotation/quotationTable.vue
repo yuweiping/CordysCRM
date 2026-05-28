@@ -5,6 +5,7 @@
     v-bind="propsRes"
     :class="`crm-quotation-table-${props.formKey}`"
     :action-config="actionConfig"
+    :not-show-table-filter="isAdvancedSearchMode"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
     @sorter-change="propsEvent.sorterChange"
@@ -65,13 +66,15 @@
     :link-form-info="linkFormInfo"
     :link-form-key="linkFormKey"
     @saved="handleFormCreateSaved"
+    @review="handleFormReview"
   />
   <batchOperationResultModal v-model:visible="resultVisible" :result="batchResult" :name="batchOperationName" />
   <CrmBatchEditModal
     v-model:visible="showEditModal"
-    v-model:field-list="fieldList"
+    v-model:field-list="editFieldList"
     :ids="checkedRowKeys"
     :form-key="FormDesignKeyEnum.OPPORTUNITY_QUOTATION"
+    :show-approval-tip="batchEditApprovalTip"
     @refresh="handleRefresh"
   />
 
@@ -101,9 +104,8 @@
   import { DataTableRowKey, NButton, useMessage } from 'naive-ui';
 
   import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
-  import { QuotationStatusEnum } from '@lib/shared/enums/opportunityEnum';
+  import { ProcessStatusEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
-  import useLocale from '@lib/shared/locale/useLocale';
   import { characterLimit } from '@lib/shared/method';
   import { BatchOperationResult, QuotationItem } from '@lib/shared/models/opportunity';
   import { CluePoolItem } from '@lib/shared/models/system/module';
@@ -114,26 +116,29 @@
   import CrmNameTooltip from '@/components/pure/crm-name-tooltip/index.vue';
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
+  import CrmTag from '@/components/pure/crm-tag/index.vue';
+  import CrmApprovalPopover from '@/components/business/crm-approval/components/crm-approval-popover.vue';
+  import batchOperationResultModal from '@/components/business/crm-batch-edit-modal/components/batchOperationResultModal.vue';
   import CrmBatchEditModal from '@/components/business/crm-batch-edit-modal/index.vue';
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmViewSelect from '@/components/business/crm-view-select/index.vue';
   import OptOverviewDrawer from '../optOverviewDrawer.vue';
   import approvalModal from './approvalModal.vue';
-  import batchOperationResultModal from './batchOperationResultModal.vue';
   import detailDrawer from './detail.vue';
-  import quotationStatus from './quotationStatus.vue';
   import customerOverviewDrawer from '@/views/customer/components/customerOverviewDrawer.vue';
   import openSeaOverviewDrawer from '@/views/customer/components/openSeaOverviewDrawer.vue';
 
-  import { batchVoided, deleteQuotation, getOpenSeaOptions, revokeQuotation, voidQuotation } from '@/api/modules';
+  import { batchVoided, deleteQuotation, getOpenSeaOptions, voidQuotation } from '@/api/modules';
   import { baseFilterConfigList } from '@/config/clue';
-  import { quotationStatusOptions } from '@/config/opportunity';
+  import { quotationDataActionMap, quotationStatus } from '@/config/opportunity';
+  import { processStatusOptions } from '@/config/process';
+  import useApprovalOperation from '@/hooks/useApprovalOperation';
+  import useApprovalResourceAction from '@/hooks/useApprovalResourceAction';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormCreateTable from '@/hooks/useFormCreateTable';
   import useModal from '@/hooks/useModal';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
-  import { useUserStore } from '@/store';
   import { hasAnyPermission } from '@/utils/permission';
 
   import { FullPageEnum } from '@/enums/routeEnum';
@@ -141,9 +146,7 @@
   const { openModal } = useModal();
   const { t } = useI18n();
   const Message = useMessage();
-  const { currentLocale } = useLocale(Message.loading);
 
-  const useStore = useUserStore();
   const { openNewPage } = useOpenNewPage();
 
   const props = defineProps<{
@@ -183,7 +186,11 @@
     batchOperationName.value = t('common.batchApproval');
   }
 
+  const { initFormConfig: initEditFormConfig, fieldList: editFieldList } = useFormCreateApi({
+    formKey: ref(FormDesignKeyEnum.OPPORTUNITY_QUOTATION),
+  });
   function handleBatchEdit() {
+    initEditFormConfig();
     showEditModal.value = true;
   }
 
@@ -198,20 +205,21 @@
     handleRefresh();
   }
 
+  const batchVoidApprovalContentTip = ref('');
   // 批量作废
   function handleBatchVoid() {
     batchOperationName.value = t('common.batchVoid');
+    const content = `${batchVoidApprovalContentTip.value} ${t('opportunity.quotation.invalidContentTip')}`;
     openModal({
       type: 'error',
       title: t('opportunity.quotation.batchInvalidTitleTip', { number: checkedRowKeys.value.length }),
-      content: t('opportunity.quotation.invalidContentTip'),
+      content,
       positiveText: t('common.confirmVoid'),
       negativeText: t('common.cancel'),
       onPositiveClick: async () => {
         try {
           const result = await batchVoided({
             ids: checkedRowKeys.value,
-            approvalStatus: QuotationStatusEnum.VOIDED,
           });
           batchResult.value = result;
           resultVisible.value = true;
@@ -323,24 +331,69 @@
     });
   }
 
-  async function handleRevoke(row: QuotationItem) {
-    try {
-      await revokeQuotation(row.id);
-      Message.success(t('common.revokeSuccess'));
-      tableRefreshItemId.value = row.id;
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(error);
-    }
-  }
-
   function handleDownload(id: string) {
     openNewPage(FullPageEnum.FULL_PAGE_EXPORT_QUOTATION, { id });
   }
 
+  const {
+    initApprovalPermission,
+    resolveRowOperation,
+    enableApproval,
+    hasApprovalScopedPermission,
+    getApprovalActionTip,
+  } = useApprovalOperation<QuotationItem>({
+    formType: FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+    dataActionMap: quotationDataActionMap,
+    shouldUseRolePermissionOnly: (row) => row.invalid,
+    specialActionFilter: (row, actionKeys) => {
+      if (row.invalid) {
+        return actionKeys.filter((key) => key === 'delete');
+      }
+      return actionKeys;
+    },
+  });
+
+  const batchEditApprovalTip = computed(() =>
+    getApprovalActionTip(['OPPORTUNITY_QUOTATION:UPDATE'], 'common.batchEditApprovalTip')
+  );
+
+  const batchVoidApprovalTip = computed(() =>
+    getApprovalActionTip(['OPPORTUNITY_QUOTATION:VOIDED'], 'common.batchVoidApprovalTip')
+  );
+
+  watch(
+    () => batchVoidApprovalTip.value,
+    (val) => {
+      batchVoidApprovalContentTip.value = val ? `${val}，` : val;
+    }
+  );
+
+  const { reviewByFormResult, reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
+    formKey: FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+  });
+
   function handleApproval(row: QuotationItem) {
+    if (!hasApprovalScopedPermission(row, ['OPPORTUNITY_QUOTATION:READ'])) {
+      return;
+    }
     activeSourceId.value = row.id;
     showDetailDrawer.value = true;
+  }
+
+  function handleReview(row: QuotationItem) {
+    reviewByResourceId(row.id, {
+      onSuccess: (resourceId) => {
+        tableRefreshItemId.value = resourceId;
+      },
+    });
+  }
+
+  function handleRevoke(row: QuotationItem) {
+    revokeByResourceId(row.id, {
+      onSuccess: (resourceId) => {
+        tableRefreshItemId.value = resourceId;
+      },
+    });
   }
 
   function handleActionSelect(row: QuotationItem, actionKey: string, done?: () => void) {
@@ -348,8 +401,8 @@
       case 'edit':
         handleEdit(row.id);
         break;
-      case 'approval':
-        handleApproval(row);
+      case 'review':
+        handleReview(row);
         break;
       case 'voided':
         handleVoid(row);
@@ -368,106 +421,6 @@
     }
   }
 
-  const groupList = [
-    {
-      label: t('common.edit'),
-      key: 'edit',
-      permission: ['OPPORTUNITY_QUOTATION:UPDATE'],
-    },
-    {
-      label: t('common.approval'),
-      key: 'approval',
-      permission: ['OPPORTUNITY_QUOTATION:APPROVAL'],
-    },
-    {
-      label: t('common.voided'),
-      key: 'voided',
-      permission: ['OPPORTUNITY_QUOTATION:VOIDED'],
-    },
-    {
-      label: t('common.delete'),
-      key: 'delete',
-      permission: ['OPPORTUNITY_QUOTATION:DELETE'],
-    },
-    {
-      label: 'more',
-      key: 'more',
-      slotName: 'more',
-    },
-  ];
-
-  const moreGroupList = [
-    {
-      label: t('common.download'),
-      key: 'download',
-      permission: ['OPPORTUNITY_QUOTATION:DOWNLOAD'],
-    },
-    {
-      label: t('common.revoke'),
-      key: 'revoke',
-    },
-  ];
-
-  const moreActions = [
-    {
-      label: t('common.voided'),
-      key: 'voided',
-      permission: ['OPPORTUNITY_QUOTATION:VOIDED'],
-    },
-    {
-      label: t('common.delete'),
-      key: 'delete',
-      danger: true,
-      permission: ['OPPORTUNITY_QUOTATION:DELETE'],
-    },
-  ];
-
-  function getOperationGroupList(row: QuotationItem, dicApprovalEnable: boolean) {
-    const allGroups = [...groupList, ...moreGroupList];
-    const getGroups = (keys: string[]) => {
-      return keys.map((key) => allGroups.find((e) => e.key === key)).filter(Boolean) as typeof groupList;
-    };
-    if (dicApprovalEnable) {
-      const commonGroups = ['voided', 'delete'];
-
-      switch (row.approvalStatus) {
-        case QuotationStatusEnum.APPROVED:
-          return getGroups(['download', ...commonGroups]);
-        case QuotationStatusEnum.UNAPPROVED:
-        case QuotationStatusEnum.REVOKED:
-          return getGroups(['edit', ...commonGroups]);
-        case QuotationStatusEnum.APPROVING:
-          const operationGroups =
-            row.createUser === useStore.userInfo.id && hasAnyPermission(['OPPORTUNITY_QUOTATION:APPROVAL'])
-              ? ['approval', 'revoke', 'more']
-              : ['approval', ...commonGroups];
-          return getGroups(operationGroups);
-        case QuotationStatusEnum.VOIDED:
-          return getGroups(['delete']);
-        default:
-          return getGroups(['edit', 'voided', 'delete']);
-      }
-    }
-
-    if (row.approvalStatus === QuotationStatusEnum.VOIDED) return getGroups(['delete']);
-    return getGroups(['edit', 'download', 'more']);
-  }
-
-  function getMoreOperationGroupList(row: QuotationItem, dicApprovalEnable: boolean) {
-    if (dicApprovalEnable) {
-      if (
-        (row.approvalStatus === QuotationStatusEnum.APPROVING &&
-          row.createUser === useStore.userInfo.id &&
-          hasAnyPermission(['OPPORTUNITY_QUOTATION:APPROVAL'])) ||
-        row.approvalStatus === QuotationStatusEnum.NONE
-      ) {
-        return moreActions;
-      }
-      return [];
-    }
-
-    return row.approvalStatus === QuotationStatusEnum.VOIDED ? [] : moreActions;
-  }
   const showOverviewDrawer = ref<boolean>(false);
   const activeOpportunity = ref();
   function showOpportunityDrawer(row: QuotationItem) {
@@ -522,26 +475,31 @@
     initOpenSeaOptions();
   });
 
-  const { useTableRes, customFieldsFilterConfig, fieldList, dicApprovalEnable } = await useFormCreateTable({
+  await initApprovalPermission();
+
+  const { useTableRes, customFieldsFilterConfig } = await useFormCreateTable({
     formKey: props.formKey,
     containerClass: `.crm-quotation-table-${props.formKey}`,
     operationColumn: props.readonly
       ? undefined
       : {
           key: 'operation',
-          width: currentLocale.value === 'zh-CN' ? 140 : 200,
+          width: 180,
           fixed: 'right',
-          render: (row: QuotationItem) =>
-            getOperationGroupList(row, dicApprovalEnable.value).length
+          render: (row: QuotationItem) => {
+            const operation = resolveRowOperation(row);
+            return operation.groupList.length
               ? h(CrmOperationButton, {
-                  groupList: getOperationGroupList(row, dicApprovalEnable.value),
-                  moreList: getMoreOperationGroupList(row, dicApprovalEnable.value),
+                  groupList: operation.groupList,
+                  moreList: operation.moreList,
                   onSelect: (key: string, done?: () => void) => handleActionSelect(row, key, done),
                 })
-              : '-',
+              : '-';
+          },
         },
     specialRender: {
       name: (row: QuotationItem) => {
+        const canOpenDetail = !props.readonly && hasApprovalScopedPermission(row, ['OPPORTUNITY_QUOTATION:READ']);
         const createNameButton = () =>
           h(
             CrmTableButton,
@@ -553,7 +511,7 @@
             },
             { default: () => row.name, trigger: () => row.name }
           );
-        return props.readonly ? h(CrmNameTooltip, { text: row.name }) : createNameButton();
+        return canOpenDetail ? createNameButton() : h(CrmNameTooltip, { text: row.name });
       },
       opportunityId: (row: QuotationItem) => {
         return hasAnyPermission(['OPPORTUNITY_MANAGEMENT:READ']) && row.opportunityName
@@ -568,27 +526,40 @@
             )
           : h(CrmNameTooltip, { text: row.opportunityName });
       },
-      approvalStatus: (row: QuotationItem) =>
-        h(quotationStatus, {
+      invalid: (row: QuotationItem) => {
+        return h(
+          CrmTag,
+          {
+            type: row.invalid ? 'default' : 'info',
+            theme: 'light',
+          },
+          {
+            default: () => (row.invalid ? t('common.voided') : t('common.normal')),
+          }
+        );
+      },
+      approvalStatus: (row: QuotationItem) => {
+        const canOpenDetail = hasApprovalScopedPermission(row, ['OPPORTUNITY_QUOTATION:READ']);
+        return h(CrmApprovalPopover, {
           status: row.approvalStatus,
-        }),
+          formKey: props.formKey,
+          sourceId: row.id,
+          showMore: canOpenDetail,
+          disabled: row.approvalStatus !== ProcessStatusEnum.UNAPPROVED,
+          onMore: () => {
+            handleApproval(row);
+          },
+        });
+      },
     },
-    permission: ['OPPORTUNITY_QUOTATION:APPROVAL', 'OPPORTUNITY_QUOTATION:VOIDED'],
+    permission: ['OPPORTUNITY_QUOTATION:VOIDED', 'OPPORTUNITY_QUOTATION:UPDATE'],
     readonly: props.readonly,
+    enableApproval,
   });
 
   const actionConfig = computed(<BatchActionConfig>() => {
     return {
       baseAction: [
-        ...(dicApprovalEnable.value
-          ? [
-              {
-                label: t('common.batchApproval'),
-                key: 'approval',
-                permission: ['OPPORTUNITY_QUOTATION:APPROVAL'],
-              },
-            ]
-          : []),
         {
           label: t('common.batchEdit'),
           key: 'batchEdit',
@@ -609,18 +580,22 @@
 
   const filterConfigList = computed<FilterFormItem[]>(() => {
     return [
-      ...(dicApprovalEnable.value
-        ? [
-            {
-              title: t('common.status'),
-              dataIndex: 'approvalStatus',
-              type: FieldTypeEnum.SELECT_MULTIPLE,
-              selectProps: {
-                options: quotationStatusOptions,
-              },
-            },
-          ]
-        : []),
+      {
+        title: t('common.approvalStatus'),
+        dataIndex: 'approvalStatus',
+        type: FieldTypeEnum.SELECT_MULTIPLE,
+        selectProps: {
+          options: processStatusOptions,
+        },
+      },
+      {
+        title: t('common.status'),
+        dataIndex: 'invalid',
+        type: FieldTypeEnum.SELECT_MULTIPLE,
+        selectProps: {
+          options: quotationStatus,
+        },
+      },
       {
         title: t('opportunity.department'),
         dataIndex: 'departmentId',
@@ -674,6 +649,14 @@
     }
   }
 
+  function handleFormReview(res: any) {
+    reviewByFormResult(res, {
+      onSuccess: () => {
+        handleFormCreateSaved();
+      },
+    });
+  }
+
   function removeItemFromList(id: string) {
     propsRes.value.data = propsRes.value.data.filter((item) => item.id !== id);
     propsRes.value.crmPagination = {
@@ -701,7 +684,7 @@
     }
   );
 
-  onBeforeMount(async () => {
+  onBeforeMount(() => {
     if (props.sourceId) {
       searchData();
     }

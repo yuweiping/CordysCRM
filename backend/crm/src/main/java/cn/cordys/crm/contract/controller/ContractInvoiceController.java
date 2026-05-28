@@ -12,7 +12,10 @@ import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.utils.ConditionFilterUtils;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.contract.domain.ContractInvoice;
-import cn.cordys.crm.contract.dto.request.*;
+import cn.cordys.crm.contract.dto.request.ContractInvoiceAddRequest;
+import cn.cordys.crm.contract.dto.request.ContractInvoiceExportRequest;
+import cn.cordys.crm.contract.dto.request.ContractInvoicePageRequest;
+import cn.cordys.crm.contract.dto.request.ContractInvoiceUpdateRequest;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceGetResponse;
 import cn.cordys.crm.contract.dto.response.ContractInvoiceListResponse;
 import cn.cordys.crm.contract.service.ContractInvoiceExportService;
@@ -158,18 +161,5 @@ public class ContractInvoiceController {
     @Operation(summary = "批量删除客户")
     public void batchDelete(@RequestBody @NotNull List<String> ids) {
         contractInvoiceService.batchDelete(ids, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
-    }
-
-    @PostMapping("/approval")
-    @RequiresPermissions(PermissionConstants.CONTRACT_INVOICE_APPROVAL)
-    @Operation(summary = "审核通过/不通过")
-    public void approval(@Validated @RequestBody ContractInvoiceApprovalRequest request) {
-        contractInvoiceService.approvalContractInvoice(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
-    }
-
-    @GetMapping("/revoke/{id}")
-    @Operation(summary = "撤销审批")
-    public String revoke(@PathVariable("id") String id) {
-        return contractInvoiceService.revoke(id, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 }

@@ -15,8 +15,8 @@
       @after-leave="showAlert = false"
     >
       <span>{{ t('system.personal.changePasswordTip') }}</span>
-      <n-button class="ml-[8px]" text type="primary" @click="changePassword">
-        {{ t('system.personal.changePassword') }}
+      <n-button class="ml-[8px]" text type="primary" size="small" @click="changePassword">
+        <div class="text-[14px]"> {{ t('system.personal.changePassword') }}</div>
       </n-button>
     </n-alert>
     <n-scrollbar x-scrollable content-style="min-width: 1000px;height: 100%;width: 100%">
@@ -46,22 +46,60 @@
               />
             </CrmCard>
           </div>
-          <CrmCard hide-footer no-content-padding class="ml-[16px] w-[400px]">
-            <div class="h-full p-[24px]">
-              <div class="title !mb-[8px]">
-                <div class="title-name">{{ t('system.message.notify') }}</div>
-                <div class="title-right" @click="showMessageDrawer = true">
-                  {{ t('common.ViewMore') }}
+          <div class="flex h-full w-[400px] flex-col justify-between overflow-hidden">
+            <CrmCard hide-footer no-content-padding auto-height class="ml-[16px] w-full">
+              <div class="max-h-[352px] p-[24px]">
+                <div class="title !mb-[16px]">
+                  <div class="title-name">{{ t('workbench.dataOverview.myTasks') }}</div>
+                </div>
+                <div class="grid grid-cols-2 gap-[8px_16px]">
+                  <div class="task-item" @click="openTaskDrawer(ApprovalListTypeEnum.PENDING)">
+                    <div class="task-icon bg-[var(--info-blue)]">
+                      <CrmIcon type="iconicon_contract" :size="16" color="var(--text-n10)" />
+                    </div>
+                    <div class="flex flex-1 items-center justify-between">
+                      {{ t('workbench.dataOverview.pendingApproval') }}
+                      <div class="font-semibold text-[var(--primary-8)]">{{ pendingApprovalCount }}</div>
+                    </div>
+                  </div>
+                  <div class="task-item" @click="openTaskDrawer(ApprovalListTypeEnum.APPROVAL)">
+                    <div class="task-icon bg-[var(--success-green)]">
+                      <CrmIcon type="iconicon_check_circle" :size="16" color="var(--text-n10)" />
+                    </div>
+                    {{ t('workbench.dataOverview.approvedByMe') }}
+                  </div>
+                  <div class="task-item" @click="openTaskDrawer(ApprovalListTypeEnum.INITIATED)">
+                    <div class="task-icon bg-[var(--primary-8)]">
+                      <CrmIcon type="iconicon_add" :size="16" color="var(--text-n10)" />
+                    </div>
+                    {{ t('workbench.dataOverview.initiatedByMe') }}
+                  </div>
+                  <div class="task-item" @click="openTaskDrawer(ApprovalListTypeEnum.COPIED)">
+                    <div class="task-icon bg-[var(--warning-yellow)]">
+                      <CrmIcon type="iconicon_send" :size="16" color="var(--text-n10)" />
+                    </div>
+                    {{ t('workbench.dataOverview.copiedToMe') }}
+                  </div>
                 </div>
               </div>
-              <CrmMessageList
-                ref="messageListRef"
-                :message-list="messageList"
-                :virtual-scroll-height="`calc(100vh - ${!showAlert ? 168 : 230}px)`"
-                key-field="id"
-              />
-            </div>
-          </CrmCard>
+            </CrmCard>
+            <CrmCard hide-footer no-content-padding auto-height class="ml-[16px] mt-[16px] flex-1">
+              <div class="p-[24px]">
+                <div class="title !mb-[8px]">
+                  <div class="title-name">{{ t('system.message.notify') }}</div>
+                  <div class="title-right" @click="showMessageDrawer = true">
+                    {{ t('common.ViewMore') }}
+                  </div>
+                </div>
+                <CrmMessageList
+                  ref="messageListRef"
+                  :message-list="messageList"
+                  :virtual-scroll-height="`calc(100vh - ${!showAlert ? 168 : 230}px)`"
+                  key-field="id"
+                />
+              </div>
+            </CrmCard>
+          </div>
           <PersonalInfoDrawer v-model:visible="showPersonalInfo" v-model:active-tab-value="personalTab" />
           <MessageDrawer v-model:show="showMessageDrawer" />
         </div>
@@ -70,6 +108,7 @@
 
     <EditPasswordModal v-model:show="showEditPasswordModal" />
   </div>
+  <CrmTaskDrawer v-model:show="showTaskDrawer" :type="activeTaskType" />
 </template>
 
 <script setup lang="ts">
@@ -77,19 +116,23 @@
   import { NAlert, NButton, NScrollbar } from 'naive-ui';
 
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+  import { ApprovalListTypeEnum, ApprovalResourceTypeEnum } from '@lib/shared/enums/process';
   import { PersonalEnum } from '@lib/shared/enums/systemEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
   import CrmCard from '@/components/pure/crm-card/index.vue';
   // import CrmTab from '@/components/pure/crm-tab/index.vue';
+  import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import FollowDetail from '@/components/business/crm-follow-detail/index.vue';
   import CrmMessageList from '@/components/business/crm-message-list/index.vue';
+  import CrmTaskDrawer from '@/components/business/crm-task-drawer/index.vue';
   import dataOverviewIndex from './components/dataOverviewIndex.vue';
   import QuickAccess from './components/quickAccess.vue';
   import EditPasswordModal from '@/views/system/business/components/editPasswordModal.vue';
   import PersonalInfoDrawer from '@/views/system/business/components/personalInfoDrawer.vue';
   import MessageDrawer from '@/views/system/message/components/messageDrawer.vue';
 
+  import { getTodoStatistic } from '@/api/modules/index';
   import { quickAccessList } from '@/config/workbench';
   import { useAppStore, useUserStore } from '@/store';
   import { hasAnyPermission } from '@/utils/permission';
@@ -149,6 +192,15 @@
     }
   }
 
+  // 待办
+  const pendingApprovalCount = ref(0);
+  const showTaskDrawer = ref(false);
+  const activeTaskType = ref<ApprovalListTypeEnum>(ApprovalListTypeEnum.PENDING);
+  function openTaskDrawer(type: ApprovalListTypeEnum) {
+    activeTaskType.value = type;
+    showTaskDrawer.value = true;
+  }
+
   // 消息
   const showMessageDrawer = ref(false);
 
@@ -156,8 +208,19 @@
     return appStore.messageInfo.notificationDTOList;
   });
 
+  async function initApprovalPendingCount() {
+    try {
+      const res = await getTodoStatistic();
+      pendingApprovalCount.value = res.total;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
+  }
+
   onBeforeMount(() => {
     appStore.initMessage();
+    initApprovalPendingCount();
   });
 </script>
 
@@ -174,6 +237,22 @@
       &:hover {
         color: var(--text-n1);
       }
+    }
+  }
+  .task-item {
+    @apply flex cursor-pointer items-center;
+
+    padding: 8px;
+    height: 40px;
+    border-radius: var(--border-radius-small);
+    background-color: var(--text-n9);
+    .task-icon {
+      @apply flex items-center justify-center;
+
+      margin-right: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
     }
   }
   :deep(.crm-message-item) {

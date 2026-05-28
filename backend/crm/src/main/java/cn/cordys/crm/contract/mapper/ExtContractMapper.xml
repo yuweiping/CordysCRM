@@ -87,9 +87,15 @@
         <include refid="viewCombine">
             <property name="combineSearch" value="request.viewCombineSearch"/>
         </include>
-        <include refid="sort">
-            <property name="sort" value="request.sort"/>
-        </include>
+
+        <if test="request.board">
+            order by ct.pos desc
+        </if>
+        <if test="!request.board">
+            <include refid="sort">
+                <property name="sort" value="request.sort"/>
+            </include>
+        </if>
     </select>
 
     <select id="getListByIds" resultType="cn.cordys.crm.contract.dto.response.ContractListResponse">
@@ -412,7 +418,7 @@
                         souc_sort.`id` ${sortType}, ct.id ASC
                     </when>
                     <when test="${sort}.name == 'approval_status'">
-                        ct.`approval_status` ${sortType}, ct.id ASC
+                        FIELD(ct.approval_status, 'NONE', 'PENDING', 'APPROVING', 'APPROVED', 'REVOKED', 'UNAPPROVED') ${sortType}, ct.id ASC
                     </when>
                     <when test="${sort}.name == 'start_time'">
                         ct.`start_time` ${sortType}, ct.id ASC
@@ -607,4 +613,27 @@
         </include>
 
     </select>
+
+
+    <select id="countByStage" resultType="java.lang.Integer">
+        select count(id) from contract
+        where stage = #{stage}
+    </select>
+
+    <select id="selectNextPos" resultType="java.lang.Long">
+        select pos from contract where stage = #{stage} and organization_id = #{orgId}
+        order by pos desc limit 1
+    </select>
+
+    <update id="moveUpStageContract">
+        update contract set pos = pos + #{pos} where pos &gt; #{end} and stage = #{stage}
+    </update>
+
+    <update id="moveDownStageContract">
+        update contract set pos = pos + #{pos} where pos &gt;= #{end} and stage = #{stage}
+    </update>
+
+    <update id="updateOldApprovalStatusNone">
+        update contract set approval_status = 'NONE' where approval_status = 'APPROVING';
+    </update>
 </mapper>

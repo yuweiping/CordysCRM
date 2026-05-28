@@ -39,6 +39,9 @@ public class OpportunityQuotationListResponse {
     @Schema(description = "审核状态")
     private String approvalStatus;
 
+	@Schema(description = "是否作废")
+	private Boolean invalid;
+
     @Schema(description = "有效期至")
     private Long untilTime;
 
@@ -63,5 +66,7 @@ public class OpportunityQuotationListResponse {
     @Schema(description = "自定义字段")
     private List<BaseModuleFieldValue> moduleFields;
 
+	@Schema(description = "审批第一个节点是否通过")
+	private Boolean firstApproved;
 
 }

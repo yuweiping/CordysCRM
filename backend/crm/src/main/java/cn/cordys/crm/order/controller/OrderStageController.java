@@ -1,10 +1,10 @@
 package cn.cordys.crm.order.controller;
 
 import cn.cordys.common.constants.PermissionConstants;
+import cn.cordys.common.dto.stage.StageAddRequest;
+import cn.cordys.common.dto.stage.StageRollBackRequest;
+import cn.cordys.common.dto.stage.StageUpdateRequest;
 import cn.cordys.context.OrganizationContext;
-import cn.cordys.crm.opportunity.dto.request.StageRollBackRequest;
-import cn.cordys.crm.order.dto.request.OrderStageAddRequest;
-import cn.cordys.crm.order.dto.request.OrderStageUpdateRequest;
 import cn.cordys.crm.order.dto.response.OrderStageConfigListResponse;
 import cn.cordys.crm.order.service.OrderStageService;
 import cn.cordys.security.SessionUtils;
@@ -35,7 +35,7 @@ public class OrderStageController {
     @PostMapping("/add")
     @Operation(summary = "添加订单状态流")
     @RequiresPermissions(value = {PermissionConstants.MODULE_SETTING_UPDATE})
-    public String add(@RequestBody OrderStageAddRequest request) {
+    public String add(@RequestBody StageAddRequest request) {
         return orderStageService.addStageConfig(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
     }
 
@@ -59,7 +59,7 @@ public class OrderStageController {
     @PostMapping("/update")
     @Operation(summary = "更新订单阶段配置")
     @RequiresPermissions(value = {PermissionConstants.MODULE_SETTING_UPDATE})
-    public void update(@Validated @RequestBody OrderStageUpdateRequest request) {
+    public void update(@Validated @RequestBody StageUpdateRequest request) {
         orderStageService.update(request, SessionUtils.getUserId());
     }
 

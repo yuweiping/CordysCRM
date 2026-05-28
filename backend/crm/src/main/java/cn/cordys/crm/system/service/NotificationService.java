@@ -48,6 +48,8 @@ public class NotificationService {
         resourceMap.forEach((k, v) -> {
             if (k.contains(NotificationConstants.Module.CUSTOMER)) {
                 countMap.merge(NotificationConstants.Module.CUSTOMER, v.size(), Integer::sum);
+            } else if (k.contains(NotificationConstants.Module.APPROVAL)) {
+                countMap.merge(NotificationConstants.Module.APPROVAL, v.size(), Integer::sum);
             } else if (k.contains(NotificationConstants.Module.CLUE)) {
                 countMap.merge(NotificationConstants.Module.CLUE, v.size(), Integer::sum);
             } else if (k.contains(NotificationConstants.Module.OPPORTUNITY)) {
@@ -56,15 +58,19 @@ public class NotificationService {
                 countMap.merge(NotificationConstants.Module.CONTRACT, v.size(), Integer::sum);
             } else if (k.contains(NotificationConstants.Module.SYSTEM)) {
                 countMap.merge(NotificationConstants.Module.SYSTEM, v.size(), Integer::sum);
-            } else {
+            } else if (k.contains(NotificationConstants.Module.ORDER)) {
+				countMap.merge(NotificationConstants.Module.ORDER, v.size(), Integer::sum);
+			} else {
                 countMap.merge(NotificationConstants.Type.ANNOUNCEMENT_NOTICE.name(), v.size(), Integer::sum);
             }
         });
         countMap.putIfAbsent(NotificationConstants.Module.CUSTOMER, 0);
+        countMap.putIfAbsent(NotificationConstants.Module.APPROVAL, 0);
         countMap.putIfAbsent(NotificationConstants.Module.CLUE, 0);
         countMap.putIfAbsent(NotificationConstants.Module.OPPORTUNITY, 0);
         countMap.putIfAbsent(NotificationConstants.Module.CONTRACT, 0);
         countMap.putIfAbsent(NotificationConstants.Module.SYSTEM, 0);
+        countMap.putIfAbsent(NotificationConstants.Module.ORDER, 0);
         countMap.putIfAbsent(NotificationConstants.Type.ANNOUNCEMENT_NOTICE.name(), 0);
 
         countMap.forEach((k, v) -> {

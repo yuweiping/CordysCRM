@@ -80,7 +80,7 @@
                 </template>
                 <template #approvalStatus="{ item: decItem }">
                   <div class="flex items-center gap-[8px]">
-                    <ContractInvoiceStatus :status="decItem.value as ContractInvoiceStatusEnum" />
+                    <CrmApprovalStatus :status="(decItem.value as ProcessStatusEnum)??  ProcessStatusEnum.NONE" />
                   </div>
                 </template>
                 <template #updateTime="{ item: decItem }">
@@ -102,18 +102,20 @@
   import { NEmpty } from 'naive-ui';
   import dayjs from 'dayjs';
 
-  import { type ContractInvoiceStatusEnum, ContractStatusEnum } from '@lib/shared/enums/contractEnum';
+  import { ContractStatusEnum } from '@lib/shared/enums/contractEnum';
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+  import { ProcessStatusEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import { OpportunityStageConfig } from '@lib/shared/models/opportunity';
 
   import CrmCard from '@/components/pure/crm-card/index.vue';
   import CrmDetailCard from '@/components/pure/crm-detail-card/index.vue';
   import CrmList from '@/components/pure/crm-list/index.vue';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
+  import CrmApprovalStatus from '@/components/business/crm-approval/components/crm-approval-status.vue';
   import ContractStatus from '@/views/contract/contractPaymentPlan/components/contractPaymentStatus.vue';
-  import ContractInvoiceStatus from '@/views/contract/invoice/components/contractInvoiceStatus.vue';
 
-  import { contractStatusOptions } from '@/config/contract';
+  import { getContractStatusConfig } from '@/api/modules';
   import type { TimelineType } from '@/hooks/useContractTimeline';
   import useContractTimeline from '@/hooks/useContractTimeline';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
@@ -143,10 +145,30 @@
     }
   }
 
+  const stageConfig = ref<OpportunityStageConfig>();
+  async function initStageConfig() {
+    try {
+      stageConfig.value = await getContractStatusConfig();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
+  }
+
+  const contractStatusOptions = computed(() => {
+    return (
+      stageConfig.value?.stageConfigList?.map((item) => ({
+        label: item.name,
+        value: item.id,
+      })) || []
+    );
+  });
+
   onMounted(async () => {
     await getFormConfig();
     loadList();
     getStatistic();
+    initStageConfig();
   });
 </script>
 

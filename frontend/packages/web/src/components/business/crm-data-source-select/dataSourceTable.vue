@@ -42,6 +42,7 @@
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { ContractPaymentPlanEnum, ContractStatusEnum } from '@lib/shared/enums/contractEnum';
   import { FieldDataSourceTypeEnum, FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+  import { ProcessStatusEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { transformData } from '@lib/shared/method/formCreate';
   import type { ContractItem, PaymentPlanItem } from '@lib/shared/models/contract';
@@ -55,13 +56,16 @@
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import useTable from '@/components/pure/crm-table/useTable';
+  import CrmTag from '@/components/pure/crm-tag/index.vue';
+  import CrmApprovalPopover, {
+    ApprovalPopoverFormKeyType,
+  } from '@/components/business/crm-approval/components/crm-approval-popover.vue';
   import CrmBusinessNamePrefix from '@/components/business/crm-business-name-prefix/index.vue';
   import StatusTagSelect from '@/components/business/crm-follow-detail/statusTagSelect.vue';
   import ContractStatus from '@/views/contract/contractPaymentPlan/components/contractPaymentStatus.vue';
-  import QuotationStatus from '@/views/opportunity/components/quotation/quotationStatus.vue';
 
   import { getOpportunityStageConfig, getOrderStatusConfig } from '@/api/modules';
-  import { contractPaymentPlanStatusOptions, contractStatusOptions } from '@/config/contract';
+  import { contractPaymentPlanStatusOptions } from '@/config/contract';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormCreateSystemColumns from '@/hooks/useFormCreateSystemColumns';
   import { FormKey } from '@/hooks/useFormCreateTable';
@@ -135,22 +139,34 @@
     [FieldDataSourceTypeEnum.PRICE]: {},
     [FieldDataSourceTypeEnum.QUOTATION]: {
       approvalStatus: (row: QuotationItem) =>
-        h(QuotationStatus, {
+        h(CrmApprovalPopover, {
           status: row.approvalStatus,
+          formKey: formKeyMap[props.sourceType] as ApprovalPopoverFormKeyType,
+          disabled: row.approvalStatus !== ProcessStatusEnum.UNAPPROVED,
+          showMore: false,
         }),
+      invalid: (row: QuotationItem) =>
+        h(
+          CrmTag,
+          {
+            type: row.invalid ? 'default' : 'info',
+            theme: 'light',
+          },
+          {
+            default: () => (row.invalid ? t('common.voided') : t('common.normal')),
+          }
+        ),
     },
     [FieldDataSourceTypeEnum.CONTRACT]: {
       stage: (row: ContractItem) => {
-        return h(StatusTagSelect, {
-          status: row.stage as ContractStatusEnum,
-          noRender: true,
-          disabled: true,
-          statusOptions: contractStatusOptions,
-        });
+        return row.stageName || '-';
       },
       approvalStatus: (row: ContractItem) =>
-        h(QuotationStatus, {
+        h(CrmApprovalPopover, {
           status: row.approvalStatus,
+          formKey: formKeyMap[props.sourceType] as ApprovalPopoverFormKeyType,
+          disabled: row.approvalStatus !== ProcessStatusEnum.UNAPPROVED,
+          showMore: false,
         }),
     },
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT]: {
@@ -181,6 +197,13 @@
       stage: (row: OrderItem) => {
         return row.stageName || '-';
       },
+      approvalStatus: (row: ContractItem) =>
+        h(CrmApprovalPopover, {
+          status: row.approvalStatus,
+          formKey: formKeyMap[props.sourceType] as ApprovalPopoverFormKeyType,
+          disabled: row.approvalStatus !== ProcessStatusEnum.UNAPPROVED,
+          showMore: false,
+        }),
     },
     [FieldDataSourceTypeEnum.CUSTOMER_OPTIONS]: {},
     [FieldDataSourceTypeEnum.USER_OPTIONS]: {},

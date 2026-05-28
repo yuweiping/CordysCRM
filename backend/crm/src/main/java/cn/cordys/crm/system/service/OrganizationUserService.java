@@ -6,6 +6,7 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
+import cn.cordys.common.constants.InternalRole;
 import cn.cordys.common.constants.InternalUser;
 import cn.cordys.common.dto.BaseTreeNode;
 import cn.cordys.common.dto.DeptUserTreeNode;
@@ -17,6 +18,7 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.CodingUtils;
 import cn.cordys.common.util.SubListUtils;
 import cn.cordys.common.util.Translator;
+import cn.cordys.crm.approval.service.ApprovalActionService;
 import cn.cordys.crm.clue.mapper.ExtClueMapper;
 import cn.cordys.crm.customer.mapper.ExtCustomerMapper;
 import cn.cordys.crm.opportunity.mapper.ExtOpportunityMapper;
@@ -111,13 +113,16 @@ public class OrganizationUserService {
     private PermissionCache permissionCache;
     @Resource
     private ExtNotificationMapper extNotificationMapper;
+    @Resource
+    private UserRoleService userRoleService;
+    @Resource
+    private ApprovalActionService approvalActionService;
 
 
     /**
      * 员工列表查询
      *
      * @param request
-     *
      * @return
      */
     public List<UserPageResponse> list(UserPageRequest request) {
@@ -306,7 +311,6 @@ public class OrganizationUserService {
      *
      * @param request
      * @param operatorId
-     *
      * @return
      */
     private User addUserBaseData(UserAddRequest request, String operatorId, String id) {
@@ -328,7 +332,6 @@ public class OrganizationUserService {
      * 获取用户详情
      *
      * @param id
-     *
      * @return
      */
     public UserResponse getUserDetail(String id) {
@@ -468,6 +471,11 @@ public class OrganizationUserService {
         newUser.setEnable(request.isEnable());
         SubListUtils.dealForSubList(request.getIds(), 50, ids -> {
             List<OptionDTO> orgUsers = extOrganizationUserMapper.selectEnableOrgUser(ids, !request.isEnable());
+            if (!request.isEnable()) {
+                List<String> userIds = orgUsers.stream().map(OptionDTO::getId).toList();
+                approvalActionService.refreshApprovingTasksForDisabledUser(userIds, orgId);
+            }
+
             List<LogDTO> logs = new ArrayList<>();
             orgUsers.forEach(orgUser -> {
                 // 踢出该用户
@@ -656,7 +664,6 @@ public class OrganizationUserService {
      * 导入excel检查
      *
      * @param file
-     *
      * @return
      */
     public UserImportResponse preCheck(MultipartFile file, String orgId) {
@@ -692,7 +699,6 @@ public class OrganizationUserService {
      * @param file
      * @param operatorId
      * @param orgId
-     *
      * @return
      */
     public UserImportResponse importByExcel(MultipartFile file, String operatorId, String orgId) {
@@ -799,7 +805,6 @@ public class OrganizationUserService {
      * @param supervisorList
      * @param departmentId
      * @param name
-     *
      * @return
      */
     private String handleSupervisor(List<UserImportDTO> supervisorList, String departmentId, String name) {
@@ -828,7 +833,6 @@ public class OrganizationUserService {
      * 导入校验电话号码唯一
      *
      * @param phone
-     *
      * @return
      */
     public boolean checkPhone(String phone) {
@@ -839,7 +843,6 @@ public class OrganizationUserService {
      * 导入校验邮箱唯一
      *
      * @param email
-     *
      * @return
      */
     public boolean checkEmail(String email) {
@@ -850,7 +853,6 @@ public class OrganizationUserService {
      * 获取系统用户options
      *
      * @param orgId 组织ID
-     *
      * @return 用户选项列表
      */
     public List<OptionDTO> getUserOptions(String orgId) {
@@ -870,6 +872,7 @@ public class OrganizationUserService {
     public void deleteUserById(String id, String orgId) {
         UserResponse user = extUserMapper.getUserDetail(id);
         if (checkUserResource(user.getUserId())) {
+            approvalActionService.refreshApprovingTasksForDisabledUser(List.of(user.getUserId()), orgId);
             //删除后该员工在系统上的全部数据将会被清理
             deleteUserAllData(user.getUserId(), id, orgId);
             // 踢出该用户
@@ -958,7 +961,6 @@ public class OrganizationUserService {
      *
      * @param departmentId
      * @param orgId
-     *
      * @return
      */
     public List<DeptUserTreeNode> getUserTreeByDepId(String departmentId, String orgId) {
@@ -994,5 +996,9 @@ public class OrganizationUserService {
         }
 
         return sortDpIds;
+    }
+
+    public List<OptionDTO> getAdminUserOptions(String organizationId) {
+        return extUserRoleMapper.selectUserOptionByRoleId(organizationId, InternalRole.ORG_ADMIN.getValue());
     }
 }

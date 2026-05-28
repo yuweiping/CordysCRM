@@ -17,6 +17,7 @@ const system: AppRouteRecordRaw = {
       'SYSTEM_NOTICE:READ',
       'SYSTEM_SETTING:READ',
       'OPERATION_LOG:READ',
+      'PROCESS_SETTING:READ',
     ],
     icon: 'iconicon_set_up',
     collapsedLocale: 'menu.collapsedSettings',
@@ -57,6 +58,39 @@ const system: AppRouteRecordRaw = {
         locale: 'menu.settings.messageSetting',
         permissions: ['SYSTEM_NOTICE:READ'],
       },
+    },
+    {
+      path: 'process',
+      name: SystemRouteEnum.SYSTEM_PROCESS,
+      component: () => import('@/views/system/process/process/index.vue'),
+      meta: {
+        hideChildrenInMenu: true,
+        locale: 'menu.settings.processSetting',
+        permissions: ['PROCESS_SETTING:READ'],
+      },
+      children: [
+        {
+          path: 'process',
+          name: SystemRouteEnum.SYSTEM_PROCESS_INDEX,
+          component: () => import('@/views/system/process/workflow/index.vue'),
+          meta: {
+            locale: 'menu.settings.approvalFlow',
+            isTopMenu: true,
+            permissions: ['PROCESS_SETTING:READ'],
+          },
+        },
+        // todo 这个版本不上工作流
+        // {
+        //   path: 'workflow',
+        //   name: SystemRouteEnum.SYSTEM_PROCESS_WORKFLOW,
+        //   component: () => import('@/views/system/process/workflow/index.vue'),
+        //   meta: {
+        //     locale: 'menu.settings.workflowSetting',
+        //     isTopMenu: true,
+        //     permissions: [], // todo
+        //   },
+        // },
+      ],
     },
     {
       path: 'business',

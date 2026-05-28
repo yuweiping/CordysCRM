@@ -1,6 +1,7 @@
 package cn.cordys.common.constants;
 
 import lombok.Getter;
+import org.apache.commons.lang3.Strings;
 
 import java.util.Arrays;
 import java.util.List;
@@ -78,5 +79,18 @@ public enum FormKey {
 
 	public static List<String> allKeys() {
 		return Arrays.stream(FormKey.values()).map(FormKey::getKey).collect(Collectors.toList());
+	}
+
+	public static FormKey ofKey(String key) {
+		for (FormKey formKey : FormKey.values()) {
+			if (Strings.CI.equals(formKey.getKey(), key)) {
+				return formKey;
+			}
+		}
+		return null;
+	}
+
+	public boolean hasSnapshot() {
+		return Strings.CI.equalsAny(this.key, CONTRACT.getKey(), INVOICE.getKey(), QUOTATION.getKey(), ORDER.getKey());
 	}
 }

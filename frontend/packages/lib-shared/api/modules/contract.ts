@@ -109,7 +109,15 @@ import {
   GetContractDetailSnapshotUrl,
   ContractInvoicedDetailSnapshotUrl,
   ContractStatisticUrl,
+  SortContractUrl,
   GetPaymentRecordStatisticUrl,
+  UpdateContractStatusUrl,
+  UpdateContractStatusRollbackUrl,
+  SortContractStatusUrl,
+  AddContractStatusUrl,
+  GetContractStatusConfigUrl,
+  DeleteContractStatusUrl,
+  UpdateContractStageUrl,
 } from '@lib/shared/api/requrls/contract';
 import type { CustomerTabHidden } from '@lib/shared/models/customer';
 import type {
@@ -144,12 +152,28 @@ import type {
   UpdateContractInvoiceParams,
   ContractInvoiceDetail,
 } from '@lib/shared/models/contract';
-import type { BatchOperationResult, BatchUpdateQuotationStatusParams } from '@lib/shared/models/opportunity';
+import type {
+  BatchOperationResult,
+  BatchUpdateQuotationStatusParams,
+  StageBoardDraggedParams,
+  StageBoardPageQueryParams,
+} from '@lib/shared/models/opportunity';
 import type { BatchUpdatePoolAccountParams } from '@lib/shared/models/customer';
+import {
+  StageBaseParams,
+  OpportunityStageConfig,
+  UpdateOpportunityStageRollbackParams,
+  UpdateStageBaseParams,
+} from '@lib/shared/models/opportunity';
 export default function useContractApi(CDR: CordysAxios) {
   // 合同列表
-  function getContractList(data: TableQueryParams) {
+  function getContractList(data: StageBoardPageQueryParams) {
     return CDR.post<CommonList<ContractItem>>({ url: ContractPageUrl, data }, { ignoreCancelToken: true });
+  }
+
+  // 合同看板拖拽排序
+  function sortContract(data: StageBoardDraggedParams) {
+    return CDR.post({ url: SortContractUrl, data });
   }
 
   // 添加合同
@@ -696,6 +720,41 @@ export default function useContractApi(CDR: CordysAxios) {
     return CDR.post({ url: GetPaymentRecordStatisticUrl, data }, { ignoreCancelToken: true });
   }
 
+    // 更新合同状态配置
+  function updateContractStatus(data: UpdateStageBaseParams) {
+    return CDR.post({ url: UpdateContractStatusUrl, data });
+  }
+
+  // 合同状态回退配置
+  function updateContractStatusRollback(data: UpdateOpportunityStageRollbackParams) {
+    return CDR.post({ url: UpdateContractStatusRollbackUrl, data });
+  }
+
+  // 合同状态排序
+  function sortContractStatus(data: string[]) {
+    return CDR.post({ url: SortContractStatusUrl, data });
+  }
+
+  // 添加合同状态
+  function addContractStatus(data: StageBaseParams) {
+    return CDR.post({ url: AddContractStatusUrl, data });
+  }
+
+  // 获取合同状态配置
+  function getContractStatusConfig() {
+    return CDR.get<OpportunityStageConfig>({ url: GetContractStatusConfigUrl }, { ignoreCancelToken: true });
+  }
+
+  // 删除合同状态
+  function deleteContractStatus(id: string) {
+    return CDR.get({ url: `${DeleteContractStatusUrl}/${id}` });
+  }
+
+   // 更新阶段
+  function updateContractStage(data: { id: string; stage: string }) {
+    return CDR.post({ url: UpdateContractStageUrl, data });
+  }
+
   return {
     exportContractAll,
     exportContractSelected,
@@ -703,6 +762,7 @@ export default function useContractApi(CDR: CordysAxios) {
     getContractDetail,
     getContractDetailSnapshot,
     getContractList,
+    sortContract,
     getContractTab,
     getContractViewDetail,
     getContractViewList,
@@ -807,5 +867,13 @@ export default function useContractApi(CDR: CordysAxios) {
     deleteContractInvoicedView,
     dragContractInvoicedView,
     getInvoicedTab,
+    // 合同阶段
+    updateContractStatus,
+    updateContractStatusRollback,
+    sortContractStatus,
+    addContractStatus,
+    getContractStatusConfig,
+    deleteContractStatus,
+    updateContractStage,
   };
 }

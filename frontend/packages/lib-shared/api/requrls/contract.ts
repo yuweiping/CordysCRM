@@ -8,12 +8,13 @@ export const GetContractDetailSnapshotUrl = '/contract/get/snapshot'; // 获取�
 export const GetContractFormConfigUrl = '/contract/module/form'; // 合同表单配置
 export const GetContractFormSnapshotConfigUrl = '/contract/module/form/snapshot'; // 合同表单配置
 export const GetContractTabUrl = '/contract/tab'; // 合同tab显隐
-export const ChangeContractStatusUrl = '/contract/stage/update';
+export const ChangeContractStatusUrl = '/contract/update/stage';
 export const BatchApproveContractUrl = '/contract/batch/approval';
 export const BatchUpdateContractUrl = '/contract/batch/update';
 export const ApproveContractUrl = '/contract/approval';
 export const RevokeContractUrl = '/contract/revoke';
 export const ContractStatisticUrl = '/contract/statistic';
+export const SortContractUrl = '/contract/sort';
 
 // 合同导出
 export const ExportContractAllUrl = '/contract/export-all'; // 合同导出全量
@@ -136,3 +137,12 @@ export const FixedContractInvoicedViewUrl = '/invoice/view/fixed'; // 固定发�
 export const EnableContractInvoicedViewUrl = '/invoice/view/enable'; // 启用/禁用发票视图
 export const GetContractInvoicedViewDetailUrl = '/invoice/view/detail'; // 发票视图详情
 export const DeleteContractInvoicedViewUrl = '/invoice/view/delete'; // 发票视图删除
+
+// 合同状态
+export const UpdateContractStatusUrl = '/contract/stage/update'; // 更新合同状态配置
+export const UpdateContractStatusRollbackUrl = '/contract/stage/update-rollback'; // 合同状态回退配置
+export const SortContractStatusUrl = '/contract/stage/sort'; // 合同状态排序
+export const AddContractStatusUrl = '/contract/stage/add'; // 合同状态添加
+export const GetContractStatusConfigUrl = '/contract/stage/get'; // 获取合同状态配置
+export const DeleteContractStatusUrl = '/contract/stage/delete'; // 删除合同状态
+export const UpdateContractStageUrl = '/contract/update/stage'; // 更新合同详情阶段

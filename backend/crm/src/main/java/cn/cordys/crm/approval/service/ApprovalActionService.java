@@ -108,7 +108,7 @@ public class ApprovalActionService {
 		// 之后加签(多人或签), 需要刷新实例当前审批节点
 		if (ApprovalAddSignType.valueOf(request.getType()) == ApprovalAddSignType.AFTER && isMultiAnyMode(appendActionTask.getNodeId(), userId, orgId)) {
 			handlePreCcTasks(currentTask.getNodeId(), instance, userId, orgId);
-			approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.APPROVE);
+			approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.APPROVE, userId);
 			ApprovalNodeResponse nextNode = approvalFlowService.getTaskNextNode(appendActionTask, instance, orgId);
 			handleNextApprovalNode(nextNode, instance, currentTask.getApproverId(), userId, orgId);
 		}
@@ -186,7 +186,15 @@ public class ApprovalActionService {
 	public void reject(ApprovalActionRequest request, String currentUserId, String currentOrgId) {
 		ApprovalTask currentTask = saveActionTask(request, ApprovalAction.REJECT, currentUserId, currentOrgId, null);
 		ApprovalInstance instance = approvalInstanceMapper.selectByPrimaryKey(currentTask.getInstanceId());
-		rejectProcess(instance, currentTask, currentUserId, currentOrgId);
+		// 任一审批任务驳回即驳回整个节点
+		approvalInstanceService.rejectApprovalInstance(instance, currentUserId);
+		ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
+		if (resourceService != null) {
+			resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), instance.getApprovalStatus(), currentUserId, currentOrgId);
+		}
+		loseCurrentNode(instance.getId(), currentTask.getNodeId());
+		approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.REJECT, currentUserId);
+		// 日志 && 通知
 		saveLogAndNotice(instance, currentUserId, currentOrgId, ApprovalAction.REJECT);
 	}
 
@@ -401,7 +409,7 @@ public class ApprovalActionService {
 					.eq(ApprovalTask::getStatus, ApprovalStatus.APPROVING.name()).nq(ApprovalTask::getType, ApprovalTaskType.CC);
 			List<ApprovalTask> approvingTasks = approvalTaskMapper.selectListByLambda(queryWrapper);
 			if (approvingTasks.isEmpty()) {
-				List<String> autoSkipUserIds = approvalFlowService.getFlowAutoSkipUser(instance, currentTask.getNodeId(), currentTask.getApproverId());
+				List<String> autoSkipUserIds = approvalFlowService.getFlowAutoSkipUser(instance, currentTask.getNodeId(), List.of(currentTask.getApproverId()));
 				SameSubmitterActionEnum sameAction = SameSubmitterActionEnum.valueOf(nodeApprover.getSameSubmitterAction());
 				// 如果依次审批的节点存在跳过的情况, 一直往后取
 				int seq = 0;
@@ -435,38 +443,12 @@ public class ApprovalActionService {
 		if (isCurrentSingleNodeApproved(currentTask.getNodeId(), currentTask.getInstanceId(), instance.getSubmitterId(), currentOrgId) || isCurrentMultiNodeApproved(currentTask.getNodeId(), currentTask.getInstanceId())) {
 			// 流转之前需要发送当前节点的抄送
 			handlePreCcTasks(currentTask.getNodeId(), instance, currentUserId, currentOrgId);
-			approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.APPROVE);
+			approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.APPROVE, currentUserId);
 			// 单人审批或者多人审批但节点流转通过
 			ApprovalNodeResponse nextNode = approvalFlowService.getTaskNextNode(currentTask, instance, currentOrgId);
 			handleNextApprovalNode(nextNode, instance, currentTask.getApproverId(), currentUserId, currentOrgId);
 			// 多人或签, 移除审批中的任务
 			loseCurrentNode(instance.getId(), currentTask.getNodeId());
-		}
-	}
-
-	/**
-	 * 驳回操作执行
-	 *
-	 * @param currentTask 当前任务
-	 * @param currentUserId 当前用户ID
-	 * @param currentOrgId 当前组织ID
-	 */
-	private void rejectProcess(ApprovalInstance instance, ApprovalTask currentTask, String currentUserId, String currentOrgId) {
-		boolean multiNode = approvalFlowService.isCurrentNodeMultiApprover(currentTask.getNodeId(), instance.getSubmitterId(), currentOrgId);
-		boolean nodeRejected = isCurrentMultiNodeRejected(currentTask.getNodeId(), currentTask.getInstanceId());
-		if (!nodeRejected) {
-			// 多人审批驳回但节点尚未流转失败, 需要发送加签待办
-			appendProcessSignTask(instance, currentTask, currentOrgId);
-		}
-		if (!multiNode || nodeRejected) {
-			// 单人审批或者多人审批但节点流转失败, 实例直接驳回结束
-			approvalInstanceService.rejectApprovalInstance(instance, currentUserId);
-			ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
-			if (resourceService != null) {
-				resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), instance.getApprovalStatus());
-			}
-			loseCurrentNode(instance.getId(), currentTask.getNodeId());
-			approvalFlowService.updateApprovalPostField(instance, currentTask.getNodeId(), ApprovalAction.REJECT);
 		}
 	}
 
@@ -757,26 +739,6 @@ public class ApprovalActionService {
 	}
 
 	/**
-	 * 判断当前多人审批节点是否驳回
-	 * @param currentNodeId 当前节点ID
-	 * @return 是否通过
-	 */
-	private boolean isCurrentMultiNodeRejected(String currentNodeId, String instanceId) {
-		LambdaQueryWrapper<ApprovalTask> queryWrapper = new LambdaQueryWrapper<>();
-		queryWrapper.eq(ApprovalTask::getNodeId, currentNodeId)
-				.eq(ApprovalTask::getInstanceId, instanceId);
-		List<ApprovalTask> approvalTasks = approvalTaskMapper.selectListByLambda(queryWrapper);
-		ApprovalNodeApprover nodeApprover = getNodeApprover(currentNodeId);
-		if (MultiApproverModeEnum.valueOf(nodeApprover.getMultiApproverMode()) == MultiApproverModeEnum.ANY) {
-			// 或签, 所有审批任务都为驳回才算驳回
-			return approvalTasks.stream().allMatch(task -> ApprovalStatus.UNAPPROVED.name().equals(task.getStatus()));
-		} else {
-			// 会签或者依次审批, 只要存在驳回即整个节点驳回
-			return approvalTasks.stream().anyMatch(task -> ApprovalStatus.UNAPPROVED.name().equals(task.getStatus()));
-		}
-	}
-
-	/**
 	 * 当前多人节点是否审批中
 	 * @param currentNodeId 当前节点ID
 	 * @param instanceId 实例ID
@@ -846,16 +808,16 @@ public class ApprovalActionService {
 			return;
 		}
 		ApprovalNodeResponse next = approvalFlowService.getCurrentNextNode(currentNodeId, instance, orgId);
-		clearCurrentNode(instance.getId(), next.getId());
+		clearExpiredNode(instance.getId(), next.getId());
 		clearBackToCurrentNode(next.getId(), endNodeId, instance, orgId);
 	}
 
 	/**
-	 * 清理当前节点
+	 * 清理过期节点
 	 * @param instanceId 审批实例ID
 	 * @param nodeId 当前节点ID
 	 */
-	public void clearCurrentNode(String instanceId, String nodeId) {
+	public void clearExpiredNode(String instanceId, String nodeId) {
 		Integer maxRound = extApprovalInstanceMapper.getNodeRound(instanceId, nodeId);
 		if (maxRound > 0) {
 			/*
@@ -863,10 +825,7 @@ public class ApprovalActionService {
 			 */
 			extApprovalInstanceMapper.batchClearNotApprovingTask(instanceId, nodeId, maxRound);
 			extApprovalInstanceMapper.batchClearRecord(instanceId, nodeId, maxRound);
-			/*
-			 * 未执行过的待办直接中止
-			 */
-			extApprovalInstanceMapper.loseApprovingTask(instanceId, nodeId, maxRound);
+			extApprovalInstanceMapper.batchClearApprovingTask(instanceId, nodeId, maxRound);
 		}
 	}
 
@@ -943,7 +902,7 @@ public class ApprovalActionService {
 			}
 		}
 		// 清理后续审批节点的待办任务, 后续执行重新生成
-		clearCurrentNode(instance.getId(), nextNode.getId());
+		clearExpiredNode(instance.getId(), nextNode.getId());
 	}
 
 	/**
@@ -1000,7 +959,7 @@ public class ApprovalActionService {
 		approvalInstanceMapper.updateById(instance);
 		ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
 		if (resourceService != null) {
-			resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), instance.getApprovalStatus());
+			resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), instance.getApprovalStatus(), currentUserId, currentOrgId);
 		}
 		if (ApprovalNodeTypeEnum.valueOf(node.getNodeType()) == ApprovalNodeTypeEnum.APPROVER) {
 			handlerNextNodeApproverTasks((ApprovalNodeApproverResponse) node, instance, preApproverId, currentUserId, ApprovalTaskType.NL.name(), currentOrgId);
@@ -1041,7 +1000,7 @@ public class ApprovalActionService {
 			return approvalTasks;
 		}
 		Integer nextRound = extApprovalInstanceMapper.getNextNodeRound(instance.getId(), nodeId);
-		List<String> autoSkipUser = approvalFlowService.getFlowAutoSkipUser(instance, nodeId, preApproverId);
+		List<String> autoSkipUser = preApproverId == null ? new ArrayList<>() : approvalFlowService.getFlowAutoSkipUser(instance, nodeId, List.of(preApproverId));
 		if (sameAction == SameSubmitterActionEnum.SKIP) {
 			// 如果配置了审批人和提审人相同, 自动跳过 (会签, 依次审批 生成的提审人待办需直接同意, 或签和单人审批已在流程执行的时候处理过)
 			switch (multiMode) {
@@ -1300,7 +1259,7 @@ public class ApprovalActionService {
 	 * @param organizationId 组织ID
 	 */
 	public void refreshApprovingTasksForDisabledUser(List<String> userIds, String organizationId) {
-		if (CollectionUtils.isNotEmpty(userIds) || StringUtils.isBlank(organizationId)) {
+		if (CollectionUtils.isEmpty(userIds) || StringUtils.isBlank(organizationId)) {
 			return;
 		}
 
@@ -1320,7 +1279,7 @@ public class ApprovalActionService {
 
 
             // 批量更新待办任务的审批人
-			userIds.stream().forEach(userId ->{
+			userIds.forEach(userId ->{
                 if (userTaskMaps.containsKey(userId)) {
                     String targetApprover = getTargetApproverId(userId, organizationId);
                     List<ApprovalTask> userTasks = userTaskMaps.get(userId);

@@ -1,6 +1,7 @@
 package cn.cordys.crm.approval.aspect;
 
 import cn.cordys.common.constants.FormKey;
+import cn.cordys.common.constants.InternalUser;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.approval.annotation.HitApproval;
 import cn.cordys.crm.approval.constants.ApprovalStatus;
@@ -13,12 +14,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.aspectj.lang.JoinPoint;
-import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.core.Ordered;
 import org.springframework.core.StandardReflectionParameterNameDiscoverer;
+import org.springframework.core.annotation.Order;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
@@ -36,6 +39,7 @@ import java.util.List;
 @Component
 @Slf4j
 @RequiredArgsConstructor
+@Order(Ordered.HIGHEST_PRECEDENCE + 5)
 public class HitApprovalAspect {
 
 	private final ExpressionParser parser = new SpelExpressionParser();
@@ -50,31 +54,35 @@ public class HitApprovalAspect {
 	public void pointcut() {
 	}
 
-	@AfterReturning(value = "pointcut()", returning = "retValue")
-	public void handleHitApproval(JoinPoint joinPoint, Object retValue) {
+	@Around(value = "pointcut()")
+	public Object handleHitApproval(ProceedingJoinPoint joinPoint) throws Throwable {
+		// 先执行方法
+		Object retValue = joinPoint.proceed();
+
 		MethodSignature signature = (MethodSignature) joinPoint.getSignature();
 		Method method = signature.getMethod();
 		HitApproval annotation = method.getAnnotation(HitApproval.class);
 
 		if (annotation == null) {
-			return;
+			return retValue;
 		}
 
 		try {
 			String resourceId = resolveResourceId(method, joinPoint.getArgs(), annotation.resourceId(), retValue, annotation.executeType());
 			String updateType = resolveResourceId(method, joinPoint.getArgs(), annotation.updateType(), retValue, annotation.executeType());
+			String operator = resolveParamFromArgs(method, joinPoint.getArgs(), annotation.operatorId());
 			if (StringUtils.isBlank(resourceId)) {
-				return;
+				return retValue;
 			}
 
 			if (Strings.CI.equals(updateType, "approval")) {
-				return;
+				return retValue;
 			}
 
 			// 获取组织ID
 			String organizationId = OrganizationContext.getOrganizationId();
 			if (StringUtils.isBlank(organizationId)) {
-				return;
+				return retValue;
 			}
 
 			// 检查是否命中审批流
@@ -83,11 +91,13 @@ public class HitApprovalAspect {
 			if (hit) {
 				// 命中审批流, 修改业务资源审批状态为待提审
 				approvalResourceService.clearResourceApprovalDetail(resourceId);
-				approvalResourceService.updateResourceApprovalStatus(annotation.formKey(), resourceId, ApprovalStatus.PENDING.name());
+				approvalResourceService.updateResourceApprovalStatus(annotation.formKey(), resourceId, ApprovalStatus.PENDING.name(), operator, OrganizationContext.getOrganizationId());
 			}
 		} catch (Exception e) {
 			log.error("审批流执行时机匹配失败，error:{}", e.getMessage(), e);
 		}
+
+		return retValue;
 	}
 
 	/**
@@ -109,7 +119,7 @@ public class HitApprovalAspect {
 		}
 
 		// 编辑从参数中解析
-		return resolveResourceIdFromArgs(method, args, expression);
+		return resolveParamFromArgs(method, args, expression);
 	}
 
 	/**
@@ -135,7 +145,7 @@ public class HitApprovalAspect {
 	/**
 	 * 从方法参数中解析资源ID（支持SpEL表达式）
 	 */
-	private String resolveResourceIdFromArgs(Method method, Object[] args, String expression) {
+	private String resolveParamFromArgs(Method method, Object[] args, String expression) {
 		String[] params = discoverer.getParameterNames(method);
 		if (params == null || args == null) {
 			return null;

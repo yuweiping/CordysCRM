@@ -7,6 +7,7 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.crm.search.constants.SearchModuleEnum;
 import cn.cordys.crm.system.domain.ModuleField;
 import cn.cordys.crm.system.dto.ScopeNameDTO;
+import cn.cordys.crm.system.dto.form.FormProp;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import jakarta.annotation.Resource;
@@ -63,9 +64,14 @@ public class SystemModuleLogService extends BaseModuleLogService {
 				differ.setNewValueName(Translator.get(differ.getNewValue().toString()));
 			}
 
+			if (Strings.CS.equals("formProp", differ.getColumn())) {
+				differ.setColumnName(Translator.get("log.form.prop"));
+				handleFormPropLogDetail(differ);
+			}
+
 
             if (Strings.CI.equalsAny(differ.getColumn(),
-                    "rate", "stage", "afootRollBack", "endRollBack","name")) {
+                    "rate", "stage", "contractStage", "orderStage","afootRollBack", "endRollBack","name")) {
                 differ.setColumnName(Translator.get("log.".concat(differ.getColumn())));
                 differ.setNewValueName(differ.getNewValue());
                 differ.setOldValueName(differ.getOldValue());
@@ -90,6 +96,7 @@ public class SystemModuleLogService extends BaseModuleLogService {
             }
         });
 
+		differences.removeIf(differ -> differ.getOldValueName() == null && differ.getNewValueName() == null);
         return differences;
     }
 
@@ -191,22 +198,6 @@ public class SystemModuleLogService extends BaseModuleLogService {
                 .map(Translator::get)
                 .toList());
     }
-
-
-    /**
-     * 待定: 目前就只粗略展示字段的变更
-     *
-     * @param differ json-difference dto
-     */
-    private void handleFieldsLogDetail(JsonDifferenceDTO differ) {
-        differ.setOldValueName(parseFieldList(differ.getOldValue()).stream()
-                .map(f -> String.valueOf(((Map<?, ?>) f).get("name")))
-                .toList());
-        differ.setNewValueName(parseFieldList(differ.getNewValue()).stream()
-                .map(f -> String.valueOf(((Map<?, ?>) f).get("name")))
-                .toList());
-    }
-
 
     private void handleLinkFieldsLogDetail(JsonDifferenceDTO differ) {
         Map<String, String> oldPairs = parseLinkFieldMap(differ.getOldValue());

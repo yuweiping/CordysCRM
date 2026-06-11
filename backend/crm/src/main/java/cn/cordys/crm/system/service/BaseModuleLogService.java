@@ -15,8 +15,11 @@ import cn.cordys.crm.contract.service.ContractService;
 import cn.cordys.crm.customer.service.CustomerContactService;
 import cn.cordys.crm.opportunity.service.OpportunityService;
 import cn.cordys.crm.product.domain.Product;
+import cn.cordys.crm.system.constants.FieldType;
+import cn.cordys.crm.system.dto.field.DateTimeField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.field.base.SubField;
+import cn.cordys.crm.system.dto.form.FormProp;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.mybatis.BaseMapper;
 import jakarta.annotation.Resource;
@@ -56,6 +59,66 @@ public abstract class BaseModuleLogService {
         differ.setOldValueName(differ.getOldValue());
         differ.setNewValueName(differ.getNewValue());
     }
+
+	/**
+	 * TODO: 处理字段变更日志详情
+	 * @param differ 差异
+	 */
+	public void handleFieldsLogDetail(JsonDifferenceDTO differ) {
+		List<String> oldFieldNames = parseFieldList(differ.getOldValue()).stream()
+				.map(f -> String.valueOf(((Map<?, ?>) f).get("name")))
+				.toList();
+		List<String> newFieldNames = parseFieldList(differ.getNewValue()).stream()
+				.map(f -> String.valueOf(((Map<?, ?>) f).get("name")))
+				.toList();
+
+		// 如果字段没有实际变化则不产生日志
+		if (Objects.equals(oldFieldNames, newFieldNames)) {
+			differ.setOldValueName(null);
+			differ.setNewValueName(null);
+			return;
+		}
+
+		differ.setOldValueName(oldFieldNames);
+		differ.setNewValueName(newFieldNames);
+	}
+
+	private List<?> parseFieldList(Object value) {
+		if (value instanceof List<?> list) {
+			return list;
+		}
+		return Collections.emptyList();
+	}
+
+	/**
+	 * 表单配置的日志详情对比
+	 * @param differ 差异
+	 */
+	public void handleFormPropLogDetail(JsonDifferenceDTO differ) {
+		if (differ.getOldValue() != null && differ.getNewValue() != null) {
+			FormProp oldFormProp = JSON.parseObject(JSON.toJSONString(differ.getOldValue()), FormProp.class);
+			differ.setOldValueName(buildFormPropDisplayText(oldFormProp));
+
+			FormProp newFormProp = JSON.parseObject(JSON.toJSONString(differ.getNewValue()), FormProp.class);
+			differ.setNewValueName(buildFormPropDisplayText(newFormProp));
+		}
+	}
+
+	/**
+	 * 构建表单属性展示文本
+	 * 格式: viewSize, layout, labelPos, inputWidth, optBtnPos
+	 *
+	 * @param formProp 表单属性
+	 * @return 展示文本
+	 */
+	private String buildFormPropDisplayText(FormProp formProp) {
+		String viewSize = Translator.get(formProp.getViewSize());
+		String layout = Translator.get("formProp.layout." + formProp.getLayout());
+		String labelPos = Translator.get("formProp.labelPos." + formProp.getLabelPos());
+		String inputWidth = Translator.get("formProp.inputWidth." + formProp.getInputWidth());
+		String optBtnPos = Translator.get("formProp.optBtnPos." + formProp.getOptBtnPos());
+		return String.join(", ", viewSize, layout, labelPos, inputWidth, optBtnPos);
+	}
 
     abstract public List<JsonDifferenceDTO> handleLogField(List<JsonDifferenceDTO> differences, String orgId);
 
@@ -174,11 +237,11 @@ public abstract class BaseModuleLogService {
             String originDifferColumn = differ.getColumn();
             String differColumn = differ.getColumn();
             String prefix = differ.getColumn();
-			// 子表字段处理
-			if (StringUtils.isNotBlank(differ.getColumn()) && differ.getColumn().contains("-")) {
-				differColumn = originDifferColumn.substring(differ.getColumn().lastIndexOf("-") + 1);
-				prefix = originDifferColumn.substring(0, originDifferColumn.lastIndexOf("-"));
-			}
+            // 子表字段处理
+            if (StringUtils.isNotBlank(differ.getColumn()) && differ.getColumn().contains("-")) {
+                differColumn = originDifferColumn.substring(differ.getColumn().lastIndexOf("-") + 1);
+                prefix = originDifferColumn.substring(0, originDifferColumn.lastIndexOf("-"));
+            }
             BaseField moduleField = moduleFieldMap.get(differ.getColumn());
             if (moduleField != null) {
                 differ.setColumnName(moduleField.getName());
@@ -227,6 +290,17 @@ public abstract class BaseModuleLogService {
             if (businessModuleFieldMap.get(differ.getColumn()) != null) {
                 BaseField baseField = businessModuleFieldMap.get(differ.getColumn());
                 differ.setColumnName(baseField.getName());
+                if (Strings.CI.equals(baseField.getType(), FieldType.DATE_TIME.name())) {
+                    // 日期时间格式化
+                    DateTimeField dateTimeField = (DateTimeField) baseField;
+                    switch (dateTimeField.getDateType()) {
+                        case "date" -> setFormatDataTimeFieldValueName(differ, new SimpleDateFormat("yyyy-M-d"));
+                        case "datetime" -> setFormatDataTimeFieldValueName(differ, new SimpleDateFormat("yyyy-M-d HH:mm:ss"));
+                        case "month" -> setFormatDataTimeFieldValueName(differ, new SimpleDateFormat("yyyy-M"));
+                    }
+                }
+
+
             }
         });
 
@@ -282,10 +356,28 @@ public abstract class BaseModuleLogService {
     private void parseValue(BaseField moduleField, JsonDifferenceDTO differ) {
         if (moduleField != null) {
             if (differ.getOldValue() != null) {
-                differ.setOldValueName(transformFieldValue(moduleField, differ.getOldValue()));
+				Object ov = transformFieldValue(moduleField, differ.getOldValue());
+				if (ov == null || StringUtils.isBlank(ov.toString())) {
+					if (differ.getOldValue() instanceof List) {
+						differ.setOldValueName(String.join(",", (List) differ.getOldValue()));
+					} else {
+						differ.setOldValueName(differ.getOldValue());
+					}
+				} else {
+					differ.setOldValueName(ov);
+				}
             }
             if (differ.getNewValue() != null) {
-                differ.setNewValueName(transformFieldValue(moduleField, differ.getNewValue()));
+				Object nv = transformFieldValue(moduleField, differ.getNewValue());
+				if (nv == null || StringUtils.isBlank(nv.toString())) {
+					if (differ.getNewValue() instanceof List) {
+						differ.setNewValueName(String.join(",", (List) differ.getNewValue()));
+					} else {
+						differ.setNewValueName(differ.getNewValue());
+					}
+				} else {
+					differ.setNewValueName(nv);
+				}
             }
         } else {
             differ.setOldValueName(differ.getOldValue());
@@ -404,11 +496,12 @@ public abstract class BaseModuleLogService {
     }
 
     protected void setApprovalName(JsonDifferenceDTO differ) {
+		differ.setColumnName(Translator.get("log.approvalStatus"));
         if (differ.getOldValue() != null) {
-            differ.setOldValueName(Translator.get("contract.approval_status." + differ.getOldValue().toString().toLowerCase()));
+			differ.setOldValueName(Translator.get("log.approvalStatus." + differ.getOldValueName().toString()));
         }
         if (differ.getNewValue() != null) {
-            differ.setNewValueName(Translator.get("contract.approval_status." + differ.getNewValue().toString().toLowerCase()));
+			differ.setNewValueName(Translator.get("log.approvalStatus." + differ.getNewValueName().toString()));
         }
     }
 

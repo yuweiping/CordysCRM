@@ -410,18 +410,18 @@ export default function useProductApi(CDR: CordysAxios) {
   }
 
   // 更新报价
-  function updateQuotation(data: UpdateQuotationParams) {
-    return CDR.post({ url: UpdateQuotationUrl, data });
+  function updateQuotation(data: UpdateQuotationParams, approvalTaskId?: string) {
+    return CDR.post({ url: UpdateQuotationUrl, data, params: { approvalTaskId } });
   }
 
   // 报价详情
-  function getQuotationDetail(id: string) {
-    return CDR.get<QuotationItem>({ url: `${GetQuotationDetailUrl}/${id}` });
+  function getQuotationDetail(id: string, approvalTaskId?: string) {
+    return CDR.get<QuotationItem>({ url: `${GetQuotationDetailUrl}/${id}`, params: { approvalTaskId } });
   }
 
   // 报价单快照详情
-  function getQuotationSnapshotDetail(id: string) {
-    return CDR.get<QuotationItem>({ url: `${GetQuotationSnapshotDetailUrl}/${id}` });
+  function getQuotationSnapshotDetail(id: string, approvalTaskId?: string) {
+    return CDR.get<QuotationItem>({ url: `${GetQuotationSnapshotDetailUrl}/${id}`, params: { approvalTaskId } });
   }
 
   // 获取报价表单配置
@@ -430,8 +430,11 @@ export default function useProductApi(CDR: CordysAxios) {
   }
 
   // 获取报价表单快照配置
-  function getQuotationSnapshotFormConfig(id?: string) {
-    return CDR.get<FormDesignConfigDetailParams>({ url: `${GetQuotationSnapshotFormConfigUrl}/${id}` });
+  function getQuotationSnapshotFormConfig(id?: string, approvalTaskId?: string) {
+    return CDR.get<FormDesignConfigDetailParams>({
+      url: `${GetQuotationSnapshotFormConfigUrl}/${id}`,
+      params: { approvalTaskId },
+    });
   }
 
   // 删除报价

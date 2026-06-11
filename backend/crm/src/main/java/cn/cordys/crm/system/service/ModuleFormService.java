@@ -26,6 +26,7 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.constants.BusinessTitleConstants;
+import cn.cordys.crm.form.service.CustomFormDataFieldService;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.constants.FieldType;
 import cn.cordys.crm.system.domain.*;
@@ -146,13 +147,7 @@ public class ModuleFormService {
     public ModuleFormConfigDTO getConfig(String formKey, String currentOrgId) {
         ModuleFormConfigDTO formConfig = new ModuleFormConfigDTO();
         // set form
-        LambdaQueryWrapper<ModuleForm> formWrapper = new LambdaQueryWrapper<>();
-        formWrapper.eq(ModuleForm::getFormKey, formKey).eq(ModuleForm::getOrganizationId, currentOrgId);
-        List<ModuleForm> forms = moduleFormMapper.selectListByLambda(formWrapper);
-        if (CollectionUtils.isEmpty(forms)) {
-            throw new GenericException(Translator.get("module.form.not_exist"));
-        }
-        ModuleForm form = forms.getFirst();
+        ModuleForm form = getModuleFormByKey(formKey, currentOrgId);
 
         ModuleFormBlob formBlob = moduleFormBlobMapper.selectByPrimaryKey(form.getId());
         formConfig.setFormProp(JSON.parseObject(formBlob.getProp(), FormProp.class));
@@ -212,60 +207,99 @@ public class ModuleFormService {
      */
     @OperationLog(module = LogModule.SYSTEM_MODULE, type = LogType.UPDATE, resourceId = "{#saveParam.formKey}")
     public ModuleFormConfigDTO save(ModuleFormSaveRequest saveParam, String currentUserId, String currentOrgId) {
-        // 处理表单
-        LambdaQueryWrapper<ModuleForm> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ModuleForm::getFormKey, saveParam.getFormKey()).eq(ModuleForm::getOrganizationId, currentOrgId);
-        List<ModuleForm> forms = moduleFormMapper.selectListByLambda(queryWrapper);
-        if (CollectionUtils.isEmpty(forms)) {
-            throw new GenericException(Translator.get("module.form.not_exist"));
-        }
-        preCheckForFieldSave(saveParam);
-        ModuleFormConfigDTO oldConfig = new ModuleFormConfigDTO();
-        oldConfig.setFields(getAllFields(saveParam.getFormKey(), currentOrgId));
-        ModuleForm form = forms.getFirst();
-        // 旧表单配置
-        ModuleFormBlob moduleFormBlob = moduleFormBlobMapper.selectByPrimaryKey(form.getId());
-        if (moduleFormBlob != null && StringUtils.isNotEmpty(moduleFormBlob.getProp())) {
-            oldConfig.setFormProp(JSON.parseObject(moduleFormBlob.getProp(), FormProp.class));
-        }
+		// 设置表单日志上下文
+		OperationLogContext.setContext(getModuleFormChangeLogContext(saveParam.getFormKey(), currentOrgId, saveParam));
+        // 返回表单配置
+        return saveWithoutLog(saveParam, currentUserId, currentOrgId);
+    }
 
+    /**
+     * 保存表单配置（不记录日志）
+     *
+     * @param saveParam     保存参数
+     * @param currentUserId 当前用户ID
+     * @param currentOrgId  当前组织ID
+     * @return 表单配置
+     */
+    public ModuleFormConfigDTO saveWithoutLog(ModuleFormSaveRequest saveParam, String currentUserId, String currentOrgId) {
+        // 处理表单
+        ModuleForm form = getModuleFormByKey(saveParam.getFormKey(), currentOrgId);
         form.setUpdateUser(currentUserId);
         form.setUpdateTime(System.currentTimeMillis());
         moduleFormMapper.updateById(form);
-        ModuleFormBlob formBlob = new ModuleFormBlob();
-        formBlob.setId(form.getId());
-        formBlob.setProp(JSON.toJSONString(saveParam.getFormProp()));
-        moduleFormBlobMapper.updateById(formBlob);
 
-        // 记录日志上下文
-        ModuleFormConfigDTO newConfig = new ModuleFormConfigDTO();
-        newConfig.setFields(saveParam.getFields());
-        newConfig.setFormProp(saveParam.getFormProp());
-        OperationLogContext.setContext(
-                LogContextInfo.builder()
-                        .resourceName(Translator.get(saveParam.getFormKey()) + Translator.get("module.form.setting"))
-                        .originalValue(buildModuleFormLogDTO(oldConfig))
-                        .modifiedValue(buildModuleFormLogDTO(newConfig))
-                        .build()
-        );
-
-        // 处理字段 (删除&&新增)
-        LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
-        fieldWrapper.eq(ModuleField::getFormId, form.getId());
-        List<ModuleField> fields = moduleFieldMapper.selectListByLambda(fieldWrapper);
-        // 重置流水号
-        resetSerial(fields, saveParam.getFields(), saveParam.getFormKey(), currentOrgId);
-        if (CollectionUtils.isNotEmpty(fields)) {
-            List<String> fieldIds = fields.stream().map(ModuleField::getId).toList();
-            extModuleFieldMapper.deleteByIds(fieldIds);
-            extModuleFieldMapper.deletePropByIds(fieldIds);
+        if (saveParam.getFormProp() != null) {
+            ModuleFormBlob formBlob = new ModuleFormBlob();
+            formBlob.setId(form.getId());
+            formBlob.setProp(JSON.toJSONString(saveParam.getFormProp()));
+            moduleFormBlobMapper.updateById(formBlob);
         }
-        if (CollectionUtils.isNotEmpty(saveParam.getFields())) {
-            saveFields(saveParam.getFields(), form.getId(), currentUserId);
+
+        if (saveParam.getFields() != null) {
+            // 字段合规校验
+            preCheckForFieldSave(saveParam.getFormKey(), saveParam.getFields());
+
+            // 处理字段 (删除&&新增)
+            LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
+            fieldWrapper.eq(ModuleField::getFormId, form.getId());
+            List<ModuleField> fields = moduleFieldMapper.selectListByLambda(fieldWrapper);
+            // 重置流水号
+            resetSerial(fields, saveParam.getFields(), saveParam.getFormKey(), currentOrgId);
+            if (CollectionUtils.isNotEmpty(fields)) {
+                List<String> fieldIds = fields.stream().map(ModuleField::getId).toList();
+                extModuleFieldMapper.deleteByIds(fieldIds);
+                extModuleFieldMapper.deletePropByIds(fieldIds);
+            }
+            if (CollectionUtils.isNotEmpty(saveParam.getFields())) {
+                saveFields(saveParam.getFields(), form.getId(), currentUserId);
+            }
         }
 
         // 返回表单配置
         return getConfig(form.getFormKey(), currentOrgId);
+    }
+
+    /**
+     * 获取字段变更日志信息（供外部调用方合并日志使用）
+     *
+     * @param formKey      表单Key
+     * @param currentOrgId 当前组织ID
+     * @param saveParam    保存参数
+     * @return 字段变更日志信息
+     */
+    public LogContextInfo getModuleFormChangeLogContext(String formKey, String currentOrgId, ModuleFormSaveRequest saveParam) {
+        ModuleForm form = getModuleFormByKey(formKey, currentOrgId);
+        ModuleFormConfigDTO oldConfig = getModuleFormConfigDTO(formKey, form.getId(), currentOrgId);
+
+        ModuleFormConfigDTO newConfig = new ModuleFormConfigDTO();
+        newConfig.setFields(saveParam.getFields());
+        newConfig.setFormProp(saveParam.getFormProp());
+
+        return LogContextInfo.builder()
+                .resourceName(Translator.get(formKey) + Translator.get("module.form.setting"))
+                .originalValue(buildModuleFormLogDTO(oldConfig))
+                .modifiedValue(buildModuleFormLogDTO(newConfig))
+                .build();
+    }
+
+    private ModuleFormConfigDTO getModuleFormConfigDTO(String formKey, String formId, String orgId) {
+        ModuleFormConfigDTO oldConfig = new ModuleFormConfigDTO();
+        oldConfig.setFields(getAllFields(formKey, orgId));
+        ModuleFormBlob moduleFormBlob = moduleFormBlobMapper.selectByPrimaryKey(formId);
+        if (moduleFormBlob != null && StringUtils.isNotEmpty(moduleFormBlob.getProp())) {
+            oldConfig.setFormProp(JSON.parseObject(moduleFormBlob.getProp(), FormProp.class));
+        }
+        return oldConfig;
+    }
+
+    private ModuleForm getModuleFormByKey(String forKey, String currentOrgId) {
+        LambdaQueryWrapper<ModuleForm> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ModuleForm::getFormKey, forKey).eq(ModuleForm::getOrganizationId, currentOrgId);
+        List<ModuleForm> forms = moduleFormMapper.selectListByLambda(queryWrapper);
+        if (CollectionUtils.isEmpty(forms)) {
+            throw new GenericException(Translator.get("module.form.not_exist"));
+        }
+        return forms.getFirst();
     }
 
     /**
@@ -300,7 +334,10 @@ public class ModuleFormService {
      * @param saveFormId    表单ID
      * @param currentUserId 当前用户ID
      */
-    private void saveFields(List<BaseField> saveFields, String saveFormId, String currentUserId) {
+    public void saveFields(List<BaseField> saveFields, String saveFormId, String currentUserId) {
+        if (CollectionUtils.isEmpty(saveFields)) {
+            return;
+        }
         // 剔除引用字段&&并保留到数据源引用字段
         List<BaseField> fieldToSave = new ArrayList<>(saveFields);
 		AtomicLong pos = new AtomicLong(0L);
@@ -455,7 +492,7 @@ public class ModuleFormService {
 
         typeIdsMap.forEach((fieldId, ids) -> {
             var sourceType = optionMeta.idTypeMap().get(fieldId);
-            if (CollectionUtils.isEmpty(ids) || !TYPE_SOURCE_MAP.containsKey(sourceType)) {
+            if (CollectionUtils.isEmpty(ids)) {
                 return;
             }
             fieldIdSourceTypeMap.put(fieldId, sourceType);
@@ -466,7 +503,13 @@ public class ModuleFormService {
         // 按照类型, 整体查询
         Map<String, List<OptionDTO>> sourceTypeOptionsMap = new HashMap<>();
         sourceTypeIdsMap.forEach((sourceType, ids) -> {
-            var options = extModuleFieldMapper.getSourceOptionsByIds(TYPE_SOURCE_MAP.get(sourceType), new ArrayList<>(ids));
+            List<OptionDTO> options;
+            String tableName = TYPE_SOURCE_MAP.get(sourceType);
+            if (StringUtils.isBlank(tableName)) {
+                options = extModuleFieldMapper.getCustomFormOptionsByIds(new ArrayList<>(ids));
+            } else {
+                options = extModuleFieldMapper.getSourceOptionsByIds(tableName, new ArrayList<>(ids));
+            }
             if (CollectionUtils.isNotEmpty(options)) {
                 sourceTypeOptionsMap.put(sourceType, options);
             }
@@ -494,11 +537,6 @@ public class ModuleFormService {
 
     private OptionMetadata collectOptionMetadata(ModuleFormConfigDTO formConfig) {
         var allFields = flattenFormAllFields(formConfig);
-        var showFields = allFields.stream()
-                .filter(f -> f instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()))
-                .flatMap(f -> ((DatasourceField) f).getShowFields().stream().map(sf -> f.getId() + REF_UNDERLINE + sf))
-                .distinct()
-                .toList();
         var staticOptions = new HashMap<String, List<OptionDTO>>(4);
         var idTypeMap = new HashMap<String, String>(8);
         for (var field : allFields) {
@@ -708,11 +746,11 @@ public class ModuleFormService {
         if (CollectionUtils.isEmpty(nameList)) {
             return new ArrayList<>();
         }
-        if (!TYPE_SOURCE_MAP.containsKey(type)) {
-            log.error("未知的数据源类型：{}", type);
-            return new ArrayList<>();
+        String tableName = TYPE_SOURCE_MAP.get(type);
+        if (StringUtils.isBlank(tableName)) {
+            extModuleFieldMapper.getCustomFormOptionsByKeywords(nameList);
         }
-        return extModuleFieldMapper.getSourceOptionsByKeywords(TYPE_SOURCE_MAP.get(type), nameList);
+        return extModuleFieldMapper.getSourceOptionsByKeywords(tableName, nameList);
     }
 
     /**
@@ -853,7 +891,9 @@ public class ModuleFormService {
 					String oldRefFieldId = refIdSplitter.apply(oldField.getId());
 					BaseField refField = reloadFieldMap.get(oldRefFieldId);
 					if (refField == null) {
+						// 引用的字段已删
 						it.remove();
+						((DatasourceField) sf).getShowFields().remove(oldRefFieldId);
 						continue;
 					}
 					BaseField combineField = combineFieldsProps(oldField, refField);
@@ -923,6 +963,8 @@ public class ModuleFormService {
 					String oldRefFieldId = splitRefId(oldRefField.getResourceFieldId()).apply(oldRefField.getId());
 					BaseField refField = reloadFieldMap.get(oldRefFieldId);
 					if (refField == null) {
+						// 引用的字段过期或已被删除
+						sourceField.getShowFields().remove(oldRefFieldId);
 						return;
 					}
 					BaseField combineField = combineFieldsProps(oldRefField, refField);
@@ -1503,19 +1545,17 @@ public class ModuleFormService {
 
     /**
      * 字段保存预检查
-     *
-     * @param saveParam 保存参数
      */
-    private void preCheckForFieldSave(ModuleFormSaveRequest saveParam) {
-        boolean businessDeleted = BusinessModuleField.isBusinessDeleted(saveParam.getFormKey(), saveParam.getFields());
+    public void preCheckForFieldSave(String formKey, List<BaseField> fields) {
+        boolean businessDeleted = BusinessModuleField.isBusinessDeleted(formKey, fields);
         if (businessDeleted) {
             throw new GenericException(Translator.get("module.form.business_field.deleted"));
         }
-        boolean hasRepeatName = BusinessModuleField.hasRepeatName(saveParam.getFields());
+        boolean hasRepeatName = BusinessModuleField.hasRepeatName(fields);
         if (hasRepeatName) {
             throw new GenericException(Translator.get("module.form.fields.repeat"));
         }
-        Optional<BaseField> repeatOptional = saveParam.getFields().stream().filter(field -> {
+        Optional<BaseField> repeatOptional = fields.stream().filter(field -> {
             if (field instanceof HasOption optionField) {
                 List<OptionProp> options = optionField.getOptions();
                 return CollectionUtils.isNotEmpty(options) && hasRepeatOption(options);
@@ -2044,20 +2084,6 @@ public class ModuleFormService {
     }
 
     /**
-     * 获取选项Key
-     *
-     * @param showFields 显示字段
-     * @param baseField  字段配置
-     * @return 字段唯一Key
-     */
-    private String getOptionKey(List<String> showFields, BaseField baseField) {
-        if (showFields.contains(baseField.getId())) {
-            return baseField.getId();
-        }
-        return baseField.idOrBusinessKey();
-    }
-
-    /**
      * 业务Key => 字段ID (子字段)
      *
      * @param fieldValues 自定义字段值
@@ -2122,8 +2148,19 @@ public class ModuleFormService {
             // 数据源字段（普通字段）
             if (sourceConfigMap.containsKey(fieldId)) {
                 final DatasourceField sourceField = (DatasourceField) sourceConfigMap.get(fieldId);
-                final FieldSourceType sourceType = FieldSourceType.valueOf(sourceField.getDataSourceType());
-                final Object detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, fv.getFieldValue().toString());
+                final FieldSourceType sourceType = FieldSourceType.safeValueOf(sourceField.getDataSourceType());
+				final Object detail;
+				if (sourceType == FieldSourceType.CUSTOM_FORM) {
+					// 自定义表单：设置 formId 到 ThreadLocal
+					try {
+						CustomFormDataFieldService.setFormKey(sourceField.getDataSourceType());
+						detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, fv.getFieldValue().toString());
+					} finally {
+						CustomFormDataFieldService.clearFormKey();
+					}
+				} else {
+					detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, fv.getFieldValue().toString());
+				}
                 if (detail == null) {
                     return;
                 }
@@ -2133,7 +2170,9 @@ public class ModuleFormService {
                     final BaseField showFieldConf = fieldMap.get(sourceField.getId() + REF_UNDERLINE + refId);
                     if (showFieldConf != null) {
                         final Object val = baseResourceFieldService.getFieldValueOfDetailMap(showFieldConf, detailMap, sourceField);
-                        reFvs.add(new BaseModuleFieldValue(showFieldConf.getId(), val));
+                        if (val != null) {
+                            reFvs.add(new BaseModuleFieldValue(showFieldConf.getId(), val));
+                        }
                     }
                 });
                 return;
@@ -2150,11 +2189,19 @@ public class ModuleFormService {
                         }
 
                         final DatasourceField sourceField = (DatasourceField) sourceConfigMap.get(k);
-                        final FieldSourceType sourceType = FieldSourceType.valueOf(sourceField.getDataSourceType());
-                        final Object detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, v.toString());
-                        if (detail == null) {
-                            return;
-                        }
+                        final FieldSourceType sourceType = FieldSourceType.safeValueOf(sourceField.getDataSourceType());
+						final Object detail;
+						if (sourceType == FieldSourceType.CUSTOM_FORM) {
+							// 自定义表单：设置 formId 到 ThreadLocal
+							try {
+								CustomFormDataFieldService.setFormKey(sourceField.getDataSourceType());
+								detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, v.toString());
+							} finally {
+								CustomFormDataFieldService.clearFormKey();
+							}
+						} else {
+							detail = fieldSourceServiceProvider.safeGetSimpleById(sourceType, v.toString());
+						}
 
                         final Map<String, Object> detailMap = JSON.MAPPER.convertValue(detail, Map.class);
                         if (MapUtils.isEmpty(detailMap)) {
@@ -2321,4 +2368,38 @@ public class ModuleFormService {
 
 		return fvs;
 	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
+    public List<BaseModuleFieldValue> compressResourceRefDetail(String formKey, String resourceId) {
+        List<BaseModuleFieldValue> fvs = new ArrayList<>();
+        Object resourceDetail = fieldSourceServiceProvider.safeGetFieldsById(formKey, resourceId);
+        if (resourceDetail == null) {
+            return fvs;
+        }
+        Map<String, Object> detailMap = JSON.MAPPER.convertValue(resourceDetail, Map.class);
+        if (org.apache.commons.collections.MapUtils.isEmpty(detailMap)) {
+            return fvs;
+        }
+
+        detailMap.forEach((k, v) -> {
+            if (Strings.CI.equals(BaseResourceFieldService.DETAIL_FIELD_PARAM_NAME, k)) {
+                List<Map> moduleFieldValues = (List<Map>) v;
+                if (org.apache.commons.collections.CollectionUtils.isNotEmpty(moduleFieldValues)) {
+                    for (Map mfv : moduleFieldValues) {
+                        BaseModuleFieldValue bfv = new BaseModuleFieldValue();
+                        bfv.setFieldId(mfv.get("fieldId").toString());
+                        bfv.setFieldValue(mfv.get("fieldValue"));
+                        fvs.add(bfv);
+                    }
+                }
+            } else {
+                BaseModuleFieldValue bfv = new BaseModuleFieldValue();
+                bfv.setFieldId(k);
+                bfv.setFieldValue(v);
+                fvs.add(bfv);
+            }
+        });
+
+        return fvs;
+    }
 }

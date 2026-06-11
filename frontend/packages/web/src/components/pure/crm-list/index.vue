@@ -28,8 +28,10 @@
             :style="{
               height: `${props.itemHeight}px`,
             }"
+            @click="emit('itemClick', item)"
           >
-            <div class="flex-1 overflow-x-hidden" @click="emit('itemClick', item)">
+            <slot name="titleLeft" :item="item"></slot>
+            <div class="flex-1 overflow-x-hidden">
               <slot name="title" :item="item"></slot>
             </div>
             <div class="flex items-center gap-[4px]">
@@ -42,11 +44,13 @@
                 <slot name="itemAction" :item="item"></slot>
                 <CrmMoreAction
                   v-if="props.itemMoreActions && props.itemMoreActions.length > 0"
-                  :options="props.itemMoreActions"
+                  :options="
+                    typeof props.itemMoreActions === 'function' ? props.itemMoreActions(item) : props.itemMoreActions
+                  "
                   trigger="click"
                   @select="handleMoreActionSelect($event, item)"
                   @close="handleMoreActionClose"
-                  @click="handleClickMore(item)"
+                  @click.stop="handleClickMore(item)"
                 >
                 </CrmMoreAction>
               </div>
@@ -74,7 +78,7 @@
       bordered?: boolean; // 是否显示边框
       activeItemKey?: string | number; // 当前选中的项的 key
       focusItemKey?: string | number; // 聚焦的项的 key
-      itemMoreActions?: ActionsItem[]; // 节点展示在省略号按钮内的更多操作
+      itemMoreActions?: ActionsItem[] | ((item: Record<string, any>) => ActionsItem[]); // 节点展示在省略号按钮内的更多操作
       keyField?: string; // 唯一值 key 的字段名，默认为 key
       itemHeight?: number; // 每一项的高度
       emptyText?: string; // 空数据时的文案

@@ -103,6 +103,7 @@ export default {
   'common.pleaseInput': '请输入',
   'common.pleaseSelect': '请选择',
   'common.quickAddMember': '快速添加成员',
+  'common.maxAddMemberTip': '最多可添加 {count} 人',
   'common.export': '导出',
   'common.exporting': '正在导出',
   'common.exportSuccessful': '导出成功',
@@ -373,4 +374,6 @@ export default {
   'common.exportApprovalTip': '仅支持导出审批状态为 {statuses} 的数据',
   'common.batchEditApprovalTip': '仅支持批量编辑审批状态为 {statuses} 的数据',
   'common.batchVoidApprovalTip': '仅支持批量作废审批状态为 {statuses} 的数据',
+  'common.testLink': '测试连接',
+  'common.batchDeleteTitle': '确认删除 {count} 个数据吗？',
 };

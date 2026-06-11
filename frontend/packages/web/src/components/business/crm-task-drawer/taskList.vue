@@ -14,11 +14,19 @@
           <div
             class="task-item"
             :class="selectedKeys.includes(item.approvalTaskId) ? '!border-[var(--primary-8)]' : ''"
+            @click.stop="
+              () => {
+                if (!props.activeTaskType.includes('copied') || getResourcePermission(item)) {
+                  emit('openDetail', item.resourceId, item.approvalFlowId, item.approvalTaskId);
+                }
+              }
+            "
           >
             <n-checkbox
               v-if="props.activeTaskType?.includes('pending') && approvalConfigDetail?.allowBatchProcess"
               :value="item.approvalTaskId"
               class="mt-[4px]"
+              @click.stop
             />
             <div class="task-item-content">
               <div class="flex w-full items-center gap-[16px]">
@@ -38,7 +46,7 @@
                   text
                   size="small"
                   class="text-[14px]"
-                  @click="emit('openDetail', item.resourceId, item.approvalFlowId)"
+                  @click="emit('openDetail', item.resourceId, item.approvalFlowId, item.approvalTaskId)"
                 >
                   {{ item.resourceName }}
                   <template #trigger> {{ item.resourceName }} </template>
@@ -49,7 +57,7 @@
                   text
                   size="small"
                   class="text-[14px]"
-                  @click="emit('openDetail', item.resourceId, item.approvalFlowId)"
+                  @click="emit('openDetail', item.resourceId, item.approvalFlowId, item.approvalTaskId)"
                 >
                   {{ item.resourceName }}
                   <template #trigger> {{ item.resourceName }} </template>
@@ -73,10 +81,10 @@
                   </div>
                 </div>
                 <div v-if="props.activeTaskType?.includes('pending')" class="flex gap-[12px]">
-                  <n-button type="error" ghost size="small" @click="handleReject(item)">
+                  <n-button type="error" ghost size="small" @click.stop="handleReject(item)">
                     {{ t('common.reject') }}
                   </n-button>
-                  <n-button type="primary" size="small" @click="handleApprove(item)">
+                  <n-button type="primary" size="small" @click.stop="handleApprove(item)">
                     {{ t('common.approve') }}
                   </n-button>
                 </div>
@@ -136,7 +144,7 @@
   }>();
 
   const emit = defineEmits<{
-    (e: 'openDetail', id: string, approvalFlowId: string): void;
+    (e: 'openDetail', id: string, approvalFlowId: string, approvalTaskId: string): void;
     (e: 'listInit', total: number, keys: string[]): void;
     (e: 'approvalSuccess'): void;
   }>();
@@ -296,7 +304,7 @@
 
 <style lang="less" scoped>
   .task-item {
-    @apply flex justify-between;
+    @apply flex cursor-pointer justify-between;
 
     margin-bottom: 16px;
     padding: 16px;

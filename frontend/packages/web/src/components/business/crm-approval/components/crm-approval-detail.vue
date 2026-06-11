@@ -17,7 +17,14 @@
         </div>
       </template>
       <template #2>
-        <div class="flex h-full w-full flex-col overflow-hidden border-l border-[var(--text-n8)]">
+        <div
+          v-if="noApproval"
+          class="h-full w-full flex-1 border-l border-[var(--text-n8)] px-[16px] py-[24px] pb-[32px]"
+        >
+          <div class="mb-[8px] text-[16px] font-semibold">{{ t('crm.approval.record') }}</div>
+          {{ t('crm.approval.historyTip') }}
+        </div>
+        <div v-else class="flex h-full w-full flex-col overflow-hidden border-l border-[var(--text-n8)]">
           <div class="flex-1 overflow-hidden px-[16px] py-[24px] pb-[32px]">
             <div class="mb-[8px] text-[16px] font-semibold">{{ t('crm.approval.record') }}</div>
             <CrmApprovalLine
@@ -30,6 +37,7 @@
               }"
               :currentApprovalNode="currentApprovalNode"
               :currentApprovalNodeIndex="currentApprovalNodeIndex"
+              :finally-result="approvalInfo?.approvalStatus"
               class="pr-[8px]"
             />
           </div>
@@ -410,9 +418,13 @@
     [FormDesignKeyEnum.ORDER]: 'ORDER_INDEX',
   };
 
+  const noApproval = ref(false);
   async function initApprovalDetail() {
     try {
       approvalInfo.value = await getApprovalResourceDetail(props.sourceId);
+      if (!approvalInfo.value) {
+        noApproval.value = true;
+      }
       currentApprovalNodeIndex.value = approvalInfo.value?.nodes.findIndex(
         (node) => node.nodeId === approvalInfo.value?.currentNodeId
       );

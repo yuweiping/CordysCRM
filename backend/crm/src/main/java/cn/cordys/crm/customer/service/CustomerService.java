@@ -208,7 +208,7 @@ public class CustomerService {
             return list;
         }
         List<String> customerIds = list.stream().map(CustomerListResponse::getId)
-                .collect(Collectors.toList());
+                .toList();
 
         Map<String, List<BaseModuleFieldValue>> caseCustomFiledMap = customerFieldService.getResourceFieldMap(customerIds, true);
 
@@ -244,7 +244,7 @@ public class CustomerService {
         if (CollectionUtils.isEmpty(poolIds)) {
             recycleRuleMap = Map.of();
         } else {
-            LambdaQueryWrapper<CustomerPoolRecycleRule> recycleRuleWrapper = new LambdaQueryWrapper<>();
+            var recycleRuleWrapper = new LambdaQueryWrapper<CustomerPoolRecycleRule>();
             recycleRuleWrapper.in(CustomerPoolRecycleRule::getPoolId, poolIds);
             List<CustomerPoolRecycleRule> recycleRules = customerPoolRecycleRuleMapper.selectListByLambda(recycleRuleWrapper);
             recycleRuleMap = recycleRules.stream().collect(Collectors.toMap(CustomerPoolRecycleRule::getPoolId, rule -> rule));
@@ -347,7 +347,7 @@ public class CustomerService {
             if (CollectionUtils.isEmpty(poolIds)) {
                 recycleRuleMap = Map.of();
             } else {
-                LambdaQueryWrapper<CustomerPoolRecycleRule> recycleRuleWrapper = new LambdaQueryWrapper<>();
+                var recycleRuleWrapper = new LambdaQueryWrapper<CustomerPoolRecycleRule>();
                 recycleRuleWrapper.in(CustomerPoolRecycleRule::getPoolId, poolIds);
                 List<CustomerPoolRecycleRule> recycleRules = customerPoolRecycleRuleMapper.selectListByLambda(recycleRuleWrapper);
                 recycleRuleMap = recycleRules.stream().collect(Collectors.toMap(CustomerPoolRecycleRule::getPoolId, rule -> rule));
@@ -409,12 +409,12 @@ public class CustomerService {
 	 */
 	public List<CustomerGetResponse> batchGetSimpleByIds(List<String> ids) {
 		if (CollectionUtils.isEmpty(ids)) {
-			return Collections.emptyList();
+			return List.of();
 		}
 		// 批量查询资源基本信息
 		List<Customer> customers = customerMapper.selectByIds(ids);
 		if (CollectionUtils.isEmpty(customers)) {
-			return Collections.emptyList();
+			return List.of();
 		}
 		// 批量查询自定义字段值
 		Map<String, List<BaseModuleFieldValue>> fieldValueMap = customerFieldService.getResourceFieldMap(ids, true);
@@ -462,7 +462,6 @@ public class CustomerService {
         if (!Strings.CS.equals(originCustomer.getOwner(), request.getOwner())) {
             poolCustomerService.validateCapacity(1, request.getOwner(), orgId);
         }
-        dataScopeService.checkDataPermission(userId, orgId, originCustomer.getOwner(), PermissionConstants.CUSTOMER_MANAGEMENT_UPDATE);
 
         Customer customer = BeanUtils.copyBean(new Customer(), request);
         customer.setUpdateTime(System.currentTimeMillis());
@@ -513,7 +512,6 @@ public class CustomerService {
     @OperationLog(module = LogModule.CUSTOMER_INDEX, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id, String userId, String orgId) {
         Customer originCustomer = customerMapper.selectByPrimaryKey(id);
-        dataScopeService.checkDataPermission(userId, orgId, originCustomer.getOwner(), PermissionConstants.CUSTOMER_MANAGEMENT_DELETE);
         checkResourceRef(List.of(id));
         deleteCustomerResource(List.of(id));
 
@@ -527,11 +525,9 @@ public class CustomerService {
 
     public void batchTransfer(CustomerBatchTransferRequest request, String userId, String orgId) {
         List<Customer> originCustomers = customerMapper.selectByIds(request.getIds());
-        List<String> owners = getOwners(originCustomers);
         long processCount = originCustomers.stream().filter(customer -> !Strings.CS.equals(customer.getOwner(), request.getOwner())).count();
         poolCustomerService.validateCapacity((int) processCount, request.getOwner(), orgId);
 
-        dataScopeService.checkDataPermission(userId, orgId, owners, PermissionConstants.CUSTOMER_MANAGEMENT_UPDATE);
         // 添加责任人历史
         customerOwnerHistoryService.batchAdd(request, userId);
         extCustomerMapper.batchTransfer(request, userId);
@@ -568,9 +564,6 @@ public class CustomerService {
 
     public void batchDelete(List<String> ids, String userId, String orgId) {
         List<Customer> customers = customerMapper.selectByIds(ids);
-        List<String> owners = getOwners(customers);
-        dataScopeService.checkDataPermission(userId, orgId, owners, PermissionConstants.CUSTOMER_MANAGEMENT_DELETE);
-
         checkResourceRef(ids);
 
         deleteCustomerResource(ids);
@@ -628,14 +621,11 @@ public class CustomerService {
      */
     public BatchAffectResponse batchToPool(BatchPoolReasonRequest request, String currentUser, String orgId) {
         List<Customer> customers = customerMapper.selectByIds(request.getIds());
-        List<String> owners = getOwners(customers);
-        dataScopeService.checkDataPermission(currentUser, orgId, owners, PermissionConstants.CUSTOMER_MANAGEMENT_RECYCLE);
-
         List<String> ownerIds = getOwners(customers);
         Map<String, CustomerPool> ownersDefaultPoolMap = customerPoolService.getOwnersDefaultPoolMap(ownerIds, orgId);
 
         int success = 0;
-        List<LogDTO> logs = new ArrayList<>();
+        var logs = new ArrayList<LogDTO>();
         for (Customer customer : customers) {
             CustomerPool customerPool = ownersDefaultPoolMap.get(customer.getOwner());
             if (customerPool == null) {
@@ -699,7 +689,7 @@ public class CustomerService {
     }
 
     public List<Customer> getCustomerListByNames(List<String> names) {
-        LambdaQueryWrapper<Customer> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+        var lambdaQueryWrapper = new LambdaQueryWrapper<Customer>();
         lambdaQueryWrapper.in(Customer::getName, names);
         return customerMapper.selectListByLambda(lambdaQueryWrapper);
     }
@@ -760,7 +750,7 @@ public class CustomerService {
         try {
             List<BaseField> fields = moduleFormService.getAllFields(FormKey.CUSTOMER.getKey(), currentOrg);
             CustomImportAfterDoConsumer<Customer, BaseResourceSubField> afterDo = (customers, customerFields, customerFieldBlobs) -> {
-                List<LogDTO> logs = new ArrayList<>();
+                var logs = new ArrayList<LogDTO>();
                 customers.forEach(customer -> {
                     customer.setCollectionTime(customer.getCreateTime());
                     customer.setInSharedPool(false);
@@ -847,7 +837,7 @@ public class CustomerService {
         Map<String, Boolean> uniqueMap = customerContactService.getUniqueMap(currentOrgId);
         List<String> names = new ArrayList<>();
         List<String> phones = new ArrayList<>();
-        LambdaQueryWrapper<CustomerContact> contactWrapper = new LambdaQueryWrapper<>();
+        var contactWrapper = new LambdaQueryWrapper<CustomerContact>();
         contactWrapper.eq(CustomerContact::getCustomerId, request.getToMergeId());
         List<CustomerContact> toMergeContacts = customerContactMapper.selectListByLambda(contactWrapper);
         if (uniqueMap.get(BusinessModuleField.CUSTOMER_CONTACT_NAME.getKey())) {
@@ -917,7 +907,7 @@ public class CustomerService {
      */
     private void mergeCollaboration(CustomerMergeRequest request, String currentUser, String currentOrgId) {
         // 被合并客户的协作人
-        LambdaQueryWrapper<CustomerCollaboration> mergeCollaborationWrapper = new LambdaQueryWrapper<>();
+        var mergeCollaborationWrapper = new LambdaQueryWrapper<CustomerCollaboration>();
         mergeCollaborationWrapper.in(CustomerCollaboration::getCustomerId, request.getMergeIds());
         List<CustomerCollaboration> mergeCollaborations = customerCollaborationMapper.selectListByLambda(mergeCollaborationWrapper);
         List<String> toCollaborationUserIds = mergeCollaborations.stream().map(CustomerCollaboration::getUserId).distinct().toList();
@@ -931,7 +921,7 @@ public class CustomerService {
                 .distinct()
                 .toList();
         // 合并客户已存在的协作人
-        LambdaQueryWrapper<CustomerCollaboration> collaborationWrapper = new LambdaQueryWrapper<>();
+        var collaborationWrapper = new LambdaQueryWrapper<CustomerCollaboration>();
         collaborationWrapper.eq(CustomerCollaboration::getCustomerId, request.getToMergeId());
         List<CustomerCollaboration> customerCollaborations = customerCollaborationMapper.selectListByLambda(collaborationWrapper);
         List<String> collaborationUserIds = customerCollaborations.stream().map(CustomerCollaboration::getUserId).toList();
@@ -949,7 +939,7 @@ public class CustomerService {
         }
 
         // 删除被合并客户的协作人关系
-        LambdaQueryWrapper<CustomerCollaboration> delCollaborationWrapper = new LambdaQueryWrapper<>();
+        var delCollaborationWrapper = new LambdaQueryWrapper<CustomerCollaboration>();
         delCollaborationWrapper.in(CustomerCollaboration::getCustomerId, request.getMergeIds());
         customerCollaborationMapper.deleteByLambda(delCollaborationWrapper);
     }
@@ -964,7 +954,7 @@ public class CustomerService {
      * @return 日志列表
      */
     private List<LogDTO> getMergeRelateLogs(CustomerMergeRequest mergeRequest, String currentUser, String currentOrgId) {
-        List<LogDTO> logs = new ArrayList<>();
+        var logs = new ArrayList<LogDTO>();
 
         List<Customer> mergeCustomers = customerMapper.selectByIds(mergeRequest.getMergeIds());
         Map<String, String> customerMap = mergeCustomers.stream().collect(Collectors.toMap(Customer::getId, Customer::getName));

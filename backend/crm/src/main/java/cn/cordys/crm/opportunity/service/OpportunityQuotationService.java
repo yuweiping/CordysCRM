@@ -3,6 +3,8 @@ package cn.cordys.crm.opportunity.service;
 import cn.cordys.aspectj.annotation.OperationLog;
 import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
+import cn.cordys.aspectj.context.OperationLogContext;
+import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.CommonResultCode;
 import cn.cordys.common.constants.FormKey;
@@ -130,7 +132,7 @@ public class OpportunityQuotationService {
      * @return 商机报价单实体
      */
     @OperationLog(module = LogModule.OPPORTUNITY_QUOTATION, type = LogType.ADD, resourceName = "{#request.name}", operator = "{#userId}")
-	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.CREATE)
+	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.CREATE, operatorId = "{#userId}")
     public OpportunityQuotation add(OpportunityQuotationAddRequest request, String orgId, String userId) {
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
@@ -303,6 +305,25 @@ public class OpportunityQuotationService {
 		moduleFormService.processBusinessFieldValues(response, fvs, quotationFormConf);
 		return response;
 	}
+
+
+    /**
+     * 获取字段详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     * @param id 报价单ID
+     * @return 报价单详情
+     */
+    public OpportunityQuotationGetResponse getFieldValues(String id) {
+        OpportunityQuotationGetResponse response = new OpportunityQuotationGetResponse();
+        LambdaQueryWrapper<OpportunityQuotationSnapshot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(OpportunityQuotationSnapshot::getQuotationId, id);
+        OpportunityQuotationSnapshot snapshot = snapshotBaseMapper.selectListByLambda(wrapper).stream().findFirst().orElse(null);
+        if (snapshot != null) {
+            response = JSON.parseObject(snapshot.getQuotationValue(), OpportunityQuotationGetResponse.class);
+        }
+        return response;
+    }
+
+
 
 	/**
 	 * 批量获取报价单详情 (用于数据源批量查询优化)
@@ -479,6 +500,9 @@ public class OpportunityQuotationService {
 		List<BaseField> fields = formConfig.getFields();
 		Map<String, BaseField> fieldConfigMap = fields.stream().collect(Collectors.toMap(BaseField::getId, f -> f));
 		OpportunityQuotation quotation = opportunityQuotationMapper.selectByPrimaryKey(postFieldParam.getResourceId());
+		// 保存原始数据用于日志记录
+		OpportunityQuotation originQuotation = BeanUtils.copyBean(new OpportunityQuotation(), quotation);
+		List<BaseModuleFieldValue> originFields = opportunityQuotationFieldService.getModuleFieldValuesByResourceId(postFieldParam.getResourceId());
 		List<OpportunityQuotationField> quotationFields = new ArrayList<>();
 		List<OpportunityQuotationFieldBlob> quotationFieldBlobs = new ArrayList<>();
 		OpportunityQuotationSnapshot snapshotCriteria = new OpportunityQuotationSnapshot();
@@ -543,6 +567,19 @@ public class OpportunityQuotationService {
 			OpportunityQuotationGetResponse snapshotRes = getOpportunityQuotationGetResponse(quotation, response.getModuleFields(), formConfig);
 			snapshot.setQuotationValue(JSON.toJSONString(snapshotRes));
 			snapshotBaseMapper.update(snapshot);
+		}
+		// 记录审批后置字段更新日志
+		baseService.handleUpdateLogWithSubTable(originQuotation, quotation, originFields, opportunityQuotationFieldService.getModuleFieldValuesByResourceId(postFieldParam.getResourceId()),
+				postFieldParam.getResourceId(), quotation.getName(), Translator.get("products_info"), formConfig);
+		// 从 OperationLogContext 中获取日志信息并手动记录
+		LogContextInfo contextInfo = OperationLogContext.getContext();
+		if (contextInfo != null) {
+			String orgId = OrganizationContext.getOrganizationId();
+			LogDTO logDTO = new LogDTO(orgId, postFieldParam.getResourceId(), postFieldParam.getOperator(), LogType.UPDATE, LogModule.OPPORTUNITY_QUOTATION, quotation.getName());
+			logDTO.setOriginalValue(contextInfo.getOriginalValue());
+			logDTO.setModifiedValue(contextInfo.getModifiedValue());
+			logService.add(logDTO);
+			OperationLogContext.clear();
 		}
 	}
 
@@ -711,7 +748,7 @@ public class OpportunityQuotationService {
      * @return 更新后的报价单实体
      */
     @OperationLog(module = LogModule.OPPORTUNITY_QUOTATION, type = LogType.UPDATE, resourceName = "{#request.name}", operator = "{#userId}")
-	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.EDIT, resourceId = "{#request.id}", updateType = "{#request.updateType}")
+	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.EDIT, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}")
     public OpportunityQuotation update(OpportunityQuotationEditRequest request, String userId, String orgId) {
         String id = request.getId();
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
@@ -917,10 +954,13 @@ public class OpportunityQuotationService {
      * @param userId         当前用户ID
      * @param organizationId 当前组织ID
      */
-    public void batchUpdate(ResourceBatchEditRequest request, String userId, String organizationId) {
+    public BatchAffectReasonResponse batchUpdate(ResourceBatchEditRequest request, String userId, String organizationId) {
         BaseField field = opportunityQuotationFieldService.getAndCheckField(request.getFieldId(), organizationId);
         moduleFormService.setFieldBusinessParam(field);
         List<OpportunityQuotation> originQuotations = opportunityQuotationMapper.selectByIds(request.getIds());
+        if (CollectionUtils.isEmpty(originQuotations)) {
+            return BatchAffectReasonResponse.builder().success(0).fail(0).skip(0).errorMessages(Translator.get("opportunity.quotation.not.exist")).build();
+        }
 
         // 校验状态权限，过滤出有权限操作的报价单
         List<String> permittedIds = approvalFlowService.filterResourcesWithPermission(
@@ -933,10 +973,10 @@ public class OpportunityQuotationService {
         );
 
         if (CollectionUtils.isEmpty(permittedIds)) {
-            return;
+            return BatchAffectReasonResponse.builder().success(0).fail(originQuotations.size()).skip(0).errorMessages(Translator.get("no.operation.permission")).build();
         }
 
-            approvalResourceService.batchEditTriggerApproval(permittedIds, FormKey.QUOTATION, organizationId);
+            approvalResourceService.batchEditTriggerApproval(permittedIds, FormKey.QUOTATION, organizationId, userId);
 
         // 只对有权限的报价单进行操作
         List<OpportunityQuotation> permittedQuotations = originQuotations.stream()
@@ -1002,6 +1042,8 @@ public class OpportunityQuotationService {
         if (CollectionUtils.isNotEmpty(snapshots)) {
             snapshotBaseMapper.batchInsert(snapshots);
         }
+
+        return BatchAffectReasonResponse.builder().success(permittedIds.size()).fail(originQuotations.size() - permittedIds.size()).skip(0).errorMessages(Translator.get("batch.update.reason")).build();
     }
 
 

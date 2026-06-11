@@ -3,6 +3,7 @@ import useAgentApi from '@lib/shared/api/modules/agent';
 import useClueApi from '@lib/shared/api/modules/clue';
 import useContractApi from '@lib/shared/api/modules/contract';
 import useCustomerApi from '@lib/shared/api/modules/customer';
+import useCustomFormApi from '@lib/shared/api/modules/customForm';
 import useDashboard from '@lib/shared/api/modules/dashboard';
 import useFollowApi from '@lib/shared/api/modules/follow';
 import useHomeApi from '@lib/shared/api/modules/home';
@@ -48,7 +49,34 @@ const dashboardApi = useDashboard(CDR);
 const opportunityApi = useOpportunityApi(CDR);
 const contractApi = useContractApi(CDR);
 const orderApi = useOrderApi(CDR);
+const customFormApi = useCustomFormApi(CDR);
 const processApi = useProcessApi(CDR);
+
+export const {
+  addCustomForm,
+  updateCustomForm,
+  getCustomFormDetail,
+  saveCustomFormAdmins,
+  getCustomFormAdmins,
+  relateCustomFormMember,
+  getCustomFormRoles,
+  getCustomFormRoleUsers,
+  getCustomFormRoleUserDeptTree,
+  getCustomFormRoleUserRoleTree,
+  removeCustomFormMember,
+  getCustomFormList,
+  getCustomFormDataDetail,
+  getCustomFormDataPage,
+  addCustomFormData,
+  batchUpdateCustomFormData,
+  batchDeleteCustomFormData,
+  updateCustomFormData,
+  deleteCustomFormData,
+  deleteCustomForm,
+  enableCustomForm,
+  disableCustomForm,
+  getCustomFormOptions,
+} = customFormApi;
 
 export const {
   getOrderFormConfig,
@@ -665,6 +693,8 @@ export const {
   getFieldDisplayList,
   getFieldBusinessTitleList,
   getDatasourceRefDetailList,
+  getFieldCustomFormList,
+  getDatasourceFieldConfig,
 } = moduleApi;
 
 export const {
@@ -797,4 +827,5 @@ export const {
   batchRejectApproval,
   agreeApproval,
   batchAgreeApproval,
+  testApprovalWebHook,
 } = processApi;

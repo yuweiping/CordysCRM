@@ -248,7 +248,7 @@ public class ApprovalInstanceService {
 			if (approverNode != null) {
 				node.setMultiApproverMode(MultiApproverModeEnum.valueOf(approverNode.getMultiApproverMode()));
 				if (CollectionUtils.isNotEmpty(node.getTaskNodes()) && node.getTaskNodes().size() > 1 && StringUtils.isBlank(node.getApprovalStatus())) {
-					ApprovalStatus approvalStatusOfMultiNode = getNodeApprovalStatusOfMultiTask(node.getTaskNodes(), node.getMultiApproverMode());
+					ApprovalStatus approvalStatusOfMultiNode = getNodeApprovalStatusOfMultiTask(node.getTaskNodes());
 					node.setApprovalStatus(approvalStatusOfMultiNode == null ? null : approvalStatusOfMultiNode.name());
 				} else if (node.getTaskNodes().size() == 1 && StringUtils.isBlank(node.getApprovalStatus())){
 					node.setApprovalStatus(node.getTaskNodes().getFirst().getApprovalStatus());
@@ -266,6 +266,10 @@ public class ApprovalInstanceService {
 				if (ApprovalNodeTypeEnum.valueOf(approvalNode.getNodeType()) == ApprovalNodeTypeEnum.END) {
 					node.setEndNode(true);
 				}
+			}
+			if (CollectionUtils.isEmpty(node.getTaskNodes())) {
+
+				node.setTaskNodes(List.of());
 			}
 		});
 		// 节点流程配置顺序
@@ -289,8 +293,9 @@ public class ApprovalInstanceService {
 		Map<String, ApprovalRecord> autoNodeRecordMap = records.stream().filter(record -> StringUtils.isBlank(record.getTaskId()))
 				.collect(Collectors.toMap(ApprovalRecord::getNodeId, r -> r, (existing, newOne) -> newOne.getNodeRound() >= existing.getNodeRound() ? newOne : existing
 				));
-		Map<String, ApprovalRecord> taskRecordMap = records.stream().filter(record -> StringUtils.isNotBlank(record.getTaskId())).collect(Collectors.toMap(ApprovalRecord::getTaskId, r -> r));
-		List<ApprovalTask> nTasks = tasks.stream().filter(task -> ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.NL && ApprovalStatus.valueOf(task.getStatus()) != ApprovalStatus.NONE).toList();
+		Map<String, ApprovalRecord> taskRecordMap = records.stream().filter(record -> StringUtils.isNotBlank(record.getTaskId()))
+				.collect(Collectors.toMap(ApprovalRecord::getTaskId, r -> r, (existing, newOne) -> newOne.getCreateTime() >= existing.getCreateTime() ? newOne : existing));
+		List<ApprovalTask> nTasks = tasks.stream().filter(task -> ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.NL).toList();
 		Map<String, Integer> nodeMaxRoundMap = mergeNodeMaxRound(nTasks, records);
 		List<String> hisNodes = sortNodeRoundMap(nodeMaxRoundMap, nTasks, records);
 		Map<String, ApprovalNodeApprover> hisApproverNodeMap = getApproverNodeMapByIds(hisNodes);
@@ -303,6 +308,11 @@ public class ApprovalInstanceService {
 			if (autoNodeRecordMap.containsKey(hisNode) && autoNodeRecordMap.get(hisNode).getNodeRound().equals(maxRound)) {
 				// 当前节点的最后一轮执行是自动执行
 				ApprovalRecordNode recordNode = ApprovalRecordNode.builder().nodeId(hisNode).nodeRound(maxRound).taskNodes(List.of()).approvalStatus(autoNodeRecordMap.get(hisNode).getResult()).build();
+				ApprovalTaskNode autoTask = buildAutoTaskNode();
+				autoTask.setApprovalTime(autoNodeRecordMap.get(hisNode).getCreateTime());
+				autoTask.setApprovalStatus(recordNode.getApprovalStatus());
+				autoTask.setRecordId(autoNodeRecordMap.get(hisNode).getId());
+				recordNode.setTaskNodes(List.of(autoTask));
 				nodes.addLast(recordNode);
 				return;
 			}
@@ -417,14 +427,23 @@ public class ApprovalInstanceService {
 		}
 		List<ApprovalNodeApproverResponse> nodes = approvalFlowService.getInstanceCurrentFollowNode(instance, currentOrgId);
 		return nodes.stream().map(node -> {
-			List<ApprovalTaskNode> taskNodes = node.getApproverList().stream().map(approver -> {
+			if (ApprovalTypeEnum.valueOf(node.getApprovalType()) == ApprovalTypeEnum.AUTO_PASS || ApprovalTypeEnum.valueOf(node.getApprovalType()) == ApprovalTypeEnum.AUTO_REJECT) {
+				// 自动节点没有审批人
+				node.setApproverList(new ArrayList<>());
+			}
+			List<ApprovalTaskNode> taskNodes = new ArrayList<>(node.getApproverList().stream().map(approver -> {
 				ApprovalTaskNode taskNode = ApprovalTaskNode.builder().taskId(IDGenerator.nextStr()).approverId(approver).approvalStatus(ApprovalStatus.PENDING.name()).build();
 				if (simpleUserMap.containsKey(approver)) {
 					taskNode.setApprover(simpleUserMap.get(approver).getName());
 					taskNode.setApproverAvatar(simpleUserMap.get(approver).getAvatar());
 				}
 				return taskNode;
-			}).toList();
+			}).toList());
+			if (CollectionUtils.isEmpty(taskNodes)) {
+				ApprovalTaskNode taskNode = buildAutoTaskNode();
+				taskNode.setApprovalStatus(ApprovalStatus.PENDING.name());
+				taskNodes.add(taskNode);
+			}
 			return ApprovalRecordNode.builder().nodeId(node.getId()).nodeRound(1).approvalStatus(ApprovalStatus.PENDING.name()).taskNodes(taskNodes).build();
 		}).toList();
 	}
@@ -446,57 +465,36 @@ public class ApprovalInstanceService {
 	/**
 	 * 处理多人节点的审批状态
 	 * @param taskNodes 任务节点
-	 * @param approverMode 多人审批方式
 	 * @return 审批状态
 	 */
-	private ApprovalStatus getNodeApprovalStatusOfMultiTask(List<ApprovalTaskNode> taskNodes, MultiApproverModeEnum approverMode) {
+	private ApprovalStatus getNodeApprovalStatusOfMultiTask(List<ApprovalTaskNode> taskNodes) {
 		boolean anyReject = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.UNAPPROVED);
 		boolean anyAutoReject = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.AUTO_UNAPPROVED);
 		boolean anyApproving = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.APPROVING);
 		boolean anyRevoked = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.REVOKED);
 		boolean anyApproved = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.APPROVED);
 		boolean anyAutoApproved = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.AUTO_APPROVED);
-		if (approverMode == MultiApproverModeEnum.ALL || approverMode == MultiApproverModeEnum.SEQUENTIAL) {
-			// 会签, 依次审批  (状态优先级: 驳回 > 自动驳回 -> 审批中 -> 已通过 -> 自动通过)
-			if (anyReject) {
-				return ApprovalStatus.UNAPPROVED;
-			}
-			if (anyAutoReject) {
-				return ApprovalStatus.AUTO_UNAPPROVED;
-			}
-			if (anyApproving) {
-				return ApprovalStatus.APPROVING;
-			}
-			if (anyRevoked) {
-				return ApprovalStatus.NONE;
-			}
-			if (anyApproved) {
-				return ApprovalStatus.APPROVED;
-			}
-			if (anyAutoApproved) {
-				return ApprovalStatus.AUTO_APPROVED;
-			}
-		} else if (approverMode == MultiApproverModeEnum.ANY){
-			// 或签 (状态优先级: 已通过 > 自动通过 -> 审批中 -> 自动驳回 -> 驳回)
-			if (anyApproved) {
-				return ApprovalStatus.APPROVED;
-			}
-			if (anyAutoApproved) {
-				return ApprovalStatus.AUTO_APPROVED;
-			}
-			if (anyApproving) {
-				return ApprovalStatus.APPROVING;
-			}
-			if (anyRevoked) {
-				return ApprovalStatus.NONE;
-			}
-			if (anyAutoReject) {
-				return ApprovalStatus.AUTO_UNAPPROVED;
-			}
-			if (anyReject) {
-				return ApprovalStatus.UNAPPROVED;
-			}
+
+		// 所有多人审批模式统一: 任一驳回即驳回 (状态优先级: 驳回 > 自动驳回 -> 审批中 -> 已通过 -> 自动通过)
+		if (anyReject) {
+			return ApprovalStatus.UNAPPROVED;
 		}
+		if (anyAutoReject) {
+			return ApprovalStatus.AUTO_UNAPPROVED;
+		}
+		if (anyApproving) {
+			return ApprovalStatus.APPROVING;
+		}
+		if (anyRevoked) {
+			return ApprovalStatus.NONE;
+		}
+		if (anyApproved) {
+			return ApprovalStatus.APPROVED;
+		}
+		if (anyAutoApproved) {
+			return ApprovalStatus.AUTO_APPROVED;
+		}
+
 		return null;
 	}
 
@@ -675,7 +673,8 @@ public class ApprovalInstanceService {
 		instances.forEach(instance -> {
 			ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
 			if (resourceService != null) {
-				resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), ApprovalStatus.NONE.name());
+				// 系统操作，不记录日志
+				resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), ApprovalStatus.NONE.name(), null, null);
 			}
 		});
 		approvalInstanceMapper.deleteByLambda(instanceLambdaQueryWrapper);
@@ -719,5 +718,9 @@ public class ApprovalInstanceService {
 			}
 		});
 		return taskMap.values().stream().sorted(Comparator.comparing(ApprovalTask::getCreateTime)).toList();
+	}
+
+	private ApprovalTaskNode buildAutoTaskNode() {
+		return ApprovalTaskNode.builder().taskId("auto").approverId("Cbot").approver("Cbot").build();
 	}
 }

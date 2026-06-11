@@ -34,6 +34,9 @@ export enum ModuleConfigEnum {
 
   /** 招标 */
   TENDER = 'tender',
+  
+   /** 自定义表单 */
+  CUSTOM_FORM = 'customForm',
 }
 
 // 添加员工API
@@ -42,6 +45,7 @@ export enum MemberApiTypeEnum {
   MODULE_ROLE = 'MODULE_ROLE',
   FORM_FIELD = 'FORM_FIELD',
   SYSTEM_ORG_USER = 'SYSTEM_ORG_USER',
+  CUSTOM_FORM = 'CUSTOM_FORM',
 }
 
 // 选择添加

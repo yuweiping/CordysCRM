@@ -14,11 +14,12 @@
         <CrmFormCreateDivider :field-config="item.fieldInfo" class="!m-0 w-full" />
       </template>
       <template #image="{ item }">
-        <n-image-group>
+        <n-image-group v-if="item.value?.length">
           <n-space :class="`${props.valueAlign ?? '!justify-end'}`">
             <n-image v-for="img in item.value" :key="img" :src="`${PreviewPictureUrl}/${img}`" width="40" height="40" />
           </n-space>
         </n-image-group>
+        <data v-else>-</data>
       </template>
       <template #[FieldTypeEnum.INPUT]="{ item }">
         <div class="field-line flex w-full items-center">
@@ -41,7 +42,7 @@
             :feedback="feedbackMap[item.fieldInfo.id]"
             class="flex-1"
           />
-          <div v-else>{{ item.value }}</div>
+          <div v-else>{{ item.value || '-' }}</div>
         </div>
       </template>
       <template #[FieldTypeEnum.TEXTAREA]="{ item }">
@@ -65,7 +66,8 @@
             :feedback="feedbackMap[item.fieldInfo.id]"
             class="flex-1"
           />
-          <div v-html="item.value?.toString().replace(/\n/g, '<br />')"></div>
+          <div v-if="item.value" v-html="item.value?.toString().replace(/\n/g, '<br />')"></div>
+          <div v-else>-</div>
         </div>
       </template>
       <!-- 链接字段 -->
@@ -80,10 +82,10 @@
           <n-tooltip :delay="300">
             <template #trigger>
               <div class="one-line-text cursor-pointer text-[var(--primary-8)]" @click="openLink(item)">
-                {{ item.value }}
+                {{ item.value || '-' }}
               </div>
             </template>
-            {{ item.value }}
+            {{ item.value || '-' }}
           </n-tooltip>
         </div>
       </template>
@@ -289,6 +291,7 @@
       isContractTableDetail?: boolean; // 只支持合同列表打开的合同详情抽屉高亮跳转
       fieldPermissions?: ApprovalFieldPermission[]; // 字段权限控制
       otherSaveParams?: Record<string, any>;
+      customFormId?: string;
     }>(),
     {
       oneLineLabel: true,
@@ -326,7 +329,7 @@
         ?.filter((e) => e.permissionType === ApprovalFieldPermissionModeEnum.EDIT)
         .map((e) => e.fieldId) || []
   );
-  const { formKey, sourceId, otherSaveParams } = toRefs(props);
+  const { formKey, sourceId, otherSaveParams, customFormId } = toRefs(props);
   const {
     fieldList,
     descriptions,
@@ -347,6 +350,7 @@
     needInitDetail,
     isContractTableDetail: props.isContractTableDetail,
     otherSaveParams,
+    customFormId,
   });
 
   const realDescriptions = computed(() => {
@@ -415,6 +419,19 @@
           ) {
             // 处理数据源字段，单选传单个值
             formDetail.value[item.id] = formDetail.value[item.id]?.[0];
+          }
+          if (item.subFields?.length) {
+            const parentFieldDetail = formDetail.value[item.id];
+            if (parentFieldDetail) {
+              parentFieldDetail.forEach((subItem: Record<string, any>) => {
+                item.subFields?.forEach((subField) => {
+                  if ([FieldTypeEnum.DATA_SOURCE].includes(subField.type) && Array.isArray(subItem[subField.id])) {
+                    // 处理数据源字段，单选传单个值
+                    subItem[subField.id] = subItem[subField.id]?.[0];
+                  }
+                });
+              });
+            }
           }
           if (!validateField(item)) {
             hasErrorField = true;

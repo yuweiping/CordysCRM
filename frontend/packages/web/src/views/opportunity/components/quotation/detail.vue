@@ -48,6 +48,7 @@
           :fieldPermissions="fieldPermissions"
           :otherSaveParams="{
             updateType: 'approval',
+            approvalTaskId: props.approvalTaskId,
           }"
           label-width="auto"
           value-align="start"
@@ -58,6 +59,15 @@
       </template>
     </CrmApprovalDetail>
   </CrmDrawer>
+  <CrmFormCreateDrawer
+    v-model:visible="formCreateDrawerVisible"
+    :form-key="activeFormKey"
+    :source-id="props.sourceId"
+    :need-init-detail="needInitDetail"
+    :initial-source-name="initialSourceName"
+    :other-save-params="otherSaveParams"
+    @saved="handleFormCreateSaved"
+  />
 </template>
 
 <script setup lang="ts">
@@ -76,6 +86,7 @@
   import CrmTag from '@/components/pure/crm-tag/index.vue';
   import CrmApprovalDetail from '@/components/business/crm-approval/components/crm-approval-detail.vue';
   import CrmApprovalStatus from '@/components/business/crm-approval/components/crm-approval-status.vue';
+  import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import CrmFormDescription from '@/components/business/crm-form-description/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
 
@@ -96,6 +107,7 @@
 
   const props = defineProps<{
     sourceId: string;
+    approvalTaskId?: string;
   }>();
 
   const emit = defineEmits<{
@@ -189,11 +201,26 @@
     });
   }
 
+  const formCreateDrawerVisible = ref(false);
+  const initialSourceName = ref('');
+  const needInitDetail = ref(false);
+  const activeFormKey = ref(FormDesignKeyEnum.OPPORTUNITY_QUOTATION);
+  const otherSaveParams = ref<Record<string, any>>({
+    id: '',
+  });
+
+  function handleFormCreateSaved() {
+    refreshKey.value += 1;
+    emit('refresh');
+  }
+
   function handleSelect(key: string) {
     switch (key) {
       case 'edit':
-        emit('edit', props.sourceId);
-        visible.value = false;
+        activeFormKey.value = FormDesignKeyEnum.OPPORTUNITY_QUOTATION;
+        needInitDetail.value = true;
+        otherSaveParams.value.id = props.sourceId;
+        formCreateDrawerVisible.value = true;
         break;
       case 'review':
         handleReview();

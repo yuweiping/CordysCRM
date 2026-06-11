@@ -1,10 +1,12 @@
 import {
+  ApprovalLevelDirectionEnum,
   ApprovalOperationEnum,
   ApprovalTypeEnum,
   ApproverTypeEnum,
   ProcessStatusEnum,
   type ApprovalResourceTypeEnum,
 } from '@lib/shared/enums/process';
+import { RequestEnum } from '@lib/shared/enums/httpEnum';
 import type { SelectedUsersItem } from './module';
 import type { OptionDTO } from './business';
 import type { FilterForm } from '@cordys/web/src/components/pure/crm-advance-filter/type';
@@ -71,8 +73,18 @@ export interface ApprovalFieldUpdateConfig {
   enable: boolean;
 }
 
+export interface ApprovalWebhookConfig {
+  webHookDescribe: string;
+  webHookEnable: boolean;
+  webHookUrl: string;
+  webHookMethod: RequestEnum;
+  webHookHeader: string;
+  webHookBody: string;
+}
+
 export interface ApprovalPostConfig {
   fieldUpdateConfigs: ApprovalFieldUpdateConfig[];
+  webHookConfig?: ApprovalWebhookConfig;
 }
 
 // 后端审批流节点的基础结构
@@ -86,6 +98,7 @@ export interface ApprovalProcessNodeBase<TNodeType extends ApprovalNodeTypeEnum>
 export interface ApprovalNodeParticipantConfig {
   approvalType: ApprovalTypeEnum; // 审批类型：人工审批/自动通过/自动拒绝
   approverType: ApproverTypeEnum | null;
+  approverDirection?: ApprovalLevelDirectionEnum;
   approverList: string[]; // 审批人配置列表：成员 ID / 角色 ID / 层级等
   approverSelectOptions?: OptionDTO[]; // 审批人选择项（用于前端回显）
   multiApproverMode: MultiApproverModeEnum; // 多人审批方式
@@ -94,6 +107,7 @@ export interface ApprovalNodeParticipantConfig {
   fallbackApproverName?: string;
   sameSubmitterAction: SameSubmitterActionEnum; // 异常处理-审批人与提交人相同时动作
   ccType: ApproverTypeEnum | null; // 抄送人
+  ccDirection?: ApprovalLevelDirectionEnum;
   ccList: string[]; // 抄送人配置列表：成员 ID / 角色 ID / 层级等
   ccSelectOptions?: OptionDTO[]; // 抄送人选择项（用于前端回显）
   passPostConfig?: ApprovalPostConfig; // 审批通过后配置

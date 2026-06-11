@@ -219,6 +219,17 @@
       render: (row: BusinessTitleItem, rowIndex: number) => rowIndex + 1,
     },
     {
+      title: t('contract.businessTitle.companyCode'),
+      key: 'companyNumber',
+      sortOrder: false,
+      sorter: true,
+      fixed: 'left',
+      ellipsis: {
+        tooltip: true,
+      },
+      width: 120,
+    },
+    {
       title: t('contract.businessTitle.companyName'),
       key: 'name',
       sortOrder: false,
@@ -582,6 +593,11 @@
     {
       title: t('common.remark'),
       dataIndex: 'remark',
+      type: FieldTypeEnum.INPUT,
+    },
+    {
+      title: t('contract.businessTitle.companyCode'),
+      dataIndex: 'companyNumber',
       type: FieldTypeEnum.INPUT,
     },
     ...baseFilterConfigList,

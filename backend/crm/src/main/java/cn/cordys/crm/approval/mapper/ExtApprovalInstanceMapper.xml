@@ -11,6 +11,10 @@
         select name from ${sourceTable} where id = #{id}
     </select>
 
+    <select id="selectApprovalStatus" resultType="java.lang.String">
+        select approval_status from ${sourceTable} where id = #{id}
+    </select>
+
 
     <select id="getResourceOwner" resultType="java.lang.String">
         select owner from ${sourceTable} where id = #{id}
@@ -36,6 +40,10 @@
 
     <update id="loseApprovingTask">
         update approval_task set status = 'NONE' where instance_id = #{instanceId} AND node_id = #{nodeId} and node_round = #{nodeRound} and status = 'APPROVING'
+    </update>
+
+    <update id="batchClearApprovingTask">
+        update approval_task set status = 'NONE', node_round = -1 where instance_id = #{instanceId} AND node_id = #{nodeId} and node_round = #{nodeRound} and status = 'APPROVING'
     </update>
 
     <update id="batchClearRecord">

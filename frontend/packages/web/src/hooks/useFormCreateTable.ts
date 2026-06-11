@@ -5,7 +5,9 @@ import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEn
 import { SpecialColumnEnum, TableKeyEnum } from '@lib/shared/enums/tableEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
 import { formatNumberValueToString, transformData } from '@lib/shared/method/formCreate';
+import type { CustomFormDetail } from '@lib/shared/models/customForm';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
+import type { FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
 
 import type { CrmDataTableColumn } from '@/components/pure/crm-table/type';
 import useTable from '@/components/pure/crm-table/useTable';
@@ -50,7 +52,8 @@ export type FormKey =
   | FormDesignKeyEnum.CONTRACT_INVOICE
   | FormDesignKeyEnum.ORDER
   | FormDesignKeyEnum.CONTRACT_ORDER
-  | FormDesignKeyEnum.CUSTOMER_ORDER;
+  | FormDesignKeyEnum.CUSTOMER_ORDER
+  | FormDesignKeyEnum.CUSTOM_FORM;
 
 export interface FormCreateTableProps {
   formKey: FormKey;
@@ -70,6 +73,7 @@ export interface FormCreateTableProps {
   hiddenAllScreen?: boolean;
   hiddenRefresh?: boolean;
   enableApproval?: Ref<boolean>;
+  customFormId?: Ref<string | undefined>; // 自定义表单id
 }
 
 export default async function useFormCreateTable(props: FormCreateTableProps) {
@@ -78,7 +82,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
   const { internalColumnMap, staticColumns, reasonOptions, noSorterType } = await useFormCreateSystemColumns(props);
   const loading = ref(false);
   const showPagination = props.showPagination ?? true;
-  let columns: CrmDataTableColumn[] = [];
+  const columns = ref<CrmDataTableColumn[]>([]);
   const fieldList = ref<FormCreateField[]>([]);
   const tableKeyMap = {
     [FormDesignKeyEnum.CUSTOMER]: TableKeyEnum.CUSTOMER,
@@ -111,6 +115,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     [FormDesignKeyEnum.ORDER]: TableKeyEnum.ORDER,
     [FormDesignKeyEnum.CONTRACT_ORDER]: TableKeyEnum.CONTRACT_ORDER,
     [FormDesignKeyEnum.CUSTOMER_ORDER]: TableKeyEnum.ORDER,
+    [FormDesignKeyEnum.CUSTOM_FORM]: TableKeyEnum.CUSTOM_FORM,
   };
   const noPaginationKey = [FormDesignKeyEnum.CUSTOMER_CONTACT];
   // 存储地址类型字段集合
@@ -166,15 +171,20 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     return [];
   }
 
-  async function initFormConfig() {
+  async function initFormConfig(_readOnly?: boolean, operationColumn?: CrmDataTableColumn) {
     try {
       const sorter = noPaginationKey.includes(props.formKey) ? 'default' : true;
       loading.value = true;
-      const res = await getFormConfigApiMap[props.formKey]();
+      let res: FormDesignConfigDetailParams | CustomFormDetail = {} as any;
+      if (props.formKey === FormDesignKeyEnum.CUSTOM_FORM) {
+        res = await getFormConfigApiMap[props.formKey](props.customFormId?.value);
+      } else {
+        res = await getFormConfigApiMap[props.formKey]();
+      }
       fieldList.value = res.fields;
 
       const isFollowModule = [FormDesignKeyEnum.FOLLOW_PLAN, FormDesignKeyEnum.FOLLOW_RECORD].includes(props.formKey);
-      columns = res.fields
+      columns.value = res.fields
         .filter(
           (e) =>
             e.type !== FieldTypeEnum.DIVIDER &&
@@ -496,20 +506,20 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
           };
         });
 
-      columns = [
+      columns.value = [
         ...getFollowColumn(res.fields),
-        ...columns,
+        ...columns.value,
         ...(internalColumnMap[props.formKey] || []),
         ...staticColumns,
       ];
       if (isFollowModule) {
-        columns = disableFilterAndSorter(columns);
+        columns.value = disableFilterAndSorter(columns.value);
       }
       if (
-        !props.readonly &&
+        (!_readOnly || !props.readonly) &&
         ![FormDesignKeyEnum.FOLLOW_PLAN, FormDesignKeyEnum.FOLLOW_RECORD].includes(props.formKey)
       ) {
-        columns.unshift({
+        columns.value.unshift({
           type: 'selection',
           fixed: 'left',
           width: 46,
@@ -529,7 +539,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
             : {}),
         });
       }
-      columns.unshift({
+      columns.value.unshift({
         fixed: 'left',
         title: t('crmTable.order'),
         width: 50,
@@ -538,8 +548,10 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         columnSelectorDisabled: true,
         render: (row: any, rowIndex: number) => rowIndex + 1,
       });
-      if (props.operationColumn) {
-        columns.push(props.operationColumn);
+      if (operationColumn) {
+        columns.value.push(operationColumn);
+      } else if (props.operationColumn) {
+        columns.value.push(props.operationColumn);
       }
       customFieldsFilterConfig.value = getFilterListConfig(res);
     } catch (error) {
@@ -555,10 +567,11 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
   const useTableRes = useTable(
     getFormListApiMap[props.formKey],
     {
-      tableKey: tableKeyMap[props.formKey],
+      tableKey:
+        props.formKey === FormDesignKeyEnum.CUSTOM_FORM ? props.customFormId?.value : tableKeyMap[props.formKey],
       showSetting: !!tableKeyMap[props.formKey],
       showPagination,
-      columns,
+      columns: columns.value,
       permission: props.permission,
       // virtualScrollX: props.formKey !== FormDesignKeyEnum.PRODUCT, // TODO:横向滚动有问题
       containerClass: props.containerClass,
@@ -582,5 +595,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
     customFieldsFilterConfig,
     reasonOptions,
     fieldList,
+    initFormConfig,
+    columns,
   };
 }

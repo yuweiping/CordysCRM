@@ -86,6 +86,7 @@
   import useFormReviewAction from '@/hooks/useFormReviewAction';
 
   import { formKeyMap } from '../crm-data-source-select/config';
+  import { isCustomDataSourceType } from '../crm-data-source-select/utils';
   import { FormulaDataSourceMap } from '../crm-formula/formula-runtime/types';
   import { safeParseFormula } from '../crm-formula-editor/utils';
   import { getFormConfigApiMap, multipleValueTypeList } from './config';
@@ -100,6 +101,7 @@
     linkFormInfo?: Record<string, any>; // 关联表单信息
     linkFormKey?: FormDesignKeyEnum;
     linkScenario?: FormLinkScenarioEnum; // 关联表单场景
+    customFormId?: string;
   }>();
   const emit = defineEmits<{
     (e: 'cancel'): void;
@@ -128,6 +130,7 @@
     linkFormInfo,
     linkFormKey,
     linkScenario,
+    customFormId,
   } = toRefs(props);
 
   const {
@@ -153,6 +156,7 @@
     linkFormInfo,
     linkFormKey,
     linkScenario,
+    customFormId,
   });
 
   const { reviewAction, initApprovalReviewConfig } = useFormReviewAction({
@@ -248,6 +252,9 @@
           linkField.linkRange = undefined;
         }
       }
+      nextTick(() => {
+        formRef.value?.validate();
+      });
     }
   }
 
@@ -363,6 +370,9 @@
         }
       }
     });
+    nextTick(() => {
+      formRef.value?.validate();
+    });
   }
 
   async function initDatasourceLinkOptions(
@@ -376,9 +386,14 @@
       }));
       const resList = await Promise.all(paramsList.map((params) => getDatasourceRefDetailList(params)));
       const datasourceFormConfigGroup = await Promise.all(
-        paramsList.map((params) =>
-          getFormConfigApiMap[formKeyMap[params.dataSourceType as FieldDataSourceTypeEnum] as FormDesignKeyEnum]()
-        )
+        paramsList.map((params) => {
+          if (isCustomDataSourceType(params.dataSourceType)) {
+            return getFormConfigApiMap[FormDesignKeyEnum.CUSTOM_FORM](params.dataSourceType);
+          }
+          return getFormConfigApiMap[
+            formKeyMap[params.dataSourceType as FieldDataSourceTypeEnum] as FormDesignKeyEnum
+          ]();
+        })
       );
       beFilledSubFields.forEach((field) => {
         const currentRes = resList[paramsList.findIndex((params) => params.dataSourceType === field.dataSourceType)];

@@ -102,6 +102,7 @@ export default {
   'common.pleaseSelect': 'please choose',
   'common.pleaseInput': 'Please input',
   'common.quickAddMember': 'Quickly add members',
+  'common.maxAddMemberTip': 'Up to {count} members can be added',
   'common.filter': 'Filter',
   'common.export': 'Export',
   'common.exporting': 'Exporting',
@@ -361,4 +362,6 @@ export default {
   'common.exportApprovalTip': 'Only data with approval statuses {statuses} can be exported',
   'common.batchEditApprovalTip': 'Only data with approval statuses {statuses} can be batch edited',
   'common.batchVoidApprovalTip': 'Only data with approval statuses {statuses} can be batch voided',
+  'common.testLink': 'Test link',
+  'common.batchDeleteTitle': 'Confirm delete {count} data?',
 };

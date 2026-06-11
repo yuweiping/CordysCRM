@@ -25,7 +25,7 @@
       </div>
       <n-transfer
         v-model:value="addMembers"
-        :options="flattenTree(options as unknown as Option[])"
+        :options="flatOptions"
         :render-source-list="renderSourceList"
         :render-target-label="renderTargetLabel"
         source-filterable
@@ -58,6 +58,7 @@
     NTree,
     TransferOption,
     TransferRenderSourceList,
+    useMessage,
   } from 'naive-ui';
 
   import { MemberApiTypeEnum, MemberSelectTypeEnum } from '@lib/shared/enums/moduleEnum';
@@ -77,6 +78,7 @@
   import { getDataFunc } from './utils';
 
   const { t } = useI18n();
+  const Message = useMessage();
 
   const props = withDefaults(
     defineProps<{
@@ -92,6 +94,7 @@
       multiple?: boolean;
       okText?: string;
       disabledNodeTypes?: DeptNodeTypeEnum[]; // 需要禁用掉的节点类型
+      maxCount?: number;
     }>(),
     {
       multiple: true,
@@ -124,6 +127,22 @@
 
   const addMembers = ref<string[]>([]);
   const selectedNodes = ref<SelectedUsersItem[]>([]);
+
+  const remainingCount = computed(() => {
+    if (!props.maxCount) {
+      return undefined;
+    }
+    return Math.max(props.maxCount - (props.disabledList?.length ?? 0), 0);
+  });
+  const isSelectedCountExceeded = computed(
+    () => remainingCount.value !== undefined && addMembers.value.length > remainingCount.value
+  );
+
+  function showMaxCountTip() {
+    if (props.maxCount) {
+      Message.warning(t('common.maxAddMemberTip', { count: props.maxCount }));
+    }
+  }
 
   function handleCancelAdd() {
     visible.value = false;
@@ -215,10 +234,30 @@
     });
   });
 
+  function isTransferOptionDisabled(item: Record<string, any>) {
+    return (
+      item.disabled ||
+      props.disabledList?.includes(item.id || item.value) ||
+      props.disabledNodeTypes?.includes(item.nodeType)
+    );
+  }
+
+  const flatOptions = computed(() =>
+    flattenTree(options.value as unknown as Option[]).map((item) => ({
+      ...item,
+      disabled: isTransferOptionDisabled(item),
+    }))
+  );
+
   async function handleAddConfirm() {
+    if (isSelectedCountExceeded.value) {
+      showMaxCountTip();
+      return;
+    }
+
     const _selectedNodes: any[] = [];
     mapTree(options.value, (item) => {
-      if (addMembers.value.includes(item.id)) {
+      if (addMembers.value.includes(item.id) && !isTransferOptionDisabled(item)) {
         _selectedNodes.push(item);
       }
       delete item.parent;
@@ -379,6 +418,11 @@
           );
         },
         onUpdateSelectedKeys: (selectedKeys: Array<string | number>, nodes) => {
+          if (remainingCount.value !== undefined && selectedKeys.length > remainingCount.value) {
+            showMaxCountTip();
+            return;
+          }
+
           onCheck(selectedKeys);
           selectedNodes.value = [];
 
@@ -425,7 +469,21 @@
   };
 
   function handleUpdateValue(value: Array<string | number>) {
-    selectedNodes.value = selectedNodes.value.filter((e) => value.includes(e.id));
+    const enabledValue = value.filter((item) => {
+      const option = flatOptions.value.find((e) => e.value === item) as Record<string, any> | undefined;
+      return option && !isTransferOptionDisabled(option);
+    });
+    if (enabledValue.length !== value.length) {
+      addMembers.value = enabledValue as string[];
+    }
+
+    if (remainingCount.value !== undefined && enabledValue.length > remainingCount.value) {
+      addMembers.value = addMembers.value.slice(0, remainingCount.value);
+      showMaxCountTip();
+      return;
+    }
+
+    selectedNodes.value = selectedNodes.value.filter((e) => enabledValue.includes(e.id));
   }
 
   watch(

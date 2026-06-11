@@ -96,12 +96,22 @@
             />
           </template>
 
-          <n-select
-            v-model:value="approverLevel"
-            :disabled="props.readonly"
-            :options="approverLevelConfig.options"
-            @update:value="clearCurrentNodeInvalid"
-          />
+          <div class="flex w-full gap-[8px]">
+            <n-select
+              v-model:value="approverDirection"
+              class="w-[120px]"
+              :disabled="props.readonly"
+              :options="levelDirectionOptions"
+              @update:value="clearCurrentNodeInvalid"
+            />
+            <n-select
+              v-model:value="approverLevel"
+              class="flex-1"
+              :disabled="props.readonly"
+              :options="approverLevelConfig.options"
+              @update:value="clearCurrentNodeInvalid"
+            />
+          </div>
         </n-form-item>
 
         <!-- 多人审批 -->
@@ -300,12 +310,22 @@
             />
           </template>
 
-          <n-select
-            v-model:value="ccLevel"
-            :disabled="props.readonly"
-            :options="ccLevelConfig.options"
-            @update:value="clearCurrentNodeInvalid"
-          />
+          <div class="flex w-full gap-[8px]">
+            <n-select
+              v-model:value="ccDirection"
+              class="w-[120px]"
+              :disabled="props.readonly"
+              :options="levelDirectionOptions"
+              @update:value="clearCurrentNodeInvalid"
+            />
+            <n-select
+              v-model:value="ccLevel"
+              class="flex-1"
+              :disabled="props.readonly"
+              :options="ccLevelConfig.options"
+              @update:value="clearCurrentNodeInvalid"
+            />
+          </div>
         </n-form-item>
       </template>
     </n-form>
@@ -329,6 +349,7 @@
 
   import { MemberApiTypeEnum, MemberSelectTypeEnum } from '@lib/shared/enums/moduleEnum';
   import {
+    ApprovalLevelDirectionEnum,
     ApprovalTypeEnum,
     ApproverTypeEnum,
     EmptyApproverActionEnum,
@@ -393,6 +414,18 @@
 
   const endpointApproverTypes = [ApproverTypeEnum.CONTINUOUS_SUPERVISOR, ApproverTypeEnum.CONTINUOUS_DEPARTMENT_LEADER];
 
+  const defaultLevelDirection = ApprovalLevelDirectionEnum.BOTTOM_UP;
+  const levelDirectionOptions = [
+    {
+      label: t('process.process.flow.levelDirection.bottomUp'),
+      value: ApprovalLevelDirectionEnum.BOTTOM_UP,
+    },
+    {
+      label: t('process.process.flow.levelDirection.topDown'),
+      value: ApprovalLevelDirectionEnum.TOP_DOWN,
+    },
+  ];
+
   const roleMemberTypes = [
     {
       label: t('role.role'),
@@ -422,15 +455,15 @@
 
   const directSupervisorExampleItems = [
     {
-      level: t('process.process.flow.levelExample.thirdLevelSupervisor'),
+      level: t('process.process.flow.approverLevel.third'),
       name: t('process.process.flow.levelExample.supervisorD'),
     },
     {
-      level: t('process.process.flow.levelExample.secondLevelSupervisor'),
+      level: t('process.process.flow.approverLevel.second'),
       name: t('process.process.flow.levelExample.supervisorC'),
     },
     {
-      level: t('org.directSuperior'),
+      level: t('process.process.flow.approverLevel.first'),
       name: t('process.process.flow.levelExample.supervisorB'),
     },
     {
@@ -441,19 +474,19 @@
 
   const departmentLeaderExampleItems = [
     {
-      level: t('process.process.flow.levelExample.fourthLevelDepartment'),
+      level: t('process.process.flow.departmentLevel.fourth'),
       name: t('process.process.flow.levelExample.departmentD'),
     },
     {
-      level: t('process.process.flow.levelExample.thirdLevelDepartment'),
+      level: t('process.process.flow.departmentLevel.third'),
       name: t('process.process.flow.levelExample.departmentC'),
     },
     {
-      level: t('process.process.flow.levelExample.secondLevelDepartment'),
+      level: t('process.process.flow.departmentLevel.second'),
       name: t('process.process.flow.levelExample.departmentB'),
     },
     {
-      level: t('process.process.flow.levelExample.directDepartment'),
+      level: t('process.process.flow.departmentLevel.first'),
       name: t('process.process.flow.levelExample.departmentA'),
     },
     {
@@ -471,12 +504,30 @@
     },
   });
 
+  const approverDirection = computed({
+    get() {
+      return nodeConfig.value.approverDirection ?? defaultLevelDirection;
+    },
+    set(value: ApprovalLevelDirectionEnum) {
+      nodeConfig.value.approverDirection = value;
+    },
+  });
+
   const ccLevel = computed({
     get() {
       return nodeConfig.value.ccList[0] ?? '1';
     },
     set(value: string) {
       nodeConfig.value.ccList = [value];
+    },
+  });
+
+  const ccDirection = computed({
+    get() {
+      return nodeConfig.value.ccDirection ?? defaultLevelDirection;
+    },
+    set(value: ApprovalLevelDirectionEnum) {
+      nodeConfig.value.ccDirection = value;
     },
   });
 
@@ -643,15 +694,14 @@
   function createLevelConfig(type: ApproverTypeEnum) {
     const isSupervisorLevel = supervisorLevelApproverTypes.includes(type);
     const isDepartmentLevel = departmentLevelApproverTypes.includes(type);
+    const isEndpoint = endpointApproverTypes.includes(type);
 
     if (!isSupervisorLevel && !isDepartmentLevel) {
       return null;
     }
 
     return {
-      label: endpointApproverTypes.includes(type)
-        ? t('process.process.flow.specifiedEndpoint')
-        : t('process.process.flow.specifiedLevel'),
+      label: isEndpoint ? t('process.process.flow.specifiedEndpoint') : t('process.process.flow.specifiedLevel'),
       tooltip: getApproverLevelTooltip(type),
       options: isDepartmentLevel ? departmentLevelOptions : approverLevelOptions,
       exampleItems: isDepartmentLevel ? departmentLeaderExampleItems : directSupervisorExampleItems,
@@ -687,6 +737,7 @@
 
     nodeConfig.value.approverSelectedList = [];
     nodeConfig.value.approverList = resetLevelList(type);
+    nodeConfig.value.approverDirection = defaultLevelDirection;
     nodeConfig.value.description = resolveApprovalActionNodeDescription(nodeConfig.value.approvalType, type);
     clearCurrentNodeInvalid();
   }
@@ -698,6 +749,7 @@
 
     nodeConfig.value.ccSelectedList = [];
     nodeConfig.value.ccList = resetLevelList(type);
+    nodeConfig.value.ccDirection = defaultLevelDirection;
     clearCurrentNodeInvalid();
   }
 

@@ -30,6 +30,14 @@ public enum ModuleKey {
      */
     SETTING("setting");
 
+
+    /**
+     * *******************************************
+     * 注意：
+     *      新增菜单不要在moduleKey中添加了
+     * *******************************************
+     */
+
     private final String key;
 
     ModuleKey(String key) {

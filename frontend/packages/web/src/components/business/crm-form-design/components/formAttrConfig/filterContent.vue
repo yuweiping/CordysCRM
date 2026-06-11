@@ -211,6 +211,15 @@
                   : [DeptNodeTypeEnum.USER, DeptNodeTypeEnum.ROLE]
               "
             />
+            <n-select
+              v-else-if="item.leftFieldType === FieldTypeEnum.APPROVAL_STATUS"
+              v-model:value="item.rightFieldCustomValue"
+              clearable
+              :disabled="isValueDisabled(item)"
+              :placeholder="t('common.pleaseSelect')"
+              v-bind="getSelectedProps(item.leftFieldId).selectProps"
+              @update:value="valueChange"
+            />
             <n-input
               v-else
               v-model:value="item.rightFieldCustomValue"
@@ -273,6 +282,7 @@
     DataSourceFilterCombine,
     DataSourceFilterItem,
     DataSourceMatchType,
+    DataSourceType,
     FormCreateField,
   } from '@/components/business/crm-form-create/types';
   import CrmTimeRangePicker from '@/components/business/crm-time-range-picker/index.vue';
@@ -449,9 +459,13 @@
       const currentSelectedType = field.fieldType as FieldTypeEnum;
       const currentFieldProps: Record<string, any> = {};
       if (
-        [FieldTypeEnum.SELECT, FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.RADIO, FieldTypeEnum.CHECKBOX].includes(
-          currentSelectedType
-        )
+        [
+          FieldTypeEnum.SELECT,
+          FieldTypeEnum.SELECT_MULTIPLE,
+          FieldTypeEnum.RADIO,
+          FieldTypeEnum.CHECKBOX,
+          FieldTypeEnum.APPROVAL_STATUS,
+        ].includes(currentSelectedType)
       ) {
         currentFieldProps.selectProps = {
           options: field.options,
@@ -461,7 +475,7 @@
 
       if ([FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(currentSelectedType)) {
         currentFieldProps.dataSourceProps = {
-          dataSourceType: field.dataSourceType as FieldDataSourceTypeEnum,
+          dataSourceType: field.dataSourceType as DataSourceType,
           maxTagCount: 'responsive',
         } as Partial<DataSourceProps>;
       }

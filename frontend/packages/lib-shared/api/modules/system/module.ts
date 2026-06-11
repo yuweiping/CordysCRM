@@ -74,6 +74,8 @@ import {
   GetAdvancedSwitchUrl,
   GetFieldRefDetailListUrl,
   GetFieldOrderListUrl,
+  GetFieldCustomFormListUrl,
+  GetFieldConfigUrl,
 } from '@lib/shared/api/requrls/system/module';
 import { QuotationItem } from '@lib/shared/models/opportunity';
 import { ModuleConfigEnum, ReasonTypeEnum } from '@lib/shared/enums/moduleEnum';
@@ -110,6 +112,7 @@ import type { Result } from '@lib/shared/types/axios';
 import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
 import type { BusinessTitleItem, ContractItem, PaymentPlanItem, PaymentRecordItem } from '@lib/shared/models/contract';
 import type { OrderItem } from '@lib/shared/models/order';
+import { CustomFormPageItem, type CustomFormDetail } from '@lib/shared/models/customForm';
 
 export default function useProductApi(CDR: CordysAxios) {
   // 模块首页-导航模块列表
@@ -300,6 +303,10 @@ export default function useProductApi(CDR: CordysAxios) {
     return CDR.post<CommonList<ProductListItem>>({ url: GetFieldProductListUrl, data });
   }
 
+  function getFieldCustomFormList(data: FormDesignDataSourceTableQueryParams) {
+    return CDR.post<CommonList<CustomFormPageItem>>({ url: GetFieldCustomFormListUrl, data });
+  }
+
   function checkRepeat(data: CheckRepeatParams) {
     return CDR.post<CheckRepeatInfo>({ url: CheckRepeatUrl, data }, { ignoreCancelToken: true });
   }
@@ -393,7 +400,7 @@ export default function useProductApi(CDR: CordysAxios) {
     return CDR.post<CommonList<OrderItem>>({ url: GetFieldOrderListUrl, data });
   }
 
-  function getFieldDisplayList(formKey: FormDesignKeyEnum) {
+  function getFieldDisplayList(formKey: FormDesignKeyEnum | string) {
     return CDR.get<FormDesignConfigDetailParams>({ url: `${GetFieldDisplayListUrl}/${formKey}` });
   }
 
@@ -413,6 +420,10 @@ export default function useProductApi(CDR: CordysAxios) {
   // 高级筛选开关
   function getAdvancedSwitch() {
     return CDR.get({ url: GetAdvancedSwitchUrl });
+  }
+
+  function getDatasourceFieldConfig(type: FormDesignKeyEnum | string, approvalTaskId?: string) {
+    return CDR.get<FormDesignConfigDetailParams | CustomFormDetail>({ url: `${GetFieldConfigUrl}/${type}` });
   }
 
   return {
@@ -484,5 +495,7 @@ export default function useProductApi(CDR: CordysAxios) {
     getFieldOrderList,
     getFieldBusinessTitleList,
     getDatasourceRefDetailList,
+    getFieldCustomFormList,
+    getDatasourceFieldConfig,
   };
 }

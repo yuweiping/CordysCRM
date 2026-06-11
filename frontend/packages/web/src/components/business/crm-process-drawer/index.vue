@@ -1,8 +1,8 @@
 <template>
   <CrmDrawer
     v-model:show="visible"
-    width="75%"
-    :min-width="800"
+    :width="props.width"
+    :min-width="props.minWidth"
     :footer="false"
     :closable="false"
     :close-on-esc="false"
@@ -38,6 +38,7 @@
             no-content
             :tab-list="props.tabList"
             type="line"
+            :before-leave="props.beforeChangeTab"
           />
         </div>
         <div class="crm-process-drawer-header-item flex justify-end gap-[12px]">
@@ -79,12 +80,21 @@
 
   const { t } = useI18n();
 
-  const props = defineProps<{
-    tabList: CrmTabListItem[];
-    loading: boolean;
-    title?: string;
-    readonly?: boolean;
-  }>();
+  const props = withDefaults(
+    defineProps<{
+      tabList: CrmTabListItem[];
+      loading: boolean;
+      title?: string;
+      readonly?: boolean;
+      width?: string | number;
+      minWidth?: number;
+      beforeChangeTab?: (newVal: string | number, oldVal: string | number | null) => boolean | Promise<boolean>;
+    }>(),
+    {
+      width: '75%',
+      minWidth: 800,
+    }
+  );
 
   const emit = defineEmits<{
     (e: 'save'): void;

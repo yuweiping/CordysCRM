@@ -55,7 +55,7 @@
             <foreach collection="dataPermission.deptIds" item="deptId" open="(" close=")" separator=",">
                 #{deptId}
             </foreach>
-            <if test="dataPermission.viewId == 'ALL'">
+            <if test="dataPermission.viewId != 'DEPARTMENT'">
                 or sys_organization_user.user_id = #{userId}
             </if>
             )
@@ -309,7 +309,7 @@
 
                     <otherwise>
                         CASE
-                        WHEN module_table.type = 'INPUT_NUMBER'
+                        WHEN module_table.type = 'INPUT_NUMBER' OR module_table.type = 'FORMULA'
                         THEN sort_table.field_value+0
                         END ${sortType},
                         sort_table.field_value ${sortType},

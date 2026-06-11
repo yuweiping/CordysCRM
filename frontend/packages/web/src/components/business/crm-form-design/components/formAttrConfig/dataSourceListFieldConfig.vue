@@ -105,6 +105,7 @@
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
   import CrmSearchInput from '@/components/pure/crm-search-input/index.vue';
+  import { getDataSourceFormKey, isCustomDataSourceType } from '@/components/business/crm-data-source-select/utils';
   import { dataSourceFilterFormKeyMap } from '@/components/business/crm-form-create/config';
   import type { FormCreateField } from '@/components/business/crm-form-create/types';
 
@@ -306,12 +307,6 @@
     innerValue.value = nextValue;
   }
 
-  const formKey = computed<FormDesignKeyEnum>(() => {
-    return dataSourceFilterFormKeyMap[
-      props.fieldConfig.dataSourceType || FieldDataSourceTypeEnum.CUSTOMER
-    ] as FormDesignKeyEnum;
-  });
-
   const defaultInternalNameKeyMap: Record<string, string> = {
     [FormDesignKeyEnum.CUSTOMER]: 'customerName',
     [FormDesignKeyEnum.CLUE]: 'clueName',
@@ -325,52 +320,64 @@
     [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: 'contractPaymentRecordName',
     [FormDesignKeyEnum.PRICE]: 'priceName',
     [FormDesignKeyEnum.BUSINESS_TITLE]: 'name',
+    [FormDesignKeyEnum.CUSTOM_FORM]: 'customFormDataName',
   };
 
   async function initFieldList() {
     try {
       let nextOptions: FieldOption[] = [];
+      const dataSourceType = props.fieldConfig?.dataSourceType;
+      const isCustomForm = isCustomDataSourceType(dataSourceType);
+      const formKey = getDataSourceFormKey(dataSourceType, dataSourceFilterFormKeyMap);
+      if (!formKey) {
+        normalizedOptions.value = [];
+        innerValue.value = [];
+      }
+
+      const defaultInternalNameKey = defaultInternalNameKeyMap[formKey as FormKey];
       const { internalColumnMap, staticColumns } = await useFormCreateSystemColumns({
-        formKey: formKey.value as FormKey,
+        formKey: formKey as FormKey,
         containerClass: '',
       });
 
-      if (props.fieldConfig.dataSourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE) {
-        const res = await getBusinessTitleModuleForm();
-        nextOptions = res.fields.map((item) => {
-          return {
-            label: t(item.name),
-            value: item.id,
-            disabled: item.businessKey === defaultInternalNameKeyMap[FormDesignKeyEnum.BUSINESS_TITLE],
-          };
-        });
+      let res;
+      if (isCustomForm) {
+        res = await getFormDesignConfig(dataSourceType as string);
+      } else if (props.fieldConfig.dataSourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE) {
+        res = await getBusinessTitleModuleForm();
       } else {
-        const res = await getFormDesignConfig(formKey.value);
-        nextOptions = res.fields.reduce((acc: FieldOption[], field) => {
-          if (
-            ![
-              FieldTypeEnum.DIVIDER,
-              FieldTypeEnum.TEXTAREA,
-              FieldTypeEnum.ATTACHMENT,
-              FieldTypeEnum.SUB_PRICE,
-              FieldTypeEnum.SUB_PRODUCT,
-            ].includes(field.type)
-          ) {
-            acc.push({
-              label: field.name,
-              value: field.id,
-              disabled: field.internalKey === defaultInternalNameKeyMap[formKey.value],
-            });
-          }
-          return acc;
-        }, []);
+        res = await getFormDesignConfig(formKey as FormKey);
       }
-      const systemColumns = internalColumnMap[formKey.value]?.map((e) => {
-        return {
-          label: e.title,
-          value: e.key,
-        } as FieldOption;
-      });
+      nextOptions = res.fields.reduce((acc: FieldOption[], field) => {
+        if (
+          ![
+            FieldTypeEnum.DIVIDER,
+            FieldTypeEnum.TEXTAREA,
+            FieldTypeEnum.ATTACHMENT,
+            FieldTypeEnum.SUB_PRICE,
+            FieldTypeEnum.SUB_PRODUCT,
+          ].includes(field.type)
+        ) {
+          const isBusinessTitleDefaultField =
+            props.fieldConfig.dataSourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE &&
+            field.businessKey === defaultInternalNameKeyMap[FormDesignKeyEnum.BUSINESS_TITLE];
+          acc.push({
+            label: field.name,
+            value: field.id,
+            disabled: isBusinessTitleDefaultField || field.internalKey === defaultInternalNameKey,
+          });
+        }
+        return acc;
+      }, []);
+
+      const systemColumns = isCustomForm
+        ? []
+        : (internalColumnMap as Record<string, any[]>)[formKey as FormDesignKeyEnum]?.map((e) => {
+            return {
+              label: e.title,
+              value: e.key,
+            } as FieldOption;
+          });
 
       const staticOptions = staticColumns?.map((e) => {
         return {

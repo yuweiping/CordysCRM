@@ -114,6 +114,7 @@ export default {
   'module.paymentRecordFormSetting': '回款记录表单设置',
   'module.businessTitle': '工商抬头',
   'module.priceTableFormSetting': '价格表表单设置',
+  'module.custom_form': '自定义表单',
   'module.tender': '标讯',
   'module.contract.businessNameValidateConfig': '工商抬头表单必填设置',
   'module.contract.invoiceFormSetting': '发票表单设置',
@@ -121,4 +122,6 @@ export default {
   'module.contract.stage': '合同阶段',
   'module.contract.stageHasData': '当前合同状态存在数据，禁止删除！',
   'module.invoice': '发票记录',
+  'module.customForm': '自定义表单',
+  'module.customFormData': '自定义表单数据',
 };

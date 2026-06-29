@@ -1,6 +1,8 @@
 import type { ModuleField, TableQueryParams } from './common';
 import type { FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
 import { ProcessStatusEnum } from '@lib/shared/enums/process';
+import type { CirculationTypeEnum, CirculationValueTypeEnum } from '@lib/shared/enums/opportunityEnum';
+import type { FormCreateField } from '@cordys/web/src/components/business/crm-form-create/types';
 
 export interface OpportunityItem {
   id: string; // 商机ID
@@ -62,6 +64,8 @@ export interface UpdateStageParams {
   stage: string;
   // expectedEndTime?: number; // 预计结束时间
   failureReason?: string | null; // 失败原因
+  voidReason?: string;
+  fields?: ModuleField[];
 }
 
 export interface StageBoardPageQueryParams extends TableQueryParams {
@@ -89,7 +93,7 @@ export interface UpdateOpportunityStageRollbackParams {
   endRollBack: boolean;
 }
 
-export interface StageBaseParams{
+export interface StageBaseParams {
   name: string;
   type: 'AFOOT' | 'END';
   dropPosition: number;
@@ -100,7 +104,7 @@ export interface AddOpportunityStageParams extends StageBaseParams {
   rate: string;
 }
 
-export interface StageConfigBaseItem{
+export interface StageConfigBaseItem {
   id: string;
   createUser: string;
   updateUser: string;
@@ -123,6 +127,9 @@ export interface OpportunityStageConfig {
   afootRollBack: boolean;
   endRollBack: boolean;
   stageHasData: boolean;
+  circulationType: CirculationTypeEnum;
+  advancedConfigs: CirculationSetting[];
+  optionMap?: Record<string, any[]>;
 }
 
 export interface QuotationQueryParams extends TableQueryParams {
@@ -132,6 +139,7 @@ export interface QuotationQueryParams extends TableQueryParams {
 export interface QuotationItem {
   id: string;
   name: string;
+  approved?: boolean;
   approvalStatus: ProcessStatusEnum;
   invalid: boolean;
   opportunityId: string;
@@ -175,7 +183,7 @@ export interface BatchUpdateQuotationStatusParams {
   approvalStatus: ProcessStatusEnum;
 }
 
-export interface  BatchVoidQuotationStatusParams {
+export interface BatchVoidQuotationStatusParams {
   ids: (string | number)[];
 }
 
@@ -184,4 +192,31 @@ export interface BatchOperationResult {
   fail: number;
   skip?: number;
   errorMessages?: string;
+}
+
+export interface CirculationFieldValueItem {
+  fieldId?: string;
+  fieldValue: any;
+  required: boolean;
+  valueType: CirculationValueTypeEnum;
+  // 前端渲染使用
+  fieldProps?: FormCreateField;
+}
+export interface CirculationFieldTargetItem {
+  targetId: string;
+  enable: boolean;
+  circulationFieldValues: CirculationFieldValueItem[];
+}
+export interface CirculationSetting {
+  originId: string;
+  targets: CirculationFieldTargetItem[];
+  moduleType: string;
+  // 前端渲染使用
+  name?: string;
+  type?: 'AFOOT' | 'END' | string;
+}
+
+export interface SaveCirculationConfigParams {
+  circulationType: CirculationTypeEnum;
+  circulationSettings: CirculationSetting[];
 }

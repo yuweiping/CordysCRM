@@ -12,6 +12,9 @@
         >
           <CrmIcon :type="props.icon.type" :size="16" class="text-[var(--text-n10)]" />
         </div>
+        <CrmTag v-if="priorityLabel" customClass="h-[24px] px-[4px]" type="primary" theme="light">
+          {{ priorityLabel }}
+        </CrmTag>
         <CrmEditableText
           v-if="props.titleEditable"
           size="small"
@@ -55,9 +58,11 @@
         </n-tooltip>
       </div>
     </div>
-    <div v-if="props.nodeType !== 'end' && props.showContent" class="base-flow-node__content">
-      <span class="base-flow-node__text">{{ description }}</span>
-    </div>
+    <FlowNodeDescription
+      v-if="props.nodeType !== 'end' && props.showContent"
+      :description="description"
+      :items="descriptionItems"
+    />
   </div>
 </template>
 
@@ -67,7 +72,11 @@
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
+  import CrmTag from '@/components/pure/crm-tag/index.vue';
   import CrmEditableText from '@/components/business/crm-editable-text/index.vue';
+  import FlowNodeDescription from './flowNodeDescription.vue';
+
+  import type { FlowNodeDescriptionItem } from '../../types';
 
   defineOptions({
     name: 'BaseFlowNode',
@@ -78,6 +87,8 @@
       name: string;
       number?: string;
       description?: string;
+      descriptionItems?: FlowNodeDescriptionItem[];
+      priorityLabel?: string;
       nodeType?: string;
       selected?: boolean;
       invalid?: boolean;
@@ -93,6 +104,8 @@
     {
       number: '',
       description: '',
+      priorityLabel: '',
+      descriptionItems: () => [],
       nodeType: 'action',
       selected: false,
       invalid: false,
@@ -193,13 +206,5 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-  }
-  .base-flow-node__content {
-    padding: 5px 12px;
-    border-radius: 4px;
-    background: var(--text-n9);
-  }
-  .base-flow-node__text {
-    color: var(--text-n2);
   }
 </style>

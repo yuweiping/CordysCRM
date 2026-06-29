@@ -23,11 +23,17 @@ public class ApprovalInstanceDetail {
 	@Schema(description = "提交时间")
 	private Long submitTime;
 
+	@Schema(description = "变更说明")
+	private String comment;
+
 	@Schema(description = "审批状态")
 	private String approvalStatus;
 
 	@Schema(description = "当前节点ID")
 	private String currentNodeId;
+
+	@Schema(description = "执行时机：CREATE/UPDATE/DELETE")
+	private String executeTime;
 
 	@Schema(description = "审批节点")
 	private List<ApprovalRecordNode> nodes;

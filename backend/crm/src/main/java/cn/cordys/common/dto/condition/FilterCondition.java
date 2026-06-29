@@ -66,7 +66,7 @@ public class FilterCondition {
         }
 
         // 针对空值判断操作符
-        if (Strings.CS.equalsAny(operator, CombineConditionOperator.EMPTY.name(), CombineConditionOperator.NOT_EMPTY.name())) {
+        if (Strings.CS.equalsAny(operator, CombineConditionOperator.EMPTY.name(), CombineConditionOperator.NOT_EMPTY.name(), CombineConditionOperator.NOT_EQUAL_ORIGINAL.name())) {
             return true;
         }
 
@@ -462,7 +462,11 @@ public class FilterCondition {
         /**
          * 不为空
          */
-        NOT_EMPTY
+        NOT_EMPTY,
+        /**
+         * 不等于原值（用户审批时的条件判断）
+         */
+        NOT_EQUAL_ORIGINAL
     }
 
 }

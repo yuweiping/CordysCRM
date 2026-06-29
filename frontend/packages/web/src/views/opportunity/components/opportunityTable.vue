@@ -307,15 +307,11 @@
               ? ['OPPORTUNITY_MANAGEMENT:UPDATE']
               : ['OPPORTUNITY_MANAGEMENT:UPDATE', 'OPPORTUNITY_MANAGEMENT:RESIGN'],
         },
-        ...(activeTab.value !== OpportunitySearchTypeEnum.OPPORTUNITY_SUCCESS
-          ? [
-              {
-                label: t('common.batchTransfer'),
-                key: 'batchTransfer',
-                permission: ['OPPORTUNITY_MANAGEMENT:TRANSFER'],
-              },
-            ]
-          : []),
+        {
+          label: t('common.batchTransfer'),
+          key: 'batchTransfer',
+          permission: ['OPPORTUNITY_MANAGEMENT:TRANSFER'],
+        },
         {
           label: t('common.batchDelete'),
           key: 'batchDelete',
@@ -572,7 +568,9 @@
     }
 
     if (row.stage === successStage.value?.id) {
-      return hasBackStagePermission.value ? [...editAction, ...deleteAction] : [...deleteAction];
+      return hasBackStagePermission.value
+        ? [...editAction, ...transferAction, ...deleteAction]
+        : [...transferAction, ...deleteAction];
     }
 
     return [
@@ -672,18 +670,22 @@
         return props.readonly ? h(CrmNameTooltip, { text: row.name }) : createNameButton();
       },
       customerId: (row: OpportunityItem) => {
-        return props.isCustomerTab ||
+        if (
+          props.isCustomerTab ||
           props.formKey === FormDesignKeyEnum.SEARCH_ADVANCED_OPPORTUNITY ||
           (!row.inCustomerPool && !hasAnyPermission(['CUSTOMER_MANAGEMENT:READ'])) ||
           (row.inCustomerPool && !hasAnyPermission(['CUSTOMER_MANAGEMENT_POOL:READ']))
+        ) {
+          return h(
+            CrmNameTooltip,
+            { text: row.customerName },
+            {
+              default: () => row.customerName,
+            }
+          );
+        }
+        return row.customerName
           ? h(
-              CrmNameTooltip,
-              { text: row.customerName },
-              {
-                default: () => row.customerName,
-              }
-            )
-          : h(
               CrmTableButton,
               {
                 onClick: () => {
@@ -691,7 +693,8 @@
                 },
               },
               { default: () => row.customerName, trigger: () => row.customerName }
-            );
+            )
+          : '-';
       },
       stage: (row: OpportunityItem) => {
         return row.stageName || '-';
@@ -835,7 +838,7 @@
   });
 
   const exportColumns = computed<ExportTableColumnItem[]>(() =>
-    getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[])
+    getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value, true)
   );
 
   function searchData(_keyword?: string, refreshId?: string) {

@@ -27,7 +27,7 @@
           <van-dropdown-menu class="status-select-menu" @click.stop>
             <van-dropdown-item
               v-model="status"
-              :disabled="props.readonly || item.converted"
+              :disabled="props.readonly || item.converted || !isOwner(item)"
               :options="statusOptions"
               @change="changeStatus"
             />
@@ -39,10 +39,9 @@
           <CrmAvatar :is-word="item.owner !== userStore.userInfo.id" :text="item.ownerName" />
           <div class="flex flex-1 flex-wrap items-center overflow-hidden">
             <div class="one-line-text flex-1 text-[16px] font-semibold">{{ item.ownerName }}</div>
-            <div v-if="!props.readonly" class="flex items-center gap-[16px]">
+            <div v-if="!props.readonly && isOwner(item)" class="flex items-center gap-[16px]">
               <CrmTextButton icon="iconicon_delete" color="var(--error-red)" icon-size="16px" @click="emit('delete')" />
               <CrmTextButton
-                v-if="!isPlan || (isPlan && item.status !== CustomerFollowPlanStatusEnum.CANCELLED)"
                 icon="iconicon_handwritten_signature"
                 color="var(--primary-8)"
                 icon-size="16px"
@@ -114,6 +113,8 @@
       value: e.value,
     }))
   );
+
+  const isOwner = (item: FollowDetailItem) => item.owner === userStore.userInfo?.id;
 
   function changeStatus() {
     emit('change');

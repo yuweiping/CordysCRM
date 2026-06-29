@@ -6,6 +6,7 @@ import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.common.constants.FormKey;
+import cn.cordys.common.constants.InternalRole;
 import cn.cordys.common.constants.InternalUser;
 import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.dto.OptionDTO;
@@ -325,8 +326,8 @@ public class ApprovalFlowService {
         // 解析状态权限配置
         response.setStatusPermissions(parseStatusPermissions(response.getPermissions(), flow.getStatusPermissions()));
 
-        // 查询节点配置和连接关系
-        buildNodesAndLinks(flow.getCurrentVersionId(), response, organizationId);
+        // 查询节点配置和连接关系（按执行时机分组）
+        buildNodeConfigs(flow.getCurrentVersionId(), response, organizationId);
 
         return response;
     }
@@ -397,8 +398,8 @@ public class ApprovalFlowService {
         flow.setCurrentVersionId(version.getId());
         approvalFlowMapper.insert(flow);
 
-        // 保存节点配置
-        saveNodesAndLinks(request.getNodes(), request.getLinks(), version.getId(), flow.getId());
+        // 保存节点配置（按执行时机分别保存）
+        saveNodeConfigs(request, version.getId(), flow.getId());
 
         ApprovalFlowDetailResponse detail = getDetail(flow.getId(), organizationId);
 
@@ -457,15 +458,15 @@ public class ApprovalFlowService {
         }
 
         // 如果有节点更新，创建新版本
-        if (CollectionUtils.isNotEmpty(request.getNodes())) {
+        if (hasNodeConfigUpdate(request)) {
             ApprovalFlowVersion newVersion = createFlowVersion(originDetail.getId(), userId, organizationId);
             approvalFlowVersionMapper.insert(newVersion);
 
             // 更新当前版本ID
             flow.setCurrentVersionId(newVersion.getId());
 
-            // 保存新节点配置
-            saveNodesAndLinks(request.getNodes(), request.getLinks(), newVersion.getId(), originDetail.getId());
+            // 保存新节点配置（按执行时机分别保存）
+            saveNodeConfigs(request, newVersion.getId(), originDetail.getId());
         }
 
         approvalFlowMapper.updateById(flow);
@@ -671,7 +672,7 @@ public class ApprovalFlowService {
         }
         // 按照 userIds 顺序返回
         Map<String, OptionDTO> optionMap = userOptions.stream()
-                .collect(Collectors.toMap(OptionDTO::getId, o -> o));
+                .collect(Collectors.toMap(OptionDTO::getIdAsString, o -> o));
         return userIds.stream()
                 .map(optionMap::get)
                 .filter(Objects::nonNull)
@@ -686,9 +687,18 @@ public class ApprovalFlowService {
         if (CollectionUtils.isEmpty(roleOptions)) {
             return List.of();
         }
+        roleOptions.forEach(o -> {
+            if (InternalRole.ORG_ADMIN.getValue().equals(o.getId())) {
+                o.setName(Translator.get("role.org_admin"));
+            } else if (InternalRole.SALES_MANAGER.getValue().equals(o.getId())) {
+                o.setName(Translator.get("role.sales_staff"));
+            } else if (InternalRole.SALES_STAFF.getValue().equals(o.getId())) {
+                o.setName(Translator.get("role.sales_staff"));
+            }
+        });
         // 按照 roleIds 顺序返回
         Map<String, OptionDTO> optionMap = roleOptions.stream()
-                .collect(Collectors.toMap(OptionDTO::getId, o -> o));
+                .collect(Collectors.toMap(OptionDTO::getIdAsString, o -> o));
         return roleIds.stream()
                 .map(optionMap::get)
                 .filter(Objects::nonNull)
@@ -700,9 +710,9 @@ public class ApprovalFlowService {
      */
     private void buildNodesAndLinks(String flowVersionId, ApprovalFlowDetailResponse response, String organizationId) {
         if (StringUtils.isBlank(flowVersionId)) {
-            response.setNodes(List.of());
-            response.setLinks(List.of());
-            response.setOptionMap(Map.of());
+            response.setCreateNodeConfig(emptyNodeConfig());
+            response.setUpdateNodeConfig(emptyNodeConfig());
+            response.setDeleteNodeConfig(emptyNodeConfig());
             return;
         }
         // 获取所有节点并按 sort 排序
@@ -728,8 +738,6 @@ public class ApprovalFlowService {
                 .forEach(node -> node.setFallbackApproverName(
                         baseService.getAndCheckOptionName(fallbackApproverNameMap.get(node.getFallbackApprover()))));
 
-        response.setNodes(allNodes);
-
         // 获取节点连接关系并按 sort 排序
         ApprovalNodeLink linkCriteria = new ApprovalNodeLink();
         linkCriteria.setFlowVersionId(flowVersionId);
@@ -746,11 +754,98 @@ public class ApprovalFlowService {
                 })
                 .collect(Collectors.toList());
 
-        response.setLinks(linkResponses);
+        // 按 executeTime 分组
+        Map<String, List<ApprovalNodeResponse>> nodesByExecuteTime = allNodes.stream()
+                .filter(node -> StringUtils.isNotBlank(node.getExecuteTime()))
+                .collect(Collectors.groupingBy(ApprovalNodeResponse::getExecuteTime));
 
-        // 构建条件节点字段选项映射
+        Map<String, List<ApprovalNodeLinkResponse>> linksByExecuteTime = linkResponses.stream()
+                .collect(Collectors.groupingBy(link -> {
+                    String fromNodeId = link.getFromNodeId();
+                    return allNodes.stream()
+                            .filter(n -> n.getId().equals(fromNodeId))
+                            .map(ApprovalNodeResponse::getExecuteTime)
+                            .findFirst().orElse("");
+                }));
+
         Map<String, List<OptionDTO>> optionMap = buildConditionOptionMap(allNodes, response.getFormType(), organizationId);
         response.setOptionMap(optionMap);
+
+        // 构建3个执行时机的节点配置
+        for (ExecuteTimingEnum executeTime : ExecuteTimingEnum.values()) {
+            List<ApprovalNodeResponse> configNodes = nodesByExecuteTime.getOrDefault(executeTime.name(), List.of());
+            List<ApprovalNodeLinkResponse> configLinks = linksByExecuteTime.getOrDefault(executeTime.name(), List.of());
+
+            ApprovalFlowNodeConfigResponse config = new ApprovalFlowNodeConfigResponse();
+            config.setNodes(configNodes);
+            config.setLinks(configLinks);
+
+            switch (executeTime) {
+                case CREATE -> response.setCreateNodeConfig(config);
+                case UPDATE -> response.setUpdateNodeConfig(config);
+                case DELETE -> response.setDeleteNodeConfig(config);
+            }
+        }
+    }
+
+    private ApprovalFlowNodeConfigResponse emptyNodeConfig() {
+        ApprovalFlowNodeConfigResponse config = new ApprovalFlowNodeConfigResponse();
+        config.setNodes(List.of());
+        config.setLinks(List.of());
+        return config;
+    }
+
+    /**
+     * 按执行时机构建节点配置
+     */
+    private void buildNodeConfigs(String flowVersionId, ApprovalFlowDetailResponse response, String organizationId) {
+        buildNodesAndLinks(flowVersionId, response, organizationId);
+    }
+
+    /**
+     * 判断请求中是否包含节点配置更新
+     */
+    private boolean hasNodeConfigUpdate(ApprovalFlowUpdateRequest request) {
+        return hasNodeConfig(request.getCreateNodeConfig())
+                || hasNodeConfig(request.getUpdateNodeConfig())
+                || hasNodeConfig(request.getDeleteNodeConfig());
+    }
+
+    private boolean hasNodeConfig(ApprovalFlowNodeConfigRequest config) {
+        return config != null && CollectionUtils.isNotEmpty(config.getNodes());
+    }
+
+    /**
+     * 保存审批流的节点配置（按执行时机分别保存）
+     */
+    private void saveNodeConfigs(ApprovalFlowAddRequest request, String flowVersionId, String flowId) {
+        if (Boolean.TRUE.equals(request.getCreateExecute()) && request.getCreateNodeConfig() != null) {
+            saveNodesAndLinks(request.getCreateNodeConfig().getNodes(), request.getCreateNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.CREATE.name());
+        }
+        if (Boolean.TRUE.equals(request.getUpdateExecute()) && request.getUpdateNodeConfig() != null) {
+            saveNodesAndLinks(request.getUpdateNodeConfig().getNodes(), request.getUpdateNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.UPDATE.name());
+        }
+        if (Boolean.TRUE.equals(request.getDeleteExecute()) && request.getDeleteNodeConfig() != null) {
+            saveNodesAndLinks(request.getDeleteNodeConfig().getNodes(), request.getDeleteNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.DELETE.name());
+        }
+    }
+
+    private void saveNodeConfigs(ApprovalFlowUpdateRequest request, String flowVersionId, String flowId) {
+        if (Boolean.TRUE.equals(request.getCreateExecute()) && request.getCreateNodeConfig() != null) {
+            saveNodesAndLinks(request.getCreateNodeConfig().getNodes(), request.getCreateNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.CREATE.name());
+        }
+        if (Boolean.TRUE.equals(request.getUpdateExecute()) && request.getUpdateNodeConfig() != null) {
+            saveNodesAndLinks(request.getUpdateNodeConfig().getNodes(), request.getUpdateNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.UPDATE.name());
+        }
+        if (Boolean.TRUE.equals(request.getDeleteExecute()) && request.getDeleteNodeConfig() != null) {
+            saveNodesAndLinks(request.getDeleteNodeConfig().getNodes(), request.getDeleteNodeConfig().getLinks(),
+                    flowVersionId, flowId, ExecuteTimingEnum.DELETE.name());
+        }
     }
 
     /**
@@ -813,7 +908,7 @@ public class ApprovalFlowService {
      * 批量保存节点配置和连接关系
      */
     private void saveNodesAndLinks(List<ApprovalNodeRequest> nodes, List<ApprovalNodeLinkRequest> links,
-                                   String flowVersionId, String flowId) {
+                                   String flowVersionId, String flowId, String executeTime) {
         if (CollectionUtils.isEmpty(nodes)) {
             return;
         }
@@ -848,6 +943,7 @@ public class ApprovalFlowService {
                 node.setNumber(nodeRequest.getNumber());
             }
             node.setSort(nodeSort++);
+            node.setExecuteTime(executeTime);
             allNodes.add(node);
 
             // 收集审批人节点配置
@@ -966,9 +1062,14 @@ public class ApprovalFlowService {
                     // 添加缺失的权限，默认不启用
                     StatusPermissionDTO newItem = new StatusPermissionDTO();
                     newItem.setApprovalStatus(approvalStatus);
-                    newItem.setPermission(permission.getId());
+                    newItem.setPermission(permission.getIdAsString());
                     newItem.setEnabled(false);
                     updatedPermissions.add(newItem);
+                }
+                // 审批中编辑和删除权限 enable 设置为 false
+                if (Strings.CS.equals(approvalStatus, ApprovalStatus.APPROVING.name())
+                        && (permission.getIdAsString().endsWith(":UPDATE") || permission.getIdAsString().endsWith(":DELETE"))) {
+                    item.setEnabled(false);
                 }
             }
         }
@@ -977,10 +1078,9 @@ public class ApprovalFlowService {
     }
 
     /**
-     * 获取下一个节点
-     * 条件节点根据字段值进行匹配，其他类型节点直接返回
+     * 获取下一个节点（带 updateFields 上下文）
      */
-    public ApprovalNodeResponse getNextNode(String nodeId, List<BaseModuleFieldValue> fieldValues) {
+    public ApprovalNodeResponse getNextNode(String nodeId, List<BaseModuleFieldValue> fieldValues, Set<String> updateFields) {
         List<ApprovalNodeResponse> nextNodes = getNextNodes(nodeId);
 
         if (CollectionUtils.isEmpty(nextNodes)) {
@@ -1003,7 +1103,7 @@ public class ApprovalFlowService {
         for (ApprovalNodeResponse nextNode : nextNodes) {
             if (nextNode instanceof ApprovalNodeConditionResponse conditionNode) {
                 // 匹配条件节点，如果匹配成功则立即返回
-                if (matchCondition(conditionNode.getConditionConfig(), fieldValues)) {
+                if (matchCondition(conditionNode.getConditionConfig(), fieldValues, updateFields)) {
                     return conditionNode;
                 }
             } else if (ApprovalNodeTypeEnum.DEFAULT.name().equals(nextNode.getNodeType())) {
@@ -1019,7 +1119,7 @@ public class ApprovalFlowService {
     /**
      * 匹配条件
      */
-    private boolean matchCondition(CombineSearch combineSearch, List<BaseModuleFieldValue> fieldValues) {
+    private boolean matchCondition(CombineSearch combineSearch, List<BaseModuleFieldValue> fieldValues, Set<String> updateFields) {
         if (combineSearch == null || CollectionUtils.isEmpty(combineSearch.getConditions())) {
             return false;
         }
@@ -1035,19 +1135,19 @@ public class ApprovalFlowService {
         // 根据匹配模式进行条件判断
         if (CombineSearch.SearchMode.AND.name().equals(searchMode)) {
             // AND 模式：所有都必须满足
-            return conditions.stream().allMatch(condition -> matchSingleCondition(condition, fieldValueMap));
+            return conditions.stream().allMatch(condition -> matchSingleCondition(condition, fieldValueMap, updateFields));
         } else {
             // OR 模式：任一满足即可
-            return conditions.stream().anyMatch(condition -> matchSingleCondition(condition, fieldValueMap));
+            return conditions.stream().anyMatch(condition -> matchSingleCondition(condition, fieldValueMap, updateFields));
         }
     }
 
     /**
      * 匹配单个条件
      */
-    private boolean matchSingleCondition(FilterCondition condition, Map<String, Object> fieldValueMap) {
+    private boolean matchSingleCondition(FilterCondition condition, Map<String, Object> fieldValueMap, Set<String> updateFields) {
         String fieldName = condition.getName();
-        Object actualValue = fieldValueMap.get(fieldName);
+        Object actualValue = fieldValueMap.get(getParentFieldIdForSubFieldId(fieldName));
 
         // 获取动态转换后的值和操作符
         Object expectedValue = condition.getCombineValue();
@@ -1061,6 +1161,31 @@ public class ApprovalFlowService {
             return false;
         }
 
+        // 处理 NOT_EQUAL_ORIGINAL：判断字段值是否与原值不同（即字段在修改列表中）
+        if (operator == FilterCondition.CombineConditionOperator.NOT_EQUAL_ORIGINAL) {
+            if (updateFields == null || updateFields.isEmpty()) {
+                return false;
+            }
+            return updateFields.contains(getFieldIdForSubFieldId(fieldName));
+        }
+
+        if (fieldName.contains(".") && actualValue instanceof List<?> listValues) {
+            for (Object listValue : listValues) {
+                if (listValue instanceof Map map)  {
+                    Object subFileValue = map.get(getFieldIdForSubFieldId(fieldName));
+                    boolean match = matchFieldValue(subFileValue, expectedValue, operator);
+                    if (match) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } else {
+            return matchFieldValue(actualValue, expectedValue, operator);
+        }
+    }
+
+    private boolean matchFieldValue(Object actualValue, Object expectedValue, FilterCondition.CombineConditionOperator operator) {
         // 处理空值判断操作符
         if (operator == FilterCondition.CombineConditionOperator.EMPTY) {
             return actualValue == null;
@@ -1091,6 +1216,26 @@ public class ApprovalFlowService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private String getParentFieldIdForSubFieldId(String fieldId) {
+        if (fieldId.contains(".")) {
+            String[] split = fieldId.split("\\.");
+            if (split.length > 1) {
+                return split[0];
+            }
+        }
+        return fieldId;
+    }
+
+    private String getFieldIdForSubFieldId(String fieldId) {
+        if (fieldId.contains(".")) {
+            String[] split = fieldId.split("\\.");
+            if (split.length > 1) {
+                return split[1];
+            }
+        }
+        return fieldId;
     }
 
     /**
@@ -1154,6 +1299,21 @@ public class ApprovalFlowService {
             return matchCompare(actualValue, min) >= 0 && matchCompare(actualValue, max) <= 0;
         }
         return false;
+    }
+
+    /**
+     * 加载修改字段列表
+     */
+    private Set<String> loadUpdateFields(String updateFieldsStr) {
+        if (StringUtils.isBlank(updateFieldsStr)) {
+            return Collections.emptySet();
+        }
+        try {
+            List<String> fields = JSON.parseArray(updateFieldsStr, String.class);
+            return CollectionUtils.isEmpty(fields) ? Collections.emptySet() : new HashSet<>(fields);
+        } catch (Exception e) {
+            return Collections.emptySet();
+        }
     }
 
     /**
@@ -1683,7 +1843,11 @@ public class ApprovalFlowService {
         ApprovalNode nodeCriteria = new ApprovalNode();
         nodeCriteria.setFlowVersionId(instance.getFlowVersionId());
         nodeCriteria.setNodeType(ApprovalNodeTypeEnum.START.name());
+        nodeCriteria.setExecuteTime(StringUtils.isNotBlank(instance.getExecuteTime()) ? instance.getExecuteTime() : ExecuteTimingEnum.CREATE.name());
         ApprovalNode start = approvalNodeMapper.selectOne(nodeCriteria);
+        if (start == null) {
+            return null;
+        }
         List<BaseModuleFieldValue> resourceFvs = formService.compressResourceDetail(instance.getType(), instance.getResourceId());
         return getNextNodeWithExceptionHandler(instance, start.getId(), resourceFvs, currentOrgId, false);
     }
@@ -1741,7 +1905,9 @@ public class ApprovalFlowService {
      * @return 下一个节点 (结束节点或者审批节点)
      */
     private ApprovalNodeResponse getNextNodeWithExceptionHandler(ApprovalInstance instance, String nodeId, List<BaseModuleFieldValue> fieldValues, String currentOrgId, boolean preview) {
-        ApprovalNodeResponse nextNode = getNextNode(nodeId, fieldValues);
+        // 加载修改字段列表，用于 NOT_EQUAL_ORIGINAL 条件判断
+        Set<String> updateFields = loadUpdateFields(instance.getUpdateFields());
+        ApprovalNodeResponse nextNode = getNextNode(nodeId, fieldValues, updateFields);
         if (nextNode == null) {
             throw new GenericException(Translator.get("no.approval.next.node"));
         }
@@ -1778,12 +1944,14 @@ public class ApprovalFlowService {
         ApprovalNodeApproverResponse nextApproverNode = (ApprovalNodeApproverResponse) nextNode;
         if (ApprovalTypeEnum.valueOf(nextApproverNode.getApprovalType()) == ApprovalTypeEnum.AUTO_PASS) {
             // 自动通过, 插入审批记录, 获取下一个节点
-            saveAutoRecord(instance.getId(), nextApproverNode.getId(), ApprovalStatus.AUTO_APPROVED, null, null, null, false, null);
+            saveAutoRecord(instance.getId(), nextApproverNode.getId(), ApprovalStatus.AUTO_APPROVED, null, null, nextApproverNode.getCcList(), true, null);
+            updateApprovalPostField(instance, nextApproverNode.getId(), ApprovalAction.APPROVE, InternalUser.ADMIN.getValue());
             return getNextNodeWithExceptionHandler(instance, nextApproverNode.getId(), fieldValues, currentOrgId, false);
         }
         if (ApprovalTypeEnum.valueOf(nextApproverNode.getApprovalType()) == ApprovalTypeEnum.AUTO_REJECT) {
             // 自动驳回, 插入审批记录
-            saveAutoRecord(instance.getId(), nextApproverNode.getId(), ApprovalStatus.AUTO_UNAPPROVED, null, null, null, false, null);
+            saveAutoRecord(instance.getId(), nextApproverNode.getId(), ApprovalStatus.AUTO_UNAPPROVED, null, null, nextApproverNode.getCcList(), true, null);
+            updateApprovalPostField(instance, nextApproverNode.getId(), ApprovalAction.REJECT, InternalUser.ADMIN.getValue());
             ApprovalNodeExceptionResponse exNode = BeanUtils.copyBean(new ApprovalNodeExceptionResponse(), nextApproverNode);
             exNode.setNodeType(ApprovalNodeTypeEnum.EXCEPTION.name());
             return exNode;

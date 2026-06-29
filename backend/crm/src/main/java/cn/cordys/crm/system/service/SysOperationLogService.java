@@ -73,7 +73,7 @@ public class SysOperationLogService {
 
             List<OptionDTO> userList = extUserMapper.selectUserOptionByIds(userIds);
             Map<String, String> userMap = userList.stream()
-                    .collect(Collectors.toMap(OptionDTO::getId, OptionDTO::getName));
+                    .collect(Collectors.toMap(OptionDTO::getIdAsString, OptionDTO::getName));
 
             list.forEach(item -> item.setOperatorName(userMap.getOrDefault(item.getOperator(), StringUtils.EMPTY)));
         }
@@ -123,11 +123,7 @@ public class SysOperationLogService {
                 .orElse("");
 
         try {
-            List<JsonDifferenceDTO> differences = new ArrayList<>();
-            JsonDifferenceUtils.compareJson(oldString, newString, differences);
-
-            // 过滤掉不需要的字段
-            differences = filterIgnoreFields(differences);
+            List<JsonDifferenceDTO> differences = getJsonDifferences(oldString, newString);
 
             if (CollectionUtils.isNotEmpty(differences)) {
                 // 获取模块对应处理服务
@@ -149,6 +145,15 @@ public class SysOperationLogService {
         }
 
         return logResponse;
+    }
+
+    public List<JsonDifferenceDTO> getJsonDifferences(String oldString, String newString) throws Exception {
+        List<JsonDifferenceDTO> differences = new ArrayList<>();
+        JsonDifferenceUtils.compareJson(oldString, newString, differences);
+
+        // 过滤掉不需要的字段
+        differences = filterIgnoreFields(differences);
+        return differences;
     }
 
     // 默认差异处理逻辑
@@ -179,7 +184,7 @@ public class SysOperationLogService {
         differences = differences
                 .stream()
                 .filter(differ -> !Strings.CS.equalsAny(differ.getColumn(),
-                        "organizationId", "createUser", "updateUser", "createTime", "updateTime", "departmentName", "supervisorName", "lastStage", "pos"))
+                        "organizationId", "createUser", "updateUser", "createTime", "updateTime", "departmentName", "supervisorName", "lastStage", "pos", "approved"))
                 .collect(Collectors.toList());
         return differences;
     }

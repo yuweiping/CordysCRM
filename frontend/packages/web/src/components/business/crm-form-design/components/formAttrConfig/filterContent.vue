@@ -67,11 +67,11 @@
           >
             <n-select
               v-model:value="item.rightFieldId"
-              :options="transformFieldsToOptions(props.rightFields, item.leftFieldType)"
+              :options="transformFieldsToOptions(props.rightFields, item.leftFieldType, item.leftFieldId)"
               :placeholder="t('crmFormDesign.dataSourceFilterValuePlaceholder')"
               :fallback-option="() => fallbackOption(item.leftFieldId)"
               :disabled="isValueDisabled(item)"
-              @update-value="(val, option) => rightFieldChange((option as any).fieldType, listIndex)"
+              @update-value="(val, option) => rightFieldChange(option as any, listIndex)"
             />
           </n-form-item>
           <n-form-item
@@ -211,15 +211,6 @@
                   : [DeptNodeTypeEnum.USER, DeptNodeTypeEnum.ROLE]
               "
             />
-            <n-select
-              v-else-if="item.leftFieldType === FieldTypeEnum.APPROVAL_STATUS"
-              v-model:value="item.rightFieldCustomValue"
-              clearable
-              :disabled="isValueDisabled(item)"
-              :placeholder="t('common.pleaseSelect')"
-              v-bind="getSelectedProps(item.leftFieldId).selectProps"
-              @update:value="valueChange"
-            />
             <n-input
               v-else
               v-model:value="item.rightFieldCustomValue"
@@ -263,7 +254,7 @@
   import { Add } from '@vicons/ionicons5';
 
   import { OperatorEnum } from '@lib/shared/enums/commonEnum';
-  import { FieldDataSourceTypeEnum, FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
+  import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { MemberApiTypeEnum, MemberSelectTypeEnum } from '@lib/shared/enums/moduleEnum';
   import { DeptNodeTypeEnum } from '@lib/shared/enums/systemEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -383,9 +374,9 @@
     changeMatchTypeDefaultValue(currentFormList[index]);
   };
 
-  function rightFieldChange(rightFieldType: FieldTypeEnum, index: number) {
+  function rightFieldChange(option: SelectOption & { fieldType?: FieldTypeEnum }, index: number) {
     const currentFormList = formModel.value.conditions;
-    currentFormList[index].rightFieldType = rightFieldType;
+    currentFormList[index].rightFieldType = option.fieldType || FieldTypeEnum.INPUT;
   }
 
   function matchTypeChange(matchType: DataSourceMatchType, index: number) {
@@ -410,19 +401,39 @@
     changeMatchTypeDefaultValue(currentItem);
   }
 
-  function transformFieldsToOptions(fields: FormCreateField[], leftFieldType?: FieldTypeEnum): SelectOption[] {
+  function isSystemField(fieldId?: string) {
+    if (!fieldId) {
+      return false;
+    }
+    return props.leftFields.some(
+      (field) =>
+        Boolean((field as FormCreateField & { isSystemField?: boolean })?.isSystemField) &&
+        [field.id, field.businessKey].includes(fieldId)
+    );
+  }
+
+  function transformFieldsToOptions(
+    fields: FormCreateField[],
+    leftFieldType?: FieldTypeEnum,
+    leftFieldId?: string
+  ): SelectOption[] {
+    if (leftFieldType && isSystemField(leftFieldId)) {
+      return [];
+    }
+
     return fields
       .filter((e) => {
-        const condition =
+        const baseCondition =
           ![FieldTypeEnum.DIVIDER, FieldTypeEnum.PICTURE, FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(
             e.type
           ) &&
           props.selfId !== e.id &&
           !e.resourceFieldId;
         if (leftFieldType) {
-          return e.type === leftFieldType && condition;
+          const isCurrentSystemField = Boolean((e as FormCreateField & { isSystemField?: boolean })?.isSystemField);
+          return e.type === leftFieldType && !isCurrentSystemField && baseCondition;
         }
-        return condition;
+        return baseCondition;
       })
       .map((field) => ({
         ...field,
@@ -459,13 +470,9 @@
       const currentSelectedType = field.fieldType as FieldTypeEnum;
       const currentFieldProps: Record<string, any> = {};
       if (
-        [
-          FieldTypeEnum.SELECT,
-          FieldTypeEnum.SELECT_MULTIPLE,
-          FieldTypeEnum.RADIO,
-          FieldTypeEnum.CHECKBOX,
-          FieldTypeEnum.APPROVAL_STATUS,
-        ].includes(currentSelectedType)
+        [FieldTypeEnum.SELECT, FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.RADIO, FieldTypeEnum.CHECKBOX].includes(
+          currentSelectedType
+        )
       ) {
         currentFieldProps.selectProps = {
           options: field.options,

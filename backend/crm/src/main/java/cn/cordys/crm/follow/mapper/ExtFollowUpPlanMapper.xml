@@ -52,27 +52,33 @@
         <if test="request.status != null and request.status != '' and request.status != 'ALL'">
             AND fup.status = #{request.status}
         </if>
-
-        <if test="customerData != null and !customerData.all and customerData.owner">
-            <if test="customerData.userIds != null and customerData.userIds.size() > 0">
-                AND fup.owner not in
-                <foreach collection="customerData.userIds" item="userId" open="(" close=")" separator=",">
-                    #{userId}
-                </foreach>
-            </if>
-        </if>
-
-        <if test="customerData != null and !customerData.all and !customerData.owner and !customerData.self">
-            <if test="customerData.userIds != null and customerData.userIds.size() > 0">
-                AND fup.owner not in
-                <foreach collection="customerData.userIds" item="userId" open="(" close=")" separator=",">
-                    #{userId}
-                </foreach>
-            </if>
-        </if>
-
-        <if test="customerData != null and !customerData.all and !customerData.owner and customerData.self">
-            AND fup.owner = #{userId}
+        <!-- 协作人数据隔离：协作人只能看到自己创建的，非协作者看不到协作人创建的 -->
+        <if test="resourceType == 'CUSTOMER'">
+            AND (
+                -- 协作人只能看到自己创建的
+                (
+                    EXISTS (
+                        SELECT 1 FROM customer_collaboration cc
+                        WHERE cc.customer_id = fup.customer_id
+                        AND cc.user_id = #{userId}
+                    )
+                    AND fup.create_user = #{userId}
+                )
+                OR
+                -- 非协作者看不到协作人创建的
+                (
+                    NOT EXISTS (
+                        SELECT 1 FROM customer_collaboration cc
+                        WHERE cc.customer_id = fup.customer_id
+                        AND cc.user_id = #{userId}
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM customer_collaboration cc
+                        WHERE cc.customer_id = fup.customer_id
+                        AND cc.user_id = fup.create_user
+                    )
+                )
+            )
         </if>
 
         <if test="resourceTypeList!=null and resourceTypeList.size()>0">

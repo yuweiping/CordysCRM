@@ -21,6 +21,7 @@ import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.CommonBeanFactory;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.context.OrganizationContext;
@@ -32,6 +33,7 @@ import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
 import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
 import cn.cordys.crm.approval.dto.ResourceApprovalPostUpdateParam;
 import cn.cordys.crm.approval.dto.ResourceSnapshotApprovalParam;
+import cn.cordys.crm.approval.handler.ApprovalResourceHandler;
 import cn.cordys.crm.approval.service.ApprovalFlowService;
 import cn.cordys.crm.approval.service.ApprovalResourceService;
 import cn.cordys.crm.contract.domain.ContractField;
@@ -82,7 +84,7 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 @Slf4j
-public class OpportunityQuotationService {
+public class OpportunityQuotationService implements ApprovalResourceHandler {
 
     @Resource
     private OpportunityQuotationFieldService opportunityQuotationFieldService;
@@ -116,8 +118,6 @@ public class OpportunityQuotationService {
     private DictService dictService;
     @Resource
     private ApprovalFlowService approvalFlowService;
-    @Resource
-    private ApprovalResourceService approvalResourceService;
 
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -240,6 +240,7 @@ public class OpportunityQuotationService {
 			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(response.getId()), orgId);
 			response.setFirstApproved(firstNodeApproved.get(response.getId()));
 		}
+        response.setApproved(opportunityQuotation.getApproved());
         return response;
     }
 
@@ -286,6 +287,7 @@ public class OpportunityQuotationService {
 			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(response.getId()), orgId);
 			response.setFirstApproved(firstNodeApproved.get(response.getId()));
 		}
+        response.setApproved(opportunityQuotation.getApproved());
         return response;
     }
 
@@ -513,6 +515,10 @@ public class OpportunityQuotationService {
 			response = JSON.parseObject(snapshot.getQuotationValue(), OpportunityQuotationGetResponse.class);
 		}
 		for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postFieldParam.getFields()) {
+			if (Strings.CS.equals(fieldUpdateParam.getFieldId(), "invalid") && fieldUpdateParam.getFieldValue() != null) {
+				opportunityQuotationFieldService.setResourceFieldValue(quotation, "invalid", fieldUpdateParam.getFieldValue());
+				continue;
+			}
 			if (!fieldConfigMap.containsKey(fieldUpdateParam.getFieldId()) || fieldUpdateParam.getFieldValue() == null) {
 				return;
 			}
@@ -669,6 +675,7 @@ public class OpportunityQuotationService {
      * @param userId         用户ID
      * @param organizationId 组织ID
      */
+    @Override
     public void delete(String id, String userId, String organizationId) {
         OpportunityQuotation opportunityQuotation = opportunityQuotationMapper.selectByPrimaryKey(id);
         if (opportunityQuotation == null) {
@@ -688,6 +695,17 @@ public class OpportunityQuotationService {
 
         //发送通知
         sendNotice(null, opportunityQuotation, userId, organizationId, NotificationConstants.Event.BUSINESS_QUOTATION_DELETED);
+    }
+
+    @HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.DELETE, resourceId = "{#id}", operatorId = "{#userId}")
+    public void deleteWithApprovalCheck(String id, String userId, String orgId) {
+        // 校验审批流
+        delete(id, userId, orgId);
+    }
+
+    @Override
+    public FormKey getFormKey() {
+        return FormKey.QUOTATION;
     }
 
     /**
@@ -748,7 +766,7 @@ public class OpportunityQuotationService {
      * @return 更新后的报价单实体
      */
     @OperationLog(module = LogModule.OPPORTUNITY_QUOTATION, type = LogType.UPDATE, resourceName = "{#request.name}", operator = "{#userId}")
-	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.EDIT, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}")
+	@HitApproval(formKey = FormKey.QUOTATION, executeType = ExecuteTimingEnum.UPDATE, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}", comment = "{#request.comment}")
     public OpportunityQuotation update(OpportunityQuotationEditRequest request, String userId, String orgId) {
         String id = request.getId();
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
@@ -975,8 +993,8 @@ public class OpportunityQuotationService {
         if (CollectionUtils.isEmpty(permittedIds)) {
             return BatchAffectReasonResponse.builder().success(0).fail(originQuotations.size()).skip(0).errorMessages(Translator.get("no.operation.permission")).build();
         }
-
-            approvalResourceService.batchEditTriggerApproval(permittedIds, FormKey.QUOTATION, organizationId, userId);
+        ApprovalResourceService approvalResourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
+        approvalResourceService.batchEditTriggerApproval(permittedIds, request.getFieldId(), FormKey.QUOTATION, organizationId, userId, field.getName(), request.getFieldValue());
 
         // 只对有权限的报价单进行操作
         List<OpportunityQuotation> permittedQuotations = originQuotations.stream()

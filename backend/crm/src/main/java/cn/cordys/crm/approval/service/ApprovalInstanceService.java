@@ -85,6 +85,7 @@ public class ApprovalInstanceService {
 		Map<String, List<Attachment>> elementAttachmentsMap = queryAttachments(records, signTasks, backRecords);
 		instanceDetail.setNodes(buildApprovalRecordNodeList(latestInstance, tasks, records, signTasks, backRecords, elementAttachmentsMap, simpleUserMap, currentOrgId));
 		instanceDetail.setCurrentNodeId(latestInstance.getCurrentNodeId());
+		instanceDetail.setComment(latestInstance.getComment());
 		return setCurrentNodeFieldPermissions(instanceDetail);
 	}
 
@@ -238,7 +239,13 @@ public class ApprovalInstanceService {
 		List<ApprovalRecordNode> nodes = new ArrayList<>(ListUtils.union(processedApprovalNodes, pendingApprovalNodes));
 		// 处理结束节点
 		ApprovalRecordNode endNode = getInstanceEndNode(instance);
-		nodes.addLast(endNode);
+        if (endNode == null) {
+            // 历史数据兜底
+            endNode = getInstanceAnyEndNode(instance);
+        }
+        if (endNode != null) {
+            nodes.addLast(endNode);
+        }
 
 		List<String> allNodeIds = nodes.stream().map(ApprovalRecordNode::getNodeId).distinct().toList();
 		Map<String, ApprovalNodeApprover> approverNodeMap = getApproverNodeMapByIds(allNodeIds);
@@ -268,7 +275,6 @@ public class ApprovalInstanceService {
 				}
 			}
 			if (CollectionUtils.isEmpty(node.getTaskNodes())) {
-
 				node.setTaskNodes(List.of());
 			}
 		});
@@ -305,17 +311,6 @@ public class ApprovalInstanceService {
 		// 处理历史节点
 		hisNodes.forEach(hisNode -> {
 			Integer maxRound = nodeMaxRoundMap.get(hisNode);
-			if (autoNodeRecordMap.containsKey(hisNode) && autoNodeRecordMap.get(hisNode).getNodeRound().equals(maxRound)) {
-				// 当前节点的最后一轮执行是自动执行
-				ApprovalRecordNode recordNode = ApprovalRecordNode.builder().nodeId(hisNode).nodeRound(maxRound).taskNodes(List.of()).approvalStatus(autoNodeRecordMap.get(hisNode).getResult()).build();
-				ApprovalTaskNode autoTask = buildAutoTaskNode();
-				autoTask.setApprovalTime(autoNodeRecordMap.get(hisNode).getCreateTime());
-				autoTask.setApprovalStatus(recordNode.getApprovalStatus());
-				autoTask.setRecordId(autoNodeRecordMap.get(hisNode).getId());
-				recordNode.setTaskNodes(List.of(autoTask));
-				nodes.addLast(recordNode);
-				return;
-			}
 			// 获取节点下最后一轮抄送人
 			List<String> ccUsers = tasks.stream().filter(task -> ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.CC
 					&& Strings.CI.equals(task.getNodeId(), hisNode) && task.getNodeRound().equals(maxRound)).map(ApprovalTask::getApproverId).distinct().toList();
@@ -328,6 +323,18 @@ public class ApprovalInstanceService {
 				}
 				return ccNode;
 			}).toList();
+			if (autoNodeRecordMap.containsKey(hisNode) && autoNodeRecordMap.get(hisNode).getNodeRound().equals(maxRound)) {
+				// 当前节点的最后一轮执行是自动执行
+				ApprovalRecordNode recordNode = ApprovalRecordNode.builder().nodeId(hisNode).nodeRound(maxRound).taskNodes(List.of()).approvalStatus(autoNodeRecordMap.get(hisNode).getResult()).build();
+				ApprovalTaskNode autoTask = buildAutoTaskNode();
+				autoTask.setApprovalTime(autoNodeRecordMap.get(hisNode).getCreateTime());
+				autoTask.setApprovalStatus(recordNode.getApprovalStatus());
+				autoTask.setRecordId(autoNodeRecordMap.get(hisNode).getId());
+				recordNode.setTaskNodes(List.of(autoTask));
+				recordNode.setCcNodes(ccNodes);
+				nodes.addLast(recordNode);
+				return;
+			}
 			/*
 			 * 获取节点下最后一轮正常待办任务 (排除正常加签操作)
 			 * 加签场景下, 同一节点可能存在多条rootTask, 只展示最新创建的那个待办
@@ -457,9 +464,29 @@ public class ApprovalInstanceService {
 		ApprovalNode approvalNode = new ApprovalNode();
 		approvalNode.setFlowVersionId(instance.getFlowVersionId());
 		approvalNode.setNodeType(ApprovalNodeTypeEnum.END.name());
+		approvalNode.setExecuteTime(StringUtils.isNotBlank(instance.getExecuteTime()) ? instance.getExecuteTime() : ExecuteTimingEnum.CREATE.name());
 		ApprovalNode endNode = approvalNodeMapper.selectOne(approvalNode);
+        if (endNode == null) {
+            return null;
+        }
 		return ApprovalRecordNode.builder().nodeId(endNode.getId()).build();
 	}
+
+    /**
+     * 获取审批流可能的结束节点
+     * @param instance 审批实例
+     * @return 结束节点
+     */
+    private ApprovalRecordNode getInstanceAnyEndNode(ApprovalInstance instance) {
+        ApprovalNode approvalNode = new ApprovalNode();
+        approvalNode.setFlowVersionId(instance.getFlowVersionId());
+        approvalNode.setNodeType(ApprovalNodeTypeEnum.END.name());
+        ApprovalNode endNode = approvalNodeMapper.selectOne(approvalNode);
+        if (endNode == null) {
+            return null;
+        }
+        return ApprovalRecordNode.builder().nodeId(endNode.getId()).build();
+    }
 
 
 	/**

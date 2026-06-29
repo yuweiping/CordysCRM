@@ -5,27 +5,30 @@ import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
-import cn.cordys.common.dto.stage.StageAddRequest;
-import cn.cordys.common.dto.stage.StageConfigResponse;
-import cn.cordys.common.dto.stage.StageRollBackRequest;
-import cn.cordys.common.dto.stage.StageUpdateRequest;
+import cn.cordys.common.constants.FormKey;
+import cn.cordys.common.dto.condition.FilterCondition;
+import cn.cordys.common.dto.stage.*;
 import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.uid.IDGenerator;
+import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.domain.ContractStageConfig;
-import cn.cordys.crm.contract.dto.response.ContractStageConfigListResponse;
 import cn.cordys.crm.contract.mapper.ExtContractMapper;
 import cn.cordys.crm.contract.mapper.ExtContractStageConfigMapper;
+import cn.cordys.crm.system.domain.StageAdvancedConfig;
+import cn.cordys.crm.system.mapper.ExtStageAdvancedConfigMapper;
+import cn.cordys.crm.system.service.UserViewService;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.annotation.Resource;
 import org.apache.commons.collections.CollectionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -37,7 +40,10 @@ public class ContractStageService {
     private ExtContractMapper extContractMapper;
     @Resource
     private BaseMapper<ContractStageConfig> contractStageConfigMapper;
-
+    @Resource
+    private ExtStageAdvancedConfigMapper extStageAdvancedConfigMapper;
+    @Resource
+    private UserViewService userViewService;
 
     /**
      * 列表
@@ -45,20 +51,69 @@ public class ContractStageService {
      * @param orgId
      * @return
      */
-    public ContractStageConfigListResponse getStageConfigList(String orgId) {
-        ContractStageConfigListResponse stageConfigListResponse = new ContractStageConfigListResponse();
+    public StageConfigsResponse getStageConfigList(String orgId) {
+        StageConfigsResponse stageConfigListResponse = new StageConfigsResponse();
         List<StageConfigResponse> stageConfigList = extContractStageConfigMapper.getStageConfigList(orgId);
-        buildList(stageConfigList, stageConfigListResponse);
+        List<StageAdvancedConfig> advancedConfigs = extStageAdvancedConfigMapper.selectConfigByType(orgId, FormKey.CONTRACT.getKey());
+        buildList(stageConfigList, stageConfigListResponse, advancedConfigs, orgId);
         return stageConfigListResponse;
     }
 
-    private void buildList(List<StageConfigResponse> stageConfigList, ContractStageConfigListResponse response) {
+    private void buildList(List<StageConfigResponse> stageConfigList, StageConfigsResponse response, List<StageAdvancedConfig> advancedConfigs, String orgId) {
         response.setStageConfigList(stageConfigList);
         if (CollectionUtils.isNotEmpty(stageConfigList)) {
             var first = stageConfigList.getFirst();
             response.setEndRollBack(first.getEndRollBack());
             response.setAfootRollBack(first.getAfootRollBack());
             stageConfigList.forEach(sc -> sc.setStageHasData(extContractMapper.countByStage(sc.getId()) > 0));
+            response.setCirculationType(first.getCirculationType());
+        }
+        if (CollectionUtils.isNotEmpty(advancedConfigs)) {
+            Map<String, List<StageAdvancedConfig>> originIdMaps = advancedConfigs.stream().collect(Collectors.groupingBy(StageAdvancedConfig::getOriginId));
+            List<CirculationSetting> configs = new ArrayList<>();
+            List<CirculationFieldValue> allConfigs = new ArrayList<>();
+            originIdMaps.forEach((key, value) -> {
+                CirculationSetting configResponse = new CirculationSetting();
+                List<Target> targetList = new ArrayList<>();
+                configResponse.setOriginId(key);
+                value.forEach(item -> {
+                    Target target = new Target();
+                    target.setTargetId(item.getTargetId());
+                    target.setEnable(item.getEnable());
+                    List<CirculationFieldValue> circulationFieldValues = JSON.parseObject(item.getFieldConfig(), new TypeReference<List<CirculationFieldValue>>() {
+                    });
+                    target.setCirculationFieldValues(circulationFieldValues);
+                    targetList.add(target);
+                    allConfigs.addAll(circulationFieldValues);
+                });
+                configResponse.setTargets(targetList);
+                configResponse.setModuleType(value.getFirst().getModuleType());
+                configs.add(configResponse);
+            });
+            Map<String, CirculationSetting> configMap = configs.stream()
+                    .collect(Collectors.toMap(
+                            CirculationSetting::getOriginId,
+                            Function.identity()
+                    ));
+
+            List<CirculationSetting> sortedConfigs = stageConfigList.stream()
+                    .map(stage -> configMap.get(stage.getId()))
+                    .filter(Objects::nonNull)
+                    .toList();
+            response.setAdvancedConfigs(sortedConfigs);
+            List<FilterCondition> combinedConditions = allConfigs.stream()
+                    .map(config -> {
+                        FilterCondition condition = new FilterCondition();
+                        condition.setName(config.getFieldId());
+                        condition.setValue(config.getFieldValue());
+                        return condition;
+                    })
+                    .collect(Collectors.toList());
+
+            if (CollectionUtils.isNotEmpty(combinedConditions)) {
+                response.setOptionMap(userViewService.buildOptionMap(orgId, FormKey.CONTRACT.getKey(), combinedConditions));
+            }
+
         }
     }
 
@@ -122,7 +177,7 @@ public class ContractStageService {
      * @param orgId
      */
     private void checkConfigCount(String orgId) {
-        if (extContractStageConfigMapper.countStageConfig(orgId) > 10) {
+        if (extContractStageConfigMapper.countStageConfig(orgId) > 15) {
             throw new GenericException(Translator.get("contract_stage_config_list"));
         }
     }

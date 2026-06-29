@@ -32,9 +32,18 @@ public class ApprovalInstance extends BaseModel {
     @Schema(description = "审批状态")
     private String approvalStatus;
 
+    @Schema(description = "执行时机：CREATE/UPDATE/DELETE")
+    private String executeTime;
+
     @Schema(description = "提审时间")
     private Long submitTime;
 
 	@Schema(description = "审批完成时间")
 	private Long approvalTime;
+
+    @Schema(description = "变更说明")
+    private String comment;
+
+    @Schema(description = "编辑时修改的字段列表")
+    private String updateFields;
 }

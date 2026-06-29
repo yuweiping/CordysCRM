@@ -54,7 +54,8 @@
 </template>
 
 <script setup lang="ts">
-  import { FormInst, NButton, NForm, NScrollbar, useMessage } from 'naive-ui';
+  import { h } from 'vue';
+  import { FormInst, NButton, NForm, NFormItem, NInput, NScrollbar, useMessage } from 'naive-ui';
   import { cloneDeep, isEqual } from 'lodash-es';
   import dayjs from 'dayjs';
 
@@ -68,6 +69,7 @@
   import { getCityPath, getGenerateId, getIndustryPath } from '@lib/shared/method';
   import {
     dataSourceTypes,
+    getDisplayFieldText,
     getFieldItemId,
     linkAllAcceptTypes,
     mergeUniqueOptions,
@@ -75,6 +77,7 @@
     singleTypes,
     specialBusinessKeyMap,
     transformData,
+    transformFieldValue,
   } from '@lib/shared/method/formCreate';
   import { FormViewSize } from '@lib/shared/models/system/module';
 
@@ -84,6 +87,7 @@
   import { getDatasourceRefDetailList } from '@/api/modules';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormReviewAction from '@/hooks/useFormReviewAction';
+  import useModal from '@/hooks/useModal';
 
   import { formKeyMap } from '../crm-data-source-select/config';
   import { isCustomDataSourceType } from '../crm-data-source-select/utils';
@@ -106,12 +110,13 @@
   const emit = defineEmits<{
     (e: 'cancel'): void;
     (e: 'init', title: string, formViewSize?: FormViewSize): void;
-    (e: 'saved', isContinue: boolean, res: any): void;
+    (e: 'saved', isContinue: boolean, res: any, isUpdateReview?: boolean): void;
     (e: 'review', res: any): void;
   }>();
 
   const { t } = useI18n();
   const Message = useMessage();
+  const { openModal } = useModal();
 
   const formLoading = defineModel<boolean>('loading', {
     default: false,
@@ -159,7 +164,7 @@
     customFormId,
   });
 
-  const { reviewAction, initApprovalReviewConfig } = useFormReviewAction({
+  const { reviewAction, shouldConfirmUpdateChange, initApprovalReviewConfig } = useFormReviewAction({
     formKey,
     isEdit: computed(() => props.isEdit),
     approvalStatus: computed(() => detail.value?.approvalStatus),
@@ -253,7 +258,7 @@
         }
       }
       nextTick(() => {
-        formRef.value?.validate();
+        formRef.value?.restoreValidation();
       });
     }
   }
@@ -371,7 +376,7 @@
       }
     });
     nextTick(() => {
-      formRef.value?.validate();
+      formRef.value?.restoreValidation();
     });
   }
 
@@ -647,10 +652,12 @@
       const showFields = fieldList.value.filter((f) => f.resourceFieldId === item.id);
       showFields.forEach((field) => {
         const target = source.find((s) => s.id === value[0]);
-        formDetail.value[field.id] =
+        const fieldValue =
           field.businessKey && specialBusinessKeyMap[field.businessKey]
             ? target?.[specialBusinessKeyMap[field.businessKey]]
             : target?.[field.businessKey || getFieldItemId(field)];
+
+        formDetail.value[field.id] = getDisplayFieldText(field, fieldValue);
       });
     }
 
@@ -663,38 +670,6 @@
     }
 
     unsaved.value = true;
-  }
-
-  function transformFieldValue(item: FormCreateField, result: Record<string, any>, key: string) {
-    if (
-      [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.MEMBER, FieldTypeEnum.DEPARTMENT].includes(item.type) &&
-      Array.isArray(result[key])
-    ) {
-      // 处理数据源字段，单选传单个值
-      result[key] = result[key]?.[0];
-    }
-    if (item.type === FieldTypeEnum.PHONE) {
-      // 去空格
-      result[key] = result[key]?.replace(/[\s\uFEFF\xA0]+/g, '');
-    }
-    if ([FieldTypeEnum.SELECT, FieldTypeEnum.RADIO].includes(item.type)) {
-      // 处理单选/下拉选择字段，传value值
-      const currentOption = item.options?.find((e) => e.value === result[key]);
-      if (currentOption) {
-        result[key] = currentOption.value;
-      } else {
-        result[key] = '';
-      }
-    }
-    if ([FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.CHECKBOX].includes(item.type)) {
-      // 处理多选/复选字段，传value数组
-      const currentOptions = item.options?.filter((e) => result[key]?.includes(e.value));
-      if (currentOptions) {
-        result[key] = currentOptions.map((e) => e.value);
-      } else {
-        result[key] = [];
-      }
-    }
   }
 
   function transformSubFieldsValue(item: FormCreateField, result: Record<string, any>[]) {
@@ -735,13 +710,105 @@
     return result;
   }
 
+  function openUpdateChangeModal() {
+    return new Promise<string | undefined>((resolve) => {
+      const changeDescription = ref('');
+      let modalReactive: ReturnType<typeof openModal> | null = null;
+      const syncPositiveDisabled = (disabled: boolean) => {
+        if (!modalReactive) {
+          return;
+        }
+        modalReactive.positiveButtonProps = {
+          ...(modalReactive.positiveButtonProps ?? {}),
+          disabled,
+        };
+      };
+
+      modalReactive = openModal({
+        maskClosable: false,
+        size: 'medium',
+        title: t('crm.approval.change'),
+        positiveText: t('crm.approval.confirmChange'),
+        negativeText: t('common.cancel'),
+        positiveButtonProps: {
+          size: 'medium',
+          disabled: true,
+        },
+        content: () =>
+          h(
+            NFormItem,
+            {
+              label: t('crm.approval.changeDescription'),
+              required: true,
+              showFeedback: false,
+            },
+            {
+              default: () =>
+                h(NInput, {
+                  value: changeDescription.value,
+                  type: 'textarea',
+                  maxlength: 300,
+                  showCount: true,
+                  autosize: {
+                    minRows: 3,
+                  },
+                  onUpdateValue: (value: string) => {
+                    changeDescription.value = value;
+                    syncPositiveDisabled(!value.trim().length);
+                  },
+                }),
+            }
+          ),
+        onPositiveClick: () => {
+          const description = changeDescription.value.trim();
+          if (!description.length) {
+            Message.warning(t('common.notNull', { value: t('crm.approval.changeDescription') }));
+            return false;
+          }
+          resolve(description);
+        },
+        onNegativeClick: () => {
+          resolve(undefined);
+        },
+        onAfterLeave: () => {
+          resolve(undefined);
+        },
+      });
+    });
+  }
+
+  async function getUpdateReviewExtraParams() {
+    if (!shouldConfirmUpdateChange.value) {
+      return {};
+    }
+
+    const comment = await openUpdateChangeModal();
+    if (!comment) {
+      return false;
+    }
+
+    return { comment };
+  }
+
   function handleSave(isContinue = false) {
-    formRef.value?.validate((errors) => {
+    formRef.value?.validate(async (errors) => {
       if (!errors) {
         const result = buildSavePayload();
-        saveForm(result, isContinue, (_isContinue, res) => {
-          emit('saved', isContinue, res);
-        });
+        // 获取变更说明
+        const extraParams = await getUpdateReviewExtraParams();
+        if (extraParams === false) {
+          return;
+        }
+        saveForm(
+          result,
+          isContinue,
+          (_isContinue, res) => {
+            emit('saved', isContinue, res, Boolean((extraParams as Record<string, any>).comment));
+          },
+          false,
+          false,
+          extraParams
+        );
       } else {
         scrollToFirstError(errors);
       }

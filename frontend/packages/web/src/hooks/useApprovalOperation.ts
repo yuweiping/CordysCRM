@@ -7,8 +7,8 @@ import { ApprovalProcessDetail, StatusPermissions } from '@lib/shared/models/sys
 
 import type { ActionsItem } from '@/components/pure/crm-more-action/type';
 
-import { getApprovalConfigDetail } from '@/api/modules';
 import { processStatusOptions } from '@/config/process';
+import { loadApprovalConfig } from '@/hooks/useApprovalConfigCache';
 import { useUserStore } from '@/store';
 import { hasAnyPermission } from '@/utils/permission';
 
@@ -61,6 +61,9 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
   const statusPermissionMap = ref<Map<ProcessStatusEnum, Set<string>>>(new Map());
 
   const enableApproval = ref(false);
+  const createExecute = ref(false);
+  const updateExecute = ref(false);
+  const deleteExecute = ref(false);
 
   function getApprovalStatus(row: Row) {
     if (!row) {
@@ -116,10 +119,22 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
     };
   }
 
+  function canShowReviewAction(row: Row) {
+    if (!isApplicant(row)) {
+      return false;
+    }
+
+    if (updateExecute.value) {
+      return createExecute.value && !row.approved;
+    }
+
+    return createExecute.value;
+  }
+
   function createApprovalActions(row: Row): ActionsItem[] {
     const approvalStatus = getApprovalStatus(row);
     const reviewActionState = getReviewActionState();
-    const canReview = isApplicant(row);
+    const canReview = canShowReviewAction(row);
 
     switch (approvalStatus) {
       case ProcessStatusEnum.PENDING:
@@ -331,17 +346,26 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
 
   async function initApprovalPermission() {
     try {
-      const result = await getApprovalConfigDetail(options.formType);
+      const result = await loadApprovalConfig(options.formType);
 
       if (result) {
         approvalPermissionsDetail.value = result;
         enableApproval.value = result.enable;
+        createExecute.value = Boolean(result.createExecute);
+        updateExecute.value = Boolean(result.updateExecute);
+        deleteExecute.value = Boolean(result.deleteExecute);
         statusPermissionMap.value = buildStatusPermissionMap(result.statusPermissions);
       } else {
         approvalPermissionsDetail.value = result;
         enableApproval.value = false;
+        createExecute.value = false;
+        updateExecute.value = false;
+        deleteExecute.value = false;
       }
     } catch (error) {
+      createExecute.value = false;
+      updateExecute.value = false;
+      deleteExecute.value = false;
       // eslint-disable-next-line no-console
       console.log(error);
     }
@@ -359,5 +383,8 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
     getApprovalStatus,
     getBizStatus,
     enableApproval,
+    createExecute,
+    updateExecute,
+    deleteExecute,
   };
 }

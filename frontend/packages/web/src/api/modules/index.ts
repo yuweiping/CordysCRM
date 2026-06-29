@@ -76,6 +76,11 @@ export const {
   enableCustomForm,
   disableCustomForm,
   getCustomFormOptions,
+  preCheckImportCustomForm,
+  downloadCustomFormTemplate,
+  importCustomForm,
+  exportCustomFormAll,
+  exportCustomFormSelected,
 } = customFormApi;
 
 export const {
@@ -108,6 +113,8 @@ export const {
   downloadOrder,
   deleteOrderStatus,
   getOrderStatistic,
+  saveAdvanceConfig,
+  switchOrderCirculationType,
 } = orderApi;
 
 export const {
@@ -562,6 +569,8 @@ export const {
   getContractStatusConfig,
   deleteContractStatus,
   updateContractStage,
+  saveContractAdvanceConfig,
+  switchContractCirculationType,
 } = contractApi;
 
 export const {
@@ -648,6 +657,7 @@ export const {
   getFieldDeptTree,
   getFieldClueList,
   getFieldContractList,
+  getFieldInvoiceList,
   getFieldContractPaymentPlanList,
   getFieldContractPaymentRecordList,
   deleteReasonItem,

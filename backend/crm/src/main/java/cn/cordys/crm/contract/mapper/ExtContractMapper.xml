@@ -13,6 +13,7 @@
         c.pool_id,
         ct.amount,
         ct.approval_status,
+        ct.approved,
         ct.stage,
         ct.`owner`,
         ct.start_time,
@@ -53,7 +54,7 @@
             <foreach collection="dataPermission.deptIds" item="deptId" open="(" close=")" separator=",">
                 #{deptId}
             </foreach>
-            <if test="dataPermission.viewId == 'ALL'">
+            <if test="dataPermission.viewId != 'DEPARTMENT'">
                 or sys_organization_user.user_id = #{userId}
             </if>
             )

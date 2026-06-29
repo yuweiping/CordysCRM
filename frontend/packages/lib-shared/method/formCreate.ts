@@ -128,12 +128,15 @@ export function formatNumberValueToString(value: number, item: FormCreateField) 
   return '-';
 }
 
-export function initFieldValue(field: FormCreateField, value: string | number | (string | number)[]) {
+export function initFieldValue(field: FormCreateField, value?: string | number | (string | number)[]) {
   if (
     [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(field.type) &&
-    typeof value === 'string'
+    (typeof value === 'string' || value === undefined || value === null)
   ) {
     return value ? [value] : [];
+  }
+  if (value === null) {
+    return undefined;
   }
   return value;
 }
@@ -143,6 +146,37 @@ export function getFieldItemId(field: FormCreateField) {
     return field.id.split('_ref_')[1]; // 处理数据源显示字段
   }
   return field.id;
+}
+/**
+ *
+ * @param field
+ * @param fieldValue
+ * @returns 获取系统字段的值展示
+ */
+export function getDisplayFieldText(field: FormCreateField, fieldValue: any) {
+  const { t } = useI18n();
+  const fieldKey = field.businessKey || getFieldItemId(field);
+
+  if (fieldKey === 'invalid') {
+    if (fieldValue === true || fieldValue === 'true') {
+      return t('common.voided');
+    }
+    if (fieldValue === false || fieldValue === 'false') {
+      return t('common.normal');
+    }
+  }
+
+  const currentOption = field.options?.find((option: any) => {
+    if (option.value === fieldValue) {
+      return true;
+    }
+    if (typeof option.value === 'boolean' && typeof fieldValue === 'string') {
+      return String(option.value) === fieldValue;
+    }
+    return false;
+  });
+
+  return currentOption ? currentOption.label : fieldValue;
 }
 
 export function parseModuleFieldValue(item: FormCreateField, fieldValue: string | string[], options?: any[]) {
@@ -223,7 +257,7 @@ export function parseFormDetailValue(item: FormCreateField, form: FormDetail, so
           }
           return t('common.optionNotExist');
         });
-      } else {
+      } else if (value) {
         name = options.find((e) => e.id === value)?.name || t('common.optionNotExist');
       }
     }
@@ -436,8 +470,12 @@ export function transformData({
           // 多选
           name = field.fieldValue?.map((e) => options.find((o) => o.id === e)?.name || t('common.optionNotExist'));
         }
-      } else if (typeof field.fieldValue === 'string' || typeof field.fieldValue === 'number') {
-        // 若值是单个字符串/数字
+      } else if (
+        typeof field.fieldValue === 'string' ||
+        typeof field.fieldValue === 'number' ||
+        typeof field.fieldValue === 'boolean'
+      ) {
+        // 若值是单个字符串/数字/布尔值
         name = options.find((e) => e.id === field.fieldValue)?.name || t('common.optionNotExist');
       } else {
         // 若值是数组
@@ -457,9 +495,7 @@ export function transformData({
         customFieldAttr[field.fieldId] = field.fieldValue !== '' ? [t('common.optionNotExist')] : ['-'];
       } else {
         // 避免这里返回 [['选项不存在']] 这样的嵌套数组
-        customFieldAttr[field.fieldId] = field.fieldValue?.map((e) =>
-          e !== '' ? t('common.optionNotExist') : '-'
-        );
+        customFieldAttr[field.fieldId] = field.fieldValue?.map((e) => (e !== '' ? t('common.optionNotExist') : '-'));
       }
     } else {
       // 其他类型字段，直接赋值
@@ -534,4 +570,42 @@ export function mergeUniqueOptions(sumInitialOptions: Record<string, any>[], app
   });
   sumInitialOptions = Array.from(optionMap.values());
   return sumInitialOptions;
+}
+
+/**
+ * 解析表单值类型，提供给后台接口存储
+ * @param item 字段配置
+ * @param result 表单详情
+ * @param key 字段 key/id
+ */
+export function transformFieldValue(item: FormCreateField, result: Record<string, any>, key: string) {
+  if (
+    [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.MEMBER, FieldTypeEnum.DEPARTMENT].includes(item.type) &&
+    Array.isArray(result[key])
+  ) {
+    // 处理数据源字段，单选传单个值
+    result[key] = result[key]?.[0];
+  }
+  if (item.type === FieldTypeEnum.PHONE) {
+    // 去空格
+    result[key] = result[key]?.replace(/[\s\uFEFF\xA0]+/g, '');
+  }
+  if ([FieldTypeEnum.SELECT, FieldTypeEnum.RADIO].includes(item.type)) {
+    // 处理单选/下拉选择字段，传value值
+    const currentOption = item.options?.find((e) => e.value === result[key]);
+    if (currentOption) {
+      result[key] = currentOption.value;
+    } else {
+      result[key] = '';
+    }
+  }
+  if ([FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.CHECKBOX].includes(item.type)) {
+    // 处理多选/复选字段，传value数组
+    const currentOptions = item.options?.filter((e) => result[key]?.includes(e.value));
+    if (currentOptions) {
+      result[key] = currentOptions.map((e) => e.value);
+    } else {
+      result[key] = [];
+    }
+  }
 }

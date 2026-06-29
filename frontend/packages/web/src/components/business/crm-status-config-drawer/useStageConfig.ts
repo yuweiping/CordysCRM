@@ -1,6 +1,7 @@
 import { computed, type Ref, ref } from 'vue';
 import { useMessage } from 'naive-ui';
 
+import { CirculationTypeEnum } from '@lib/shared/enums/opportunityEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
 import { getGenerateId } from '@lib/shared/method';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
@@ -34,6 +35,9 @@ export default function useStageConfig(type: Ref<StatusBizType>): UseStatusConfi
     runningStageRollback: true,
     completedStageRollback: false,
     list: [],
+    circulationType: CirculationTypeEnum.NORMAL,
+    advancedConfigs: [],
+    optionMap: {},
   });
 
   function createEmptyRow(): StatusRowItem {
@@ -58,7 +62,7 @@ export default function useStageConfig(type: Ref<StatusBizType>): UseStatusConfi
       ];
     }
 
-    if (form.value.list.length === 10) {
+    if (form.value.list.length === 15) {
       return [
         {
           label: t('common.delete'),
@@ -96,6 +100,9 @@ export default function useStageConfig(type: Ref<StatusBizType>): UseStatusConfi
         draggable: item.type !== 'END',
         ...(strategyConfig.value.normalizeItem?.(item) || {}),
       })),
+      circulationType: res.circulationType,
+      advancedConfigs: res.advancedConfigs,
+      optionMap: res.optionMap,
     };
   }
 

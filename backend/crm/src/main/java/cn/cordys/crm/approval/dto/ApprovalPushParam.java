@@ -1,17 +1,21 @@
 package cn.cordys.crm.approval.dto;
 
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
+import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class ApprovalPushParam {
-
-	@NotBlank
-	@Schema(description = "资源ID")
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ApprovalPushParam extends ApprovalResourceBaseParam{
 	private String resourceId;
-
-	@NotBlank
-	@Schema(description = "资源表单")
 	private String formKey;
+	private String comment;
+	private String orgId;
+	private String userId;
+	private ExecuteTimingEnum executeTimingEnum;
+	private String updateFields;
 }

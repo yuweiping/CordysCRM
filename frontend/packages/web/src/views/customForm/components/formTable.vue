@@ -21,6 +21,22 @@
         <n-button v-if="!props.readonly" type="primary" @click="handleNewClick">
           {{ t('common.add') }}
         </n-button>
+        <CrmImportButton
+          v-if="!props.readonly"
+          :api-type="FormDesignKeyEnum.CUSTOM_FORM"
+          :custom-form-id="props.formKey"
+          @import-success="() => searchData()"
+        />
+        <n-button
+          v-if="!props.readonly"
+          type="primary"
+          ghost
+          class="n-btn-outline-primary"
+          :disabled="propsRes.data.length === 0"
+          @click="handleExportAllClick"
+        >
+          {{ t('common.exportAll') }}
+        </n-button>
       </div>
     </template>
     <template #actionRight>
@@ -61,6 +77,16 @@
     @edit="handleEdit"
     @refresh="removeItemFromList(activeSourceId)"
   />
+
+  <CrmTableExportModal
+    v-model:show="showExportModal"
+    :params="exportParams"
+    :export-columns="exportColumns"
+    :is-export-all="isExportAll"
+    type="customForm"
+    :custom-form-type-string="formKeyName"
+    @create-success="handleExportCreateSuccess"
+  />
 </template>
 
 <script setup lang="ts">
@@ -69,17 +95,20 @@
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { characterLimit } from '@lib/shared/method';
+  import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { CustomFormPageItem } from '@lib/shared/models/customForm.js';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
-  import { type FilterForm, type FilterResult } from '@/components/pure/crm-advance-filter/type';
+  import { type FilterForm, FilterFormItem, type FilterResult } from '@/components/pure/crm-advance-filter/type';
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import type { BatchActionConfig, CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmBatchEditModal from '@/components/business/crm-batch-edit-modal/index.vue';
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
+  import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
+  import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
   import detail from './detail.vue';
 
   import { batchDeleteCustomFormData, deleteCustomFormData } from '@/api/modules';
@@ -87,11 +116,14 @@
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormCreateTable from '@/hooks/useFormCreateTable';
   import useModal from '@/hooks/useModal';
+  import { getExportColumns } from '@/utils/export';
+  import { hasAnyPermission } from '@/utils/permission';
 
   import type { InternalRowData } from 'naive-ui/es/data-table/src/interface';
 
   const props = defineProps<{
     formKey: string;
+    formKeyName: string;
     readonly?: boolean;
   }>();
 
@@ -198,7 +230,7 @@
     };
   });
 
-  const { useTableRes, customFieldsFilterConfig, initFormConfig, columns } = await useFormCreateTable({
+  const { useTableRes, customFieldsFilterConfig, initFormConfig, columns, fieldList } = await useFormCreateTable({
     formKey: FormDesignKeyEnum.CUSTOM_FORM,
     customFormId,
     disabledSelection: (row: CustomFormPageItem) => {
@@ -224,12 +256,12 @@
     readonly: props.readonly,
   });
 
-  const { propsRes, propsEvent, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
+  const { propsRes, propsEvent, loadList, setLoadListParams, tableQueryParams, setAdvanceFilter } = useTableRes;
 
   const formColumns = computed(() => columns.value);
   function searchData(val?: string, refreshId?: string) {
     setLoadListParams({ keyword: val ?? keyword.value, customFormId: customFormId.value });
-    loadList(false, refreshId);
+    loadList(false, refreshId, customFormId.value);
     if (!refreshId) {
       crmTableRef.value?.scrollTo({ top: 0 });
     }
@@ -241,14 +273,29 @@
     advancedOriginalForm.value = originalForm;
     isAdvancedSearchMode.value = isAdvancedMode;
     setAdvanceFilter(filter);
-    loadList();
+    loadList(false, undefined, customFormId.value);
     crmTableRef.value?.scrollTo({ top: 0 });
   }
 
   handleAdvanceFilter.value = handleAdvSearch;
 
+  const exportColumns = computed<ExportTableColumnItem[]>(() =>
+    getExportColumns(formColumns.value, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value, true)
+  );
+  const exportParams = computed(() => {
+    return {
+      ...tableQueryParams.value,
+      ids: checkedRowKeys.value,
+    };
+  });
+
   const actionConfig: BatchActionConfig = {
     baseAction: [
+      {
+        label: t('common.exportChecked'),
+        key: 'exportChecked',
+        permission: [],
+      },
       {
         label: t('common.batchEdit'),
         key: 'batchEdit',
@@ -275,6 +322,17 @@
   function handleBatchEdit() {
     initEditFormConfig();
     showEditModal.value = true;
+  }
+
+  const showExportModal = ref<boolean>(false);
+  const isExportAll = ref(false);
+  function handleExportAllClick() {
+    isExportAll.value = true;
+    showExportModal.value = true;
+  }
+
+  function handleExportCreateSuccess() {
+    checkedRowKeys.value = [];
   }
 
   // 批量删除
@@ -306,6 +364,10 @@
       case 'batchDelete':
         handleBatchDelete();
         break;
+      case 'exportChecked':
+        isExportAll.value = false;
+        showExportModal.value = true;
+        break;
       default:
         break;
     }
@@ -313,7 +375,7 @@
 
   function handleFormCreateSaved(res?: any) {
     if (needInitDetail.value) {
-      searchData(undefined, res?.id || activeSourceId.value);
+      searchData(undefined);
     } else {
       searchData();
     }
@@ -344,20 +406,29 @@
     }
   );
 
+  async function init(val: string) {
+    checkedRowKeys.value = [];
+    keyword.value = '';
+    propsRes.value.tableKey = val;
+    await initFormConfig(props.readonly, operationColumn.value);
+    tableAdvanceFilterRef.value?.clearFilter();
+    setLoadListParams({ customFormId: val });
+    searchData();
+  }
+
   watch(
     () => props.formKey,
-    async (val) => {
-      checkedRowKeys.value = [];
-      keyword.value = '';
-      await initFormConfig(props.readonly, operationColumn.value);
-      tableAdvanceFilterRef.value?.clearFilter();
-      setLoadListParams({ customFormId: val });
-      searchData();
+    (val) => {
+      init(val);
     },
     {
       immediate: true,
     }
   );
+
+  defineExpose({
+    init,
+  });
 </script>
 
 <style lang="less" scoped></style>

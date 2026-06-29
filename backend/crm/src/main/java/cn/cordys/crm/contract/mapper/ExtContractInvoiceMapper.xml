@@ -8,6 +8,7 @@
         ci.contract_id,
         c.`name` AS contractName,
         c.`amount` AS contractAmount,
+        ci.approved,
         ci.name,
         ci.amount,
         ci.invoice_type,
@@ -45,7 +46,7 @@
             <foreach collection="dataPermission.deptIds" item="deptId" open="(" close=")" separator=",">
                 #{deptId}
             </foreach>
-            <if test="dataPermission.viewId == 'ALL'">
+            <if test="dataPermission.viewId != 'DEPARTMENT'">
                 or sys_organization_user.user_id = #{userId}
             </if>
             )

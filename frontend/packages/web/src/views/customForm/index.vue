@@ -35,20 +35,6 @@
             @item-click="handleFormClick"
             @more-action-select="handleMoreActionSelect"
           >
-            <template #titleLeft="{ item }">
-              <n-tooltip trigger="hover" :disabled="item.isAdmin">
-                <template #trigger>
-                  <n-switch
-                    :value="item.enable"
-                    :disabled="!item.isAdmin"
-                    class="ml-[4px]"
-                    size="small"
-                    @click="handleBeforeEnableChange(item)"
-                  />
-                </template>
-                {{ t('customForm.enableDisabledTip') }}
-              </n-tooltip>
-            </template>
             <template #title="{ item }">
               <n-tooltip trigger="hover">
                 <template #trigger>
@@ -64,7 +50,13 @@
       </template>
       <template #2>
         <div class="h-full p-[24px]">
-          <formTable v-if="activeForm" :form-key="activeForm" :readonly="!hasCreateDataPermission" />
+          <formTable
+            v-if="activeForm"
+            ref="formTableRef"
+            :form-key="activeForm"
+            :form-key-name="activeFormName"
+            :readonly="!hasCreateDataPermission"
+          />
           <div v-else class="flex h-[400px] w-full items-center justify-center">
             <n-empty
               :description="t('customForm.tableNoDataTip')"
@@ -113,6 +105,7 @@
   const finished = ref(false);
   const keyword = ref('');
   const activeForm = ref('');
+  const activeFormName = ref('');
   const focusItemKey = ref('');
   const hasCreateDataPermission = computed(
     () =>
@@ -127,6 +120,7 @@
       formListBackup.value = cloneDeep(formList.value);
       if (activeForm.value === '') {
         activeForm.value = formList.value[0]?.id || '';
+        activeFormName.value = formList.value[0]?.name || '';
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -144,6 +138,14 @@
   }
 
   const formAction: ActionsItem[] = [
+    {
+      label: t('common.enable'),
+      key: 'enable',
+    },
+    {
+      label: t('common.close'),
+      key: 'disable',
+    },
     {
       label: t('common.edit'),
       key: 'edit',
@@ -166,7 +168,10 @@
 
   function getFormAction(item: any) {
     if (item.isAdmin) {
-      return formAction;
+      if (item.enable) {
+        return formAction.filter((e) => e.key !== 'enable');
+      }
+      return formAction.filter((e) => e.key !== 'disable');
     }
     return [];
   }
@@ -188,6 +193,7 @@
           await deleteCustomForm(row.id);
           Message.success(t('common.deleteSuccess'));
           activeForm.value = '';
+          activeFormName.value = '';
           loadFormList();
         } catch (error) {
           // eslint-disable-next-line no-console
@@ -195,28 +201,6 @@
         }
       },
     });
-  }
-
-  function handleMoreActionSelect(event: ActionsItem, item: Record<string, any>) {
-    switch (event.key) {
-      case 'edit':
-        currentSourceId.value = item.id;
-        defaultTab.value = 'design';
-        configDrawerVisible.value = true;
-        focusItemKey.value = '';
-        break;
-      case 'addMember':
-        currentSourceId.value = item.id;
-        defaultTab.value = 'memberPermission';
-        configDrawerVisible.value = true;
-        focusItemKey.value = '';
-        break;
-      case 'delete':
-        handleDelete(item);
-        break;
-      default:
-        break;
-    }
   }
 
   async function handleBeforeEnableChange(item: CustomFormItem) {
@@ -253,6 +237,32 @@
     }
   }
 
+  function handleMoreActionSelect(event: ActionsItem, item: Record<string, any>) {
+    switch (event.key) {
+      case 'edit':
+        currentSourceId.value = item.id;
+        defaultTab.value = 'design';
+        configDrawerVisible.value = true;
+        focusItemKey.value = '';
+        break;
+      case 'addMember':
+        currentSourceId.value = item.id;
+        defaultTab.value = 'memberPermission';
+        configDrawerVisible.value = true;
+        focusItemKey.value = '';
+        break;
+      case 'delete':
+        handleDelete(item);
+        break;
+      case 'enable':
+      case 'disable':
+        handleBeforeEnableChange(item as CustomFormItem);
+        break;
+      default:
+        break;
+    }
+  }
+
   function addForm() {
     currentSourceId.value = undefined;
     configDrawerVisible.value = true;
@@ -262,6 +272,7 @@
   function handleFormClick(form: any) {
     if (isTableInit.value) {
       activeForm.value = form.id;
+      activeFormName.value = form.name;
       isTableInit.value = false;
       setTimeout(() => {
         isTableInit.value = true;
@@ -269,9 +280,13 @@
     }
   }
 
+  const formTableRef = ref<InstanceType<typeof formTable>>();
   async function handleFormSaved(id?: string) {
     await loadFormList();
     if (id) {
+      if (activeForm.value === id) {
+        formTableRef.value?.init(id);
+      }
       currentSourceId.value = id;
       activeForm.value = id;
     }

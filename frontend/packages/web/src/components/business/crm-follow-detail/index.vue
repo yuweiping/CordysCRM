@@ -42,11 +42,15 @@
             <n-button type="primary" class="text-btn-primary" quaternary @click="handleDetail(item)">
               {{ t('common.detail') }}
             </n-button>
+            <n-button v-if="isOwner(item)" type="primary" class="text-btn-primary" quaternary @click="handleEdit(item)">
+              {{ t('common.edit') }}
+            </n-button>
             <n-button
               v-if="
                 props.activeType === 'followPlan' &&
                 [CustomerFollowPlanStatusEnum.COMPLETED].includes(item.status) &&
-                !item.converted
+                !item.converted &&
+                isOwner(item)
               "
               type="primary"
               class="text-btn-primary"
@@ -55,22 +59,7 @@
             >
               {{ t('common.convertPlanToRecord') }}
             </n-button>
-            <n-button
-              v-if="
-                props.activeType === 'followRecord' ||
-                (props.activeType === 'followPlan' &&
-                  ![CustomerFollowPlanStatusEnum.CANCELLED, CustomerFollowPlanStatusEnum.CANCELLED].includes(
-                    item.status
-                  ))
-              "
-              type="primary"
-              class="text-btn-primary"
-              quaternary
-              @click="handleEdit(item)"
-            >
-              {{ t('common.edit') }}
-            </n-button>
-            <n-button type="error" class="text-btn-error" quaternary @click="handleDelete(item)">
+            <n-button v-if="isOwner(item)" type="error" class="text-btn-error" quaternary @click="handleDelete(item)">
               {{ t('common.delete') }}
             </n-button>
           </div>
@@ -106,8 +95,11 @@
       :source-id="sourceId"
       :source-name="sourceName"
       :refresh-key="refreshDetailKey"
+      :readonly="!detailIsOwner"
+      :detail="activeItem"
       @delete="handleDelete(activeItem as FollowDetailItem)"
       @edit="handleEdit(activeItem as FollowDetailItem)"
+      @convert="(activeItem)=>handleConvert(activeItem as FollowDetailItem)"
     />
     />
   </div>
@@ -130,6 +122,7 @@
   import FollowRecord from './followRecord.vue';
 
   import useFormCreateApi from '@/hooks/useFormCreateApi';
+  import useUserStore from '@/store/modules/user';
   import { hasAnyPermission } from '@/utils/permission';
 
   import { descriptionList, statusTabList } from './config';
@@ -157,6 +150,7 @@
     showAction: true,
   });
 
+  const userStore = useUserStore();
   const realFormKey = ref<FormDesignKeyEnum>(FormDesignKeyEnum.FOLLOW_PLAN_BUSINESS);
   const refreshDetailKey = ref(0);
 
@@ -164,6 +158,7 @@
   const sourceName = ref('');
   const showDetailDrawer = ref(false);
   const activeItem = ref<FollowDetailItem>();
+  const detailIsOwner = ref(false);
   function handleDetail(row: FollowDetailItem) {
     sourceId.value = row.id;
     realFormKey.value =
@@ -171,6 +166,7 @@
     sourceName.value = row.type === 'CLUE' && row.clueId?.length ? row.clueName : row.customerName;
     activeItem.value = row;
     showDetailDrawer.value = true;
+    detailIsOwner.value = row.owner === userStore.userInfo.id;
   }
 
   const formDrawerVisible = ref(false);
@@ -230,6 +226,8 @@
     }
     return activePlan.value?.id;
   });
+
+  const isOwner = (item: FollowDetailItem) => item.owner === userStore.userInfo.id;
   const { fieldList, formDetail, initFormDetail, initFormConfig, linkFormFieldMap, saveForm } = useFormCreateApi({
     formKey: computed(() => linkFormKey.value),
     sourceId: linkSourceId,
@@ -370,15 +368,16 @@
     await saveForm(formDetail.value, false, () => ({}), true);
     isConverted.value = false;
     otherFollowRecordSaveParams.value.converted = isConverted.value;
-    loadFollowList();
   }
 
-  function handleAfterSave() {
+  async function handleAfterSave() {
     if (isConverted.value) {
-      updatePlan();
-    } else {
+      await updatePlan();
+      showDetailDrawer.value = false;
       loadFollowList();
+      return;
     }
+    loadFollowList();
     if (showDetailDrawer.value) {
       refreshDetailKey.value += 1;
     }

@@ -35,6 +35,7 @@
           <CrmApprovalDetail
             :form-key="FormDesignKeyEnum.INVOICE"
             :source-id="props.sourceId"
+            :refresh-key="approvalDetailRefreshKey"
             :approval-status="detailInfo?.approvalStatus"
             @save-approval="handleSaveApproval"
           >
@@ -69,7 +70,7 @@
       :form-key="FormDesignKeyEnum.INVOICE"
       :source-id="props.sourceId"
       need-init-detail
-      @saved="() => handleSaved()"
+      @saved="handleFormCreateSaved"
       @review="handleFormReview"
     />
   </CrmDrawer>
@@ -144,7 +145,7 @@
     },
   };
 
-  const { initApprovalPermission, resolveRowOperation } = useApprovalOperation<ContractInvoiceItem>({
+  const { initApprovalPermission, resolveRowOperation, deleteExecute } = useApprovalOperation<ContractInvoiceItem>({
     formType: FormDesignKeyEnum.INVOICE,
     dataActionMap: invoiceDetailDataActionMap,
     isDetail: true,
@@ -176,9 +177,17 @@
   });
 
   const refreshKey = ref(0);
+  const approvalDetailRefreshKey = ref(0);
   function handleSaved() {
     refreshKey.value += 1;
     emit('refresh');
+  }
+
+  function handleFormCreateSaved(_res: any, isUpdateReview?: boolean) {
+    if (isUpdateReview) {
+      approvalDetailRefreshKey.value += 1;
+    }
+    handleSaved();
   }
 
   const { reviewByFormResult, reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
@@ -190,12 +199,12 @@
       type: 'error',
       title: t('common.deleteConfirmTitle', { name: row.name }),
       content: deleteInvoiceContentMap[row.approvalStatus],
-      positiveText: t('common.confirmDelete'),
+      positiveText: deleteExecute.value ? t('crm.approval.confirmAndSubmitReview') : t('common.confirmDelete'),
       negativeText: t('common.cancel'),
       onPositiveClick: async () => {
         try {
           await deleteInvoiced(row.id);
-          Message.success(t('common.deleteSuccess'));
+          Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
           visible.value = false;
           emit('delete');
         } catch (error) {

@@ -16,6 +16,7 @@
         so.amount,
         so.stage,
         so.approval_status,
+        so.approved,
         so.`owner`,
         so.create_user,
         so.create_time,
@@ -47,7 +48,7 @@
             <foreach collection="dataPermission.deptIds" item="deptId" open="(" close=")" separator=",">
                 #{deptId}
             </foreach>
-            <if test="dataPermission.viewId == 'ALL'">
+            <if test="dataPermission.viewId != 'DEPARTMENT'">
                 or sys_organization_user.user_id = #{userId}
             </if>
             )
@@ -546,6 +547,6 @@
     </update>
 
     <update id="updateOldApprovalStatusNone">
-        update sales_order set approval_status = 'NONE';
+        update sales_order set approval_status = 'NONE' where approval_status = 'APPROVING';
     </update>
 </mapper>

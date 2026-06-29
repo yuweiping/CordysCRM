@@ -79,6 +79,7 @@ public class PoolCustomerControllerTests extends BaseTest {
     @Order(1)
     void prepareTestData() {
         Customer customer = createCustomer();
+		testDataId = customer.getId();
         Customer ownCustomer = createCustomer();
         CustomerCapacity capacity = createCapacity();
         ownCustomer.setInSharedPool(false);
@@ -159,7 +160,7 @@ public class PoolCustomerControllerTests extends BaseTest {
         MvcResult mvcResult = this.requestPostWithOkAndReturn(EXPORT_ALL, request);
         String resultData = getResultData(mvcResult, String.class);
         Thread.sleep(1500); // 等待导出任务完成
-        ResponseEntity<org.springframework.core.io.Resource> resourceResponseEntity = exportTaskCenterService.download(resultData);
+        ResponseEntity<org.springframework.core.io.Resource> resourceResponseEntity = exportTaskCenterService.download(resultData, "admin");
         Assertions.assertTrue(resourceResponseEntity.getBody().exists());
         ExportTask exportTask = new ExportTask();
         exportTask.setId(resultData);
@@ -222,7 +223,6 @@ public class PoolCustomerControllerTests extends BaseTest {
     private Customer createCustomer() {
         Customer customer = new Customer();
         customer.setId(IDGenerator.nextStr());
-        testDataId = customer.getId();
         customer.setName("ct");
         customer.setOwner("cc");
         customer.setCollectionTime(System.currentTimeMillis());

@@ -19,6 +19,7 @@ import {
 import type { FormCreateField } from '@/components/business/crm-form-create/types';
 
 import useFormCreateAdvanceFilter from '@/hooks/useFormCreateAdvanceFilter';
+import useUserStore from '@/store/modules/user';
 
 import useFormCreateSystemColumns from './useFormCreateSystemColumns';
 
@@ -78,6 +79,7 @@ export interface FormCreateTableProps {
 
 export default async function useFormCreateTable(props: FormCreateTableProps) {
   const { t } = useI18n();
+  const userStore = useUserStore();
   const { getFilterListConfig, customFieldsFilterConfig } = useFormCreateAdvanceFilter();
   const { internalColumnMap, staticColumns, reasonOptions, noSorterType } = await useFormCreateSystemColumns(props);
   const loading = ref(false);
@@ -229,7 +231,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
                             ? (row[key] || []).map((_key: string) =>
                                 h(NImage, {
                                   class: 'h-[40px] w-[40px] mr-[4px]',
-                                  src: `${PreviewPictureUrl}/${_key}`,
+                                  src: `${PreviewPictureUrl}/${_key}?userId=${userStore.userInfo.id}`,
                                 })
                               )
                             : '-',
@@ -516,7 +518,8 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         columns.value = disableFilterAndSorter(columns.value);
       }
       if (
-        (!_readOnly || !props.readonly) &&
+        !_readOnly &&
+        !props.readonly &&
         ![FormDesignKeyEnum.FOLLOW_PLAN, FormDesignKeyEnum.FOLLOW_RECORD].includes(props.formKey)
       ) {
         columns.value.unshift({
@@ -548,9 +551,9 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         columnSelectorDisabled: true,
         render: (row: any, rowIndex: number) => rowIndex + 1,
       });
-      if (operationColumn) {
+      if (!_readOnly && !props.readonly && operationColumn) {
         columns.value.push(operationColumn);
-      } else if (props.operationColumn) {
+      } else if (!_readOnly && !props.readonly && props.operationColumn) {
         columns.value.push(props.operationColumn);
       }
       customFieldsFilterConfig.value = getFilterListConfig(res);

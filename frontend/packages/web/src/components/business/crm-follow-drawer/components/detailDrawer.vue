@@ -8,13 +8,28 @@
     no-padding
     :footer="false"
   >
-    <template #titleRight>
-      <n-button type="primary" ghost class="n-btn-outline-primary" @click="handleEdit">
-        {{ t('common.edit') }}
-      </n-button>
-      <n-button type="error" ghost class="n-btn-outline-error ml-[12px]" @click="handleDelete">
-        {{ t('common.delete') }}
-      </n-button>
+    <template v-if="!props.readonly" #titleRight>
+      <div v-if="!props.readonly" class="flex items-center gap-[12px]">
+        <n-button type="primary" ghost class="n-btn-outline-primary" @click="handleEdit">
+          {{ t('common.edit') }}
+        </n-button>
+        <n-button
+          v-if="
+            props.detail?.status &&
+            [CustomerFollowPlanStatusEnum.COMPLETED].includes(props.detail?.status) &&
+            !props.detail?.converted
+          "
+          type="primary"
+          ghost
+          class="n-btn-outline-primary"
+          @click="handleConvert"
+        >
+          {{ t('common.convertPlanToRecord') }}
+        </n-button>
+        <n-button type="error" ghost class="n-btn-outline-error" @click="handleDelete">
+          {{ t('common.delete') }}
+        </n-button>
+      </div>
     </template>
     <div class="h-full bg-[var(--text-n9)] p-[16px]">
       <CrmCard hide-footer>
@@ -37,6 +52,7 @@
 <script setup lang="ts">
   import { NButton } from 'naive-ui';
 
+  import { CustomerFollowPlanStatusEnum } from '@lib/shared/enums/customerEnum';
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
@@ -46,9 +62,11 @@
 
   const props = defineProps<{
     sourceId: string;
+    detail?: any;
     formKey: FormDesignKeyEnum;
     sourceName: string;
     refreshKey: number;
+    readonly?: boolean;
   }>();
 
   const showDrawer = defineModel<boolean>('show', {
@@ -58,6 +76,7 @@
   const emit = defineEmits<{
     (e: 'delete'): void;
     (e: 'edit'): void;
+    (e: 'convert', detail?: any): void;
   }>();
 
   const { t } = useI18n();
@@ -68,5 +87,9 @@
 
   function handleEdit() {
     emit('edit');
+  }
+
+  function handleConvert() {
+    emit('convert', props.detail);
   }
 </script>

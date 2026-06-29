@@ -25,7 +25,8 @@
       <CrmWorkflowCard
         v-model:stage="currentStatus"
         class="mb-[16px]"
-        :stage-config-list="stageConfig?.stageConfigList || []"
+        :stageConfig="stageConfig"
+        :formKey="FormDesignKeyEnum.CONTRACT"
         is-limit-back
         is-no-resign-flow
         :readonly="!canUpdateStage"
@@ -33,9 +34,6 @@
         :source-id="sourceId"
         :operation-permission="['CONTRACT:STAGE']"
         :update-api="updateContractStage"
-        :before-change-stage="handleBeforeChangeStage"
-        :afoot-roll-back="stageConfig?.afootRollBack"
-        :end-roll-back="stageConfig?.endRollBack"
         @load-detail="handleSaved()"
       />
       <CrmCard no-content-padding hide-footer auto-height class="mb-[16px]">
@@ -48,6 +46,7 @@
           <CrmApprovalDetail
             :form-key="FormDesignKeyEnum.CONTRACT"
             :source-id="props.sourceId"
+            :refresh-key="approvalDetailRefreshKey"
             :approval-status="detailInfo?.approvalStatus"
             @saveApproval="handleSaveApproval"
           >
@@ -120,14 +119,8 @@
       :initial-source-name="initialSourceName"
       :link-form-key="FormDesignKeyEnum.CONTRACT"
       :link-form-info="linkFormInfo"
-      @saved="() => handleSaved()"
+      @saved="handleFormCreateSaved"
       @review="handleFormReview"
-    />
-    <VoidReasonModal
-      v-model:visible="showVoidReasonModal"
-      :name="title"
-      :sourceId="props.sourceId"
-      @refresh="handleSaved()"
     />
     <QuotationDetailDrawer
       v-model:visible="showQuotationDetailDrawer"
@@ -168,7 +161,6 @@
   import CrmFormDescription from '@/components/business/crm-form-description/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmWorkflowCard from '@/components/business/crm-workflow-card/index.vue';
-  import VoidReasonModal from './voidReasonModal.vue';
   import PaymentTable from '@/views/contract/contractPaymentPlan/components/paymentTable.vue';
   import PaymentRecordTable from '@/views/contract/contractPaymentRecord/components/paymentTable.vue';
   import InvoiceTable from '@/views/contract/invoice/components/invoiceTable.vue';
@@ -204,8 +196,6 @@
   const { t } = useI18n();
   const title = ref('');
   const detailInfo = ref();
-
-  const showVoidReasonModal = ref(false);
 
   const activeTab = ref('contract');
 
@@ -262,7 +252,7 @@
     };
   }
 
-  const { initApprovalPermission, resolveRowOperation, enableApproval, hasApprovalScopedPermission } =
+  const { initApprovalPermission, resolveRowOperation, enableApproval, deleteExecute, hasApprovalScopedPermission } =
     useApprovalOperation<ContractItem>({
       formType: FormDesignKeyEnum.CONTRACT,
       dataActionMap: createContractDetailActionMap,
@@ -337,9 +327,17 @@
   }
 
   const refreshKey = ref(0);
+  const approvalDetailRefreshKey = ref(0);
   function handleSaved() {
     refreshKey.value += 1;
     emit('refresh');
+  }
+
+  function handleFormCreateSaved(_res: any, isUpdateReview?: boolean) {
+    if (isUpdateReview) {
+      approvalDetailRefreshKey.value += 1;
+    }
+    handleSaved();
   }
 
   const { reviewByFormResult, reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
@@ -353,15 +351,6 @@
 
     return hasApprovalScopedPermission(detailInfo.value, ['CONTRACT:STAGE']);
   });
-
-  function handleBeforeChangeStage(stage: string) {
-    if (stage === ContractStatusEnum.VOID) {
-      showVoidReasonModal.value = true;
-      return false;
-    }
-
-    return true;
-  }
 
   function handleFormReview(res: any) {
     reviewByFormResult(res, {
@@ -384,12 +373,12 @@
       type: 'error',
       title: t('common.deleteConfirmTitle', { name: characterLimit(row.name) }),
       content: t('common.deleteConfirmContent'),
-      positiveText: t('common.confirmDelete'),
+      positiveText: deleteExecute.value ? t('crm.approval.confirmAndSubmitReview') : t('common.confirmDelete'),
       negativeText: t('common.cancel'),
       onPositiveClick: async () => {
         try {
           await deleteContract(row.id);
-          Message.success(t('common.deleteSuccess'));
+          Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
           visible.value = false;
           emit('delete');
         } catch (error) {

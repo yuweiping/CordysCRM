@@ -4,7 +4,7 @@
     filterable
     multiple
     tag
-    :placeholder="t('common.pleaseSelect')"
+    :placeholder="props.placeholder || t('common.pleaseSelect')"
     :render-tag="renderTag"
     :show-arrow="false"
     :show="false"
@@ -66,6 +66,7 @@
     fieldConfig?: FormCreateField;
     hideChildTag?: boolean;
     status?: 'error' | 'success' | 'warning';
+    placeholder?: string;
   }
 
   const props = withDefaults(defineProps<DataSourceTableProps>(), {
@@ -98,6 +99,7 @@
     [FieldDataSourceTypeEnum.CONTRACT_PAYMENT_RECORD]: 'crmFormCreate.drawer.contractPaymentRecord',
     [FieldDataSourceTypeEnum.BUSINESS_TITLE]: 'crmFormCreate.drawer.businessTitle',
     [FieldDataSourceTypeEnum.ORDER]: 'crmFormCreate.drawer.order',
+    [FieldDataSourceTypeEnum.INVOICE]: 'crmFormCreate.drawer.invoice',
   };
 
   const customDataSourceForms = ref<CustomFormItem[]>([]);

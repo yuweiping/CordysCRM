@@ -26,6 +26,7 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.constants.BusinessTitleConstants;
+import cn.cordys.crm.contract.constants.SystemFieldConstants;
 import cn.cordys.crm.form.service.CustomFormDataFieldService;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.constants.FieldType;
@@ -105,7 +106,8 @@ public class ModuleFormService {
                 Map.entry(FieldSourceType.PAYMENT_PLAN.name(), "contract_payment_plan"),
                 Map.entry(FieldSourceType.BUSINESS_TITLE.name(), "business_title"),
                 Map.entry(FieldSourceType.CONTRACT_PAYMENT_RECORD.name(), "contract_payment_record"),
-                Map.entry(FieldSourceType.ORDER.name(), "sales_order")
+                Map.entry(FieldSourceType.ORDER.name(), "sales_order"),
+                Map.entry(FieldSourceType.INVOICE.name(), "contract_invoice")
         );
     }
 
@@ -369,16 +371,6 @@ public class ModuleFormService {
                 List<BaseField> sourceRefFields = refFields.stream().filter(rf -> {
 					String actualId = rf.getId().replace(sourceField.getId() + REF_UNDERLINE, StringUtils.EMPTY);
 					return sourceField.getShowFields().contains(actualId);
-				}).map(rf -> {
-					// 引用字段只需保留部分属性
-					BaseField refField = new InputField();
-					refField.setId(rf.getId());
-					refField.setPos(rf.getPos());
-					refField.setName(rf.getName());
-					refField.setType(rf.getType());
-					refField.setFieldWidth(rf.getFieldWidth());
-					refField.setResourceFieldId(rf.getResourceFieldId());
-					return refField;
 				}).toList();
                 sourceField.setRefFields(sourceRefFields);
             }
@@ -491,7 +483,7 @@ public class ModuleFormService {
         Map<String, String> fieldIdSourceTypeMap = new HashMap<>();
 
         typeIdsMap.forEach((fieldId, ids) -> {
-            var sourceType = optionMeta.idTypeMap().get(fieldId);
+            var sourceType = optionMeta.idTypeMap().get(getFieldIdForSubFieldId(fieldId));
             if (CollectionUtils.isEmpty(ids)) {
                 return;
             }
@@ -573,7 +565,10 @@ public class ModuleFormService {
     private Map<String, List<String>> collectOptionIds(List<BaseModuleFieldValue> allFieldValues, Map<String, String> idTypeMap) {
         var typeIdsMap = new HashMap<String, List<String>>(8);
         allFieldValues.stream()
-                .filter(fv -> idTypeMap.containsKey(fv.getFieldId()))
+                .filter(fv -> {
+                    String fieldId = getFieldIdForSubFieldId(fv.getFieldId());
+                    return idTypeMap.containsKey(fieldId);
+                })
                 .forEach(fv -> {
                     typeIdsMap.putIfAbsent(fv.getFieldId(), new ArrayList<>());
                     var value = fv.getFieldValue();
@@ -587,6 +582,16 @@ public class ModuleFormService {
                     }
                 });
         return typeIdsMap;
+    }
+
+    private String getFieldIdForSubFieldId(String fieldId) {
+        if (fieldId.contains(".")) {
+            String[] split = fieldId.split("\\.");
+            if (split.length > 1) {
+                return split[1];
+            }
+        }
+        return fieldId;
     }
 
     private record OptionMetadata(Map<String, List<OptionDTO>> staticOptions, Map<String, String> idTypeMap) {
@@ -833,6 +838,9 @@ public class ModuleFormService {
         Set<String> businessTitleIdSet = Arrays.stream(BusinessTitleConstants.values())
                 .map(BusinessTitleConstants::getId)
                 .collect(Collectors.toSet());
+        if (field.isSys()) {
+            return;
+        }
         if (StringUtils.isNotBlank(field.getResourceFieldId())) {
             String actualFieldId = field.getId().replace((field.getResourceFieldId() + REF_UNDERLINE), StringUtils.EMPTY);
             if (businessTitleIdSet.contains(actualFieldId)) {
@@ -902,6 +910,9 @@ public class ModuleFormService {
 					if (businessField != null) {
 						combineField.setBusinessKey(businessField.getBusinessKey());
 					}
+                    if (combineField.isSys()) {
+                        combineField.setBusinessKey(refField.getBusinessKey());
+                    }
 					combineField.setSubTableFieldId(oldField.getSubTableFieldId());
 					it.set(combineField);
 				}
@@ -982,6 +993,10 @@ public class ModuleFormService {
         if (Strings.CI.equals(dataSourceType, FieldSourceType.BUSINESS_TITLE.name())) {
             return initBusinessTitleFields();
         }
+        if (Strings.CI.equalsAny(dataSourceType, FieldSourceType.CONTRACT.name(), FieldSourceType.INVOICE.name(), FieldSourceType.ORDER.name(), FieldSourceType.QUOTATION.name())) {
+			// 目前只有这几种数据源支持系统字段
+            return initSourceSystemFields(FieldSourceType.valueOf(dataSourceType));
+        }
         return List.of();
     }
 
@@ -1008,7 +1023,20 @@ public class ModuleFormService {
         return fields;
     }
 
-
+    public List<BaseField> initSourceSystemFields(FieldSourceType sourceType) {
+		if (sourceType == null) {
+			return List.of();
+		}
+        List<BaseField> fields = new ArrayList<>();
+        for (SystemFieldConstants sf : SystemFieldConstants.values()) {
+			// 目前只有下拉类型系统字段, 后续可根据枚举扩展
+			SelectField field = new SelectField();
+            field.setId(sf.getKey());
+			field.setSys(true);
+            fields.add(field);
+        }
+        return fields;
+    }
 
     /**
      * OptionProp转OptionDTO
@@ -1358,7 +1386,7 @@ public class ModuleFormService {
                     return optionDTO;
                 })
                 .distinct()
-                .filter(option -> StringUtils.isNotEmpty(option.getId()))
+                .filter(option -> StringUtils.isNotEmpty(option.getIdAsString()))
                 .toList();
     }
 
@@ -1701,7 +1729,9 @@ public class ModuleFormService {
         if (CollectionUtils.isEmpty(options) || value == null) {
             return null;
         }
-        Map<String, String> optionMap = options.stream().collect(Collectors.toMap(OptionProp::getValue, OptionProp::getLabel));
+        Map<String, String> optionMap = options.stream()
+                .filter(option -> option.getValue() != null)
+                .collect(Collectors.toMap(option -> option.getValue().toString(), OptionProp::getLabel, (a, b) -> a));
         if (value instanceof List) {
             return ((List<?>) value).stream().map(v -> optionMap.get(v.toString())).toList();
         } else {
@@ -1720,7 +1750,9 @@ public class ModuleFormService {
         if (CollectionUtils.isEmpty(options) || text == null) {
             return null;
         }
-        Map<String, String> optionMap = options.stream().collect(Collectors.toMap(OptionProp::getLabel, OptionProp::getValue));
+        Map<String, String> optionMap = options.stream()
+                .filter(option -> option.getValue() != null)
+                .collect(Collectors.toMap(OptionProp::getLabel, option -> option.getValue().toString(), (a, b) -> a));
         if (text instanceof List) {
             return ((List<?>) text).stream().map(v -> optionMap.get(v.toString())).filter(Objects::nonNull).toList();
         } else {
@@ -2292,6 +2324,11 @@ public class ModuleFormService {
 	 * @return 组合后的字段配置
 	 */
 	private BaseField combineFieldsProps(BaseField old, BaseField ref) {
+		if (ref.isSys()) {
+			// 系统字段, 直接返回前端引用的字段配置即可, 后端不组装字段
+            old.setSys(true);
+			return old;
+		}
 		// 深拷贝 ref 对象, 避免修改原始对象
 		BaseField refCopy = JSON.parseObject(JSON.toJSONString(ref), BaseField.class);
 		// 保留一些可用的属性

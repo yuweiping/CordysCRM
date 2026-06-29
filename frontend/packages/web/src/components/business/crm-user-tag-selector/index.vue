@@ -5,7 +5,7 @@
       filterable
       multiple
       tag
-      :placeholder="t('common.pleaseSelect')"
+      :placeholder="props.placeholder || t('common.pleaseSelect')"
       :render-tag="renderTag"
       :show-arrow="false"
       :show="false"
@@ -65,6 +65,7 @@
     status?: 'error' | 'success' | 'warning';
     maxTagCount?: 'responsive' | number | false;
     maxCount?: number;
+    placeholder?: string;
   };
   const props = withDefaults(defineProps<UserTagSelectorProps>(), {
     multiple: true,
@@ -84,7 +85,6 @@
   }>();
 
   const showSelectDrawer = ref(false);
-  const crmSelectUserDrawerRef = ref<InstanceType<typeof CrmSelectUserDrawer>>();
   const resolvedMaxTagCount = computed(() => (props.maxTagCount === false ? undefined : props.maxTagCount));
   function handleShowSelectDrawer() {
     if (props.disabled) return;

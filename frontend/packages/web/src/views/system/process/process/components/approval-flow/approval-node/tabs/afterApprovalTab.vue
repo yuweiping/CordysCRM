@@ -25,6 +25,8 @@
             <n-select
               v-model:value="line.fieldId"
               :disabled="props.readonly"
+              filterable
+              :render-option="renderOption"
               :options="getFieldOptions(line.fieldId)"
               :placeholder="t('common.pleaseSelect')"
               @update:value="(value) => handleFieldUpdate(line, value)"
@@ -215,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, ref, shallowRef, watch } from 'vue';
+  import { computed, ref, shallowRef, VNode, VNodeChild, watch } from 'vue';
   import {
     type FormInst,
     NButton,
@@ -229,6 +231,7 @@
     NSelect,
     NSwitch,
     NTooltip,
+    SelectOption,
     useMessage,
   } from 'naive-ui';
   import { cloneDeep } from 'lodash-es';
@@ -263,9 +266,14 @@
   import TagInput from '@/components/business/crm-form-create/components/basic/tagInput.vue';
   import Textarea from '@/components/business/crm-form-create/components/basic/textarea.vue';
   import { getFormConfigApiMap, rules } from '@/components/business/crm-form-create/config';
-  import type { FormCreateField, FormCreateFieldRule } from '@/components/business/crm-form-create/types';
+  import type {
+    FormCreateField,
+    FormCreateFieldOption,
+    FormCreateFieldRule,
+  } from '@/components/business/crm-form-create/types';
 
-  import { testApprovalWebHook } from '@/api/modules';
+  import { getContractStatusConfig, getOrderStatusConfig, testApprovalWebHook } from '@/api/modules';
+  import { quotationStatus } from '@/config/opportunity';
   import { defaultWebHookConfig } from '@/config/process';
 
   defineOptions({
@@ -286,6 +294,8 @@
   const Message = useMessage();
   const activePostTab = ref<'pass' | 'reject'>('pass');
   const formFields = ref<FormCreateField[]>([]);
+  const contractStageOptions = ref<{ label: string; value: string }[]>([]);
+  const orderStageOptions = ref<{ label: string; value: string }[]>([]);
   const formRef = ref<FormInst | null>(null);
   const webHookFormRef = ref<FormInst | null>(null);
 
@@ -306,6 +316,19 @@
   // 通过后操作 / 驳回后操作共用同一套 UI，这里按当前 tab 取对应配置
   function getCurrentPostConfig(): ApprovalPostConfig | undefined {
     return activePostTab.value === 'pass' ? nodeConfig.value.passPostConfig : nodeConfig.value.rejectPostConfig;
+  }
+
+  function renderOption({ node, option }: { node: VNode; option: SelectOption }): VNodeChild {
+    return h(
+      NTooltip,
+      {
+        delay: 300,
+      },
+      {
+        trigger: () => node,
+        default: () => option.label,
+      }
+    );
   }
 
   function ensureActivePostConfig(): ApprovalPostConfig {
@@ -357,7 +380,7 @@
       props.formType as FormDesignKeyEnum
     );
 
-    return formFields.value.filter((field) => {
+    const customFields = formFields.value.filter((field) => {
       const baseCondition =
         ![
           FieldTypeEnum.DIVIDER,
@@ -373,6 +396,40 @@
 
       return isPoolForm ? baseCondition && field.businessKey !== 'owner' : baseCondition;
     });
+
+    const systemFieldMap: Partial<Record<FormDesignKeyEnum, FormCreateField[]>> = {
+      [FormDesignKeyEnum.OPPORTUNITY_QUOTATION]: [
+        {
+          id: 'invalid',
+          businessKey: 'invalid',
+          name: t('common.status'),
+          type: FieldTypeEnum.SELECT,
+          options: quotationStatus as unknown as FormCreateFieldOption[],
+        } as FormCreateField,
+      ],
+      [FormDesignKeyEnum.CONTRACT]: [
+        {
+          id: 'stage',
+          businessKey: 'stage',
+          name: t('contract.status'),
+          type: FieldTypeEnum.SELECT,
+          options: contractStageOptions.value,
+        } as FormCreateField,
+      ],
+      [FormDesignKeyEnum.ORDER]: [
+        {
+          id: 'stage',
+          businessKey: 'stage',
+          name: t('order.status'),
+          type: FieldTypeEnum.SELECT,
+          options: orderStageOptions.value,
+        } as FormCreateField,
+      ],
+    };
+
+    const systemFields = systemFieldMap[props.formType as FormDesignKeyEnum] || [];
+
+    return [...customFields, ...systemFields];
   });
 
   const editableFieldMap = computed(() => new Map(editableFields.value.map((field) => [field.id, field])));
@@ -431,6 +488,12 @@
   }
 
   function getFieldValueRuleType(field: FormCreateField) {
+    if (
+      [FieldTypeEnum.SELECT, FieldTypeEnum.RADIO].includes(field.type) &&
+      field.options?.some((item) => typeof item.value === 'boolean')
+    ) {
+      return 'boolean';
+    }
     return field.type === FieldTypeEnum.DATA_SOURCE ? 'string' : getRuleType(field);
   }
 
@@ -685,6 +748,31 @@
     }
   }
 
+  async function initStage() {
+    contractStageOptions.value = [];
+    orderStageOptions.value = [];
+    try {
+      if (props.formType === FormDesignKeyEnum.CONTRACT) {
+        const contractStageConfig = await getContractStatusConfig();
+        contractStageOptions.value = contractStageConfig.stageConfigList.map((item) => ({
+          label: item.name,
+          value: item.id,
+        }));
+      }
+
+      if (props.formType === FormDesignKeyEnum.ORDER) {
+        const orderStageConfig = await getOrderStatusConfig();
+        orderStageOptions.value = orderStageConfig.stageConfigList.map((item) => ({
+          label: item.name,
+          value: item.id,
+        }));
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
+  }
+
   async function loadFormFields() {
     try {
       const api =
@@ -692,6 +780,7 @@
         getFormConfigApiMap[FormDesignKeyEnum.OPPORTUNITY_QUOTATION];
       const res = await api();
       formFields.value = res.fields;
+      initStage();
       if (!props.readonly) {
         normalizeFieldUpdateConfigs(nodeConfig.value.passPostConfig);
         normalizeFieldUpdateConfigs(nodeConfig.value.rejectPostConfig);

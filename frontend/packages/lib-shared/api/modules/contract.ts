@@ -118,6 +118,8 @@ import {
   GetContractStatusConfigUrl,
   DeleteContractStatusUrl,
   UpdateContractStageUrl,
+  SwitchContractCirculationTypeUrl,
+  SaveContractCirculationConfigUrl,
 } from '@lib/shared/api/requrls/contract';
 import type { CustomerTabHidden } from '@lib/shared/models/customer';
 import type {
@@ -155,6 +157,8 @@ import type {
 import type {
   BatchOperationResult,
   BatchUpdateQuotationStatusParams,
+  SaveCirculationConfigParams,
+  UpdateStageParams,
   StageBoardDraggedParams,
   StageBoardPageQueryParams,
 } from '@lib/shared/models/opportunity';
@@ -165,6 +169,7 @@ import {
   UpdateOpportunityStageRollbackParams,
   UpdateStageBaseParams,
 } from '@lib/shared/models/opportunity';
+import type { CirculationTypeEnum } from '@lib/shared/enums/opportunityEnum';
 export default function useContractApi(CDR: CordysAxios) {
   // 合同列表
   function getContractList(data: StageBoardPageQueryParams) {
@@ -215,8 +220,8 @@ export default function useContractApi(CDR: CordysAxios) {
     });
   }
 
-  function changeContractStatus(id: string, stage: string, voidReason?: string) {
-    return CDR.post({ url: `${ChangeContractStatusUrl}`, data: { stage, id, voidReason } });
+  function changeContractStatus(data: UpdateStageParams) {
+    return CDR.post({ url: `${ChangeContractStatusUrl}`, data });
   }
 
   // 获取合同tab显隐藏
@@ -760,6 +765,16 @@ export default function useContractApi(CDR: CordysAxios) {
     return CDR.post({ url: UpdateContractStageUrl, data });
   }
 
+  // 保存高级流转配置
+  function saveContractAdvanceConfig(data: SaveCirculationConfigParams) {
+    return CDR.post({ url: SaveContractCirculationConfigUrl, data });
+  }
+
+  // 切换流转配置
+  function switchContractCirculationType(type: CirculationTypeEnum) {
+    return CDR.get({ url: `${SwitchContractCirculationTypeUrl}/${type}` });
+  }
+
   return {
     exportContractAll,
     exportContractSelected,
@@ -880,5 +895,7 @@ export default function useContractApi(CDR: CordysAxios) {
     getContractStatusConfig,
     deleteContractStatus,
     updateContractStage,
+    saveContractAdvanceConfig,
+    switchContractCirculationType,
   };
 }

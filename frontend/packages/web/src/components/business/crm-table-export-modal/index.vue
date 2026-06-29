@@ -3,7 +3,6 @@
     v-model:show="show"
     :title="t('common.export')"
     :width="800"
-    :auto-focus="false"
     :show-back="false"
     closable
     :ok-text="t('common.export')"
@@ -169,6 +168,8 @@
     exportCustomerOpenSeaAll,
     exportCustomerOpenSeaSelected,
     exportCustomerSelected,
+    exportCustomFormAll,
+    exportCustomFormSelected,
     exportInvoicedAll,
     exportInvoicedSelected,
     exportOpportunityAll,
@@ -195,10 +196,12 @@
       | 'contractPaymentRecord'
       | 'price'
       | 'businessTitle'
-      | 'invoice';
+      | 'invoice'
+      | 'customForm';
     exportColumns: ExportTableColumnItem[];
     isExportAll?: boolean;
     showApprovalTip?: string;
+    customFormTypeString?: string;
   }>();
   const emit = defineEmits<{
     (e: 'createSuccess'): void;
@@ -237,7 +240,8 @@
     () => show.value,
     (newVal) => {
       if (newVal) {
-        form.value.fileName = `${dayjs().format('YYYYMMDD-HHmmss')}-${typeStringMap[props.type]}`;
+        const typeString = props.type === 'customForm' ? props.customFormTypeString : typeStringMap[props.type];
+        form.value.fileName = `${dayjs().format('YYYYMMDD-HHmmss')}-${typeString}`;
       }
     }
   );
@@ -335,6 +339,7 @@
     price: exportProductPriceAll,
     businessTitle: exportBusinessTitleAll,
     invoice: exportInvoicedAll,
+    customForm: exportCustomFormAll,
   };
 
   const exportSelectedApiMap = {
@@ -350,6 +355,7 @@
     price: exportProductPriceSelected,
     businessTitle: exportBusinessTitleSelected,
     invoice: exportInvoicedSelected,
+    customForm: exportCustomFormSelected,
   };
 
   function confirmHandler() {

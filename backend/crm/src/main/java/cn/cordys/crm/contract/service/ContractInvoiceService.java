@@ -18,9 +18,11 @@ import cn.cordys.common.permission.PermissionCache;
 import cn.cordys.common.permission.PermissionUtils;
 import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
 import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
+import cn.cordys.common.response.result.CrmHttpResultCode;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.CommonBeanFactory;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.context.OrganizationContext;
@@ -31,7 +33,9 @@ import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
 import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
 import cn.cordys.crm.approval.dto.ResourceApprovalPostUpdateParam;
 import cn.cordys.crm.approval.dto.ResourceSnapshotApprovalParam;
+import cn.cordys.crm.approval.handler.ApprovalResourceHandler;
 import cn.cordys.crm.approval.service.ApprovalFlowService;
+import cn.cordys.crm.approval.service.ApprovalResourceService;
 import cn.cordys.crm.contract.constants.BusinessTitleConstants;
 import cn.cordys.crm.contract.domain.*;
 import cn.cordys.crm.contract.dto.request.ContractInvoiceAddRequest;
@@ -66,7 +70,7 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 @Slf4j
-public class ContractInvoiceService {
+public class ContractInvoiceService implements ApprovalResourceHandler {
 
     @Resource
     private ContractInvoiceFieldService invoiceFieldService;
@@ -215,7 +219,7 @@ public class ContractInvoiceService {
      * @return
      */
     @OperationLog(module = LogModule.CONTRACT_INVOICE, type = LogType.UPDATE, resourceId = "{#request.id}")
-	@HitApproval(formKey = FormKey.INVOICE, executeType = ExecuteTimingEnum.EDIT, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}")
+	@HitApproval(formKey = FormKey.INVOICE, executeType = ExecuteTimingEnum.UPDATE, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}", comment = "{#request.comment}")
     public ContractInvoice update(ContractInvoiceUpdateRequest request, String userId, String orgId) {
         ContractInvoice originContractInvoice = invoiceMapper.selectByPrimaryKey(request.getId());
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
@@ -301,8 +305,9 @@ public class ContractInvoiceService {
      *
      * @param id
      */
+    @Override
     @OperationLog(module = LogModule.CONTRACT_INVOICE, type = LogType.DELETE, resourceId = "{#id}")
-    public void delete(String id) {
+    public void delete(String id, String userId, String orgId) {
         ContractInvoice invoice = invoiceMapper.selectByPrimaryKey(id);
         if (invoice == null) {
             throw new GenericException(Translator.get("invoice.not.exist"));
@@ -318,6 +323,17 @@ public class ContractInvoiceService {
 
         // 添加日志上下文
         OperationLogContext.setResourceName(invoice.getName());
+    }
+
+    @HitApproval(formKey = FormKey.INVOICE, executeType = ExecuteTimingEnum.DELETE, resourceId = "{#id}", operatorId = "{#userId}")
+    public void deleteWithApprovalCheck(String id, String userId, String orgId) {
+        // 校验审批流
+        delete(id, userId, orgId);
+    }
+
+    @Override
+    public FormKey getFormKey() {
+        return FormKey.INVOICE;
     }
 
     private ContractInvoiceGetResponse get(ContractInvoice contractInvoice, List<BaseModuleFieldValue> contractInvoiceFields, ModuleFormConfigDTO contractInvoiceFormConfig) {
@@ -383,6 +399,7 @@ public class ContractInvoiceService {
             Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
             getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
         }
+        getResponse.setApproved(contractInvoice.getApproved());
         return getResponse;
     }
 
@@ -393,6 +410,10 @@ public class ContractInvoiceService {
      * @return 合同详情
      */
     public ContractInvoiceGetResponse getSnapshot(String id, String orgId) {
+        ContractInvoice contractInvoice = contractInvoiceMapper.selectByPrimaryKey(id);
+        if (contractInvoice == null) {
+            throw new GenericException(CrmHttpResultCode.NOT_FOUND);
+        }
         LambdaQueryWrapper<ContractInvoiceSnapshot> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContractInvoiceSnapshot::getInvoiceId, id);
         ContractInvoiceSnapshot snapshot = snapshotBaseMapper.selectListByLambda(wrapper).stream().findFirst().orElse(null);
@@ -402,6 +423,7 @@ public class ContractInvoiceService {
                 Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
                 getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
             }
+            getResponse.setApproved(contractInvoice.getApproved());
             return getResponse;
         }
         return null;
@@ -495,6 +517,31 @@ public class ContractInvoiceService {
 	}
 
     /**
+     * 批量获取发票详情 (⚠️反射调用, 用于数据源批量查询优化)
+     * @param ids 发票ID集合
+     * @return 发票详情列表
+     */
+    public List<ContractInvoiceGetResponse> batchGetSimpleByIds(List<String> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        // 批量查询资源基本信息
+        List<ContractInvoice> invoices = contractInvoiceMapper.selectByIds(ids);
+        if (CollectionUtils.isEmpty(invoices)) {
+            return Collections.emptyList();
+        }
+        // 批量查询自定义字段值
+        Map<String, List<BaseModuleFieldValue>> fieldValueMap = invoiceFieldService.getResourceFieldMap(ids, true);
+
+        // 组装结果
+        return invoices.stream().map(invoice -> {
+            ContractInvoiceGetResponse response = BeanUtils.copyBean(new ContractInvoiceGetResponse(), invoice);
+            response.setModuleFields(fieldValueMap.get(invoice.getId()));
+            return response;
+        }).toList();
+    }
+
+    /**
      * 获取字段详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
      * @param id 发票ID
      * @return 发票详情
@@ -536,10 +583,26 @@ public class ContractInvoiceService {
                 .filter(i -> permittedIds.contains(i.getId()))
                 .collect(Collectors.toList());
 
-        // 删除发票
-        contractInvoiceMapper.deleteByIds(permittedIds);
+        Map<String, String> nameMap = invoices.stream().collect(Collectors.toMap(ContractInvoice::getId, ContractInvoice::getName));
 
-        List<LogDTO> logs = permittedInvoices.stream()
+        ApprovalResourceService approvalResourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
+        // 触发批量删除审批流，命中审批流的资源不执行删除，进入审批
+        List<String> approvalIds = approvalResourceService.batchDeleteTriggerApproval(permittedIds, FormKey.INVOICE, orgId, userId, nameMap);
+
+        // 过滤出未命中审批流的资源，直接删除
+        List<String> deleteIds = approvalIds.isEmpty()
+                ? permittedIds
+                : permittedIds.stream().filter(id -> !approvalIds.contains(id)).toList();
+        if (CollectionUtils.isEmpty(deleteIds)) {
+            return;
+        }
+
+        List<ContractInvoice> deleteInvoices = permittedInvoices.stream()
+                .filter(i -> deleteIds.contains(i.getId()))
+                .toList();
+        contractInvoiceMapper.deleteByIds(deleteIds);
+
+        List<LogDTO> logs = deleteInvoices.stream()
                 .map(invoice ->
                         new LogDTO(orgId, invoice.getId(), userId, LogType.DELETE, LogModule.CONTRACT_INVOICE, invoice.getName())
                 )
@@ -705,4 +768,44 @@ public class ContractInvoiceService {
 		});
 		extContractInvoiceMapper.updateOldApprovalStatusNone();
 	}
+
+    /**
+     * 获取发票名
+     * @param id 发票ID
+     * @return 发票名
+     */
+    public String getInvoiceName(String id) {
+        ContractInvoice invoice = contractInvoiceMapper.selectByPrimaryKey(id);
+        return Optional.ofNullable(invoice).map(ContractInvoice::getName).orElse(null);
+    }
+
+    /**
+     * 通过名称获取发票集合
+     *
+     * @param names 名称集合
+     * @return 发票集合
+     */
+    public List<ContractInvoice> getContractInvoiceListByNames(List<String> names) {
+        LambdaQueryWrapper<ContractInvoice> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+        lambdaQueryWrapper.in(ContractInvoice::getName, names);
+        return contractInvoiceMapper.selectListByLambda(lambdaQueryWrapper);
+    }
+
+    /**
+     * 通过ID集合获取发票名称
+     *
+     * @param ids id集合
+     * @return 发票名称
+     */
+    public Object getInvoiceNameByIds(List<String> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return StringUtils.EMPTY;
+        }
+        List<ContractInvoice> invoices = contractInvoiceMapper.selectByIds(ids);
+        if (CollectionUtils.isNotEmpty(invoices)) {
+            List<String> names = invoices.stream().map(ContractInvoice::getName).toList();
+            return String.join(",", names);
+        }
+        return StringUtils.EMPTY;
+    }
 }

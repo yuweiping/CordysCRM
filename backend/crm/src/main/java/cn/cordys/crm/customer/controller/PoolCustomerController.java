@@ -1,9 +1,14 @@
 package cn.cordys.crm.customer.controller;
 
+import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.PermissionConstants;
+import cn.cordys.common.dto.ExportDTO;
 import cn.cordys.common.dto.ExportSelectRequest;
 import cn.cordys.common.dto.chart.ChartResult;
+import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.util.Translator;
+import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.utils.ConditionFilterUtils;
 import cn.cordys.context.OrganizationContext;
@@ -22,6 +27,7 @@ import cn.cordys.security.SessionUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.validation.annotation.Validated;
@@ -52,6 +58,9 @@ public class PoolCustomerController {
     @Operation(summary = "客户列表")
     @RequiresPermissions(value = {PermissionConstants.CUSTOMER_MANAGEMENT_POOL_READ})
     public PagerWithOption<List<CustomerListResponse>> list(@Validated @RequestBody CustomerPageRequest request) {
+        if (StringUtils.isEmpty(request.getPoolId())) {
+            throw new GenericException(Translator.get("miss.customer_pool_id"));
+        }
         ConditionFilterUtils.parseCondition(request, FormKey.CUSTOMER.getKey());
         return customerService.list(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), null);
     }
@@ -117,14 +126,37 @@ public class PoolCustomerController {
     @RequiresPermissions(PermissionConstants.CUSTOMER_MANAGEMENT_POOL_EXPORT)
     public String customerPoolExportAll(@Validated @RequestBody CustomerExportRequest request) {
         ConditionFilterUtils.parseCondition(request, FormKey.CUSTOMER.getKey());
-        return customerPoolExportService.exportCrossPage(SessionUtils.getUserId(), request, OrganizationContext.getOrganizationId(), null, LocaleContextHolder.getLocale());
+        ExportDTO exportDTO = ExportDTO.builder()
+                .exportType(ExportConstants.ExportType.CUSTOMER_POOL.name())
+                .fileName(request.getFileName())
+                .headList(request.getHeadList())
+                .logModule(LogModule.CUSTOMER_POOL)
+                .locale(LocaleContextHolder.getLocale())
+                .orgId(OrganizationContext.getOrganizationId())
+                .userId(SessionUtils.getUserId())
+                .pageRequest(request)
+                .formKey(FormKey.CUSTOMER.getKey())
+                .build();
+        return customerPoolExportService.exportAllWithMergeStrategy(exportDTO);
     }
 
     @PostMapping("/export-select")
     @Operation(summary = "导出选中客户")
     @RequiresPermissions(PermissionConstants.CUSTOMER_MANAGEMENT_POOL_EXPORT)
     public String customerPoolExportSelect(@Validated @RequestBody ExportSelectRequest request) {
-        return customerPoolExportService.exportCrossSelect(SessionUtils.getUserId(), request, OrganizationContext.getOrganizationId(), LocaleContextHolder.getLocale());
+        ExportDTO exportDTO = ExportDTO.builder()
+                .exportType(ExportConstants.ExportType.CUSTOMER_POOL.name())
+                .fileName(request.getFileName())
+                .headList(request.getHeadList())
+                .logModule(LogModule.CUSTOMER_POOL)
+                .locale(LocaleContextHolder.getLocale())
+                .orgId(OrganizationContext.getOrganizationId())
+                .userId(SessionUtils.getUserId())
+                .selectIds(request.getIds())
+                .selectRequest(request)
+                .formKey(FormKey.CUSTOMER.getKey())
+                .build();
+        return customerPoolExportService.exportSelectWithMergeStrategy(exportDTO);
     }
 
     @PostMapping("/chart")

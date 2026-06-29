@@ -1,17 +1,15 @@
 <template>
-  <div class="bg-[var(--text-n10)] p-[16px]">
+  <div v-bind="attrs" class="bg-[var(--text-n10)] p-[16px]">
     <n-spin :show="updateStageLoading">
       <WorkflowStep
         v-model:status="currentStage"
         :readonly="props.readonly"
         :operation-permission="props.operationPermission"
+        :stageConfig="props.stageConfig"
         :workflow-list="workflowList"
-        :stage-config-list="stageConfigList"
         :is-limit-back="props.isLimitBack"
         :back-stage-permission="props.backStagePermission"
         :failure-reason="getFailureReason"
-        :afoot-roll-back="props.afootRollBack"
-        :end-roll-back="props.endRollBack"
         :is-no-resign-flow="props.isNoResignFlow"
         @change="handleUpdateStatus"
       >
@@ -56,26 +54,52 @@
       </CrmModal>
     </n-spin>
   </div>
+  <CrmStatusFlowModal
+    v-if="props.formKey"
+    v-model:show="flowModalShow"
+    :from="{ id: currentStageConfig?.id, name: currentStageConfig?.name }"
+    :to="{ id: targetStageConfig?.id, name: targetStageConfig?.name }"
+    :form-key="props.formKey"
+    :circulationFieldValues="circulationFieldValues"
+    :source-id="props.sourceId"
+    :stageConfig="stageConfig"
+    @success="handleFlowSuccess"
+  />
 </template>
 
 <script lang="ts" setup>
+  import { useAttrs } from 'vue';
   import { FormInst, FormRules, NButton, NForm, NFormItem, NSelect, NSpin, SelectOption, useMessage } from 'naive-ui';
 
+  import type { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum.js';
   import { ReasonTypeEnum } from '@lib/shared/enums/moduleEnum';
+  import { CirculationTypeEnum } from '@lib/shared/enums/opportunityEnum.js';
   import { useI18n } from '@lib/shared/hooks/useI18n';
-  import type { StageConfigItem, UpdateStageParams } from '@lib/shared/models/opportunity';
+  import type {
+    CirculationFieldValueItem,
+    OpportunityStageConfig,
+    StageConfigItem,
+    UpdateStageParams,
+  } from '@lib/shared/models/opportunity';
 
   import CrmModal from '@/components/pure/crm-modal/index.vue';
   import type { Option } from '@/components/business/crm-select-user-drawer/type';
+  import CrmStatusFlowModal from '@/components/business/crm-status-flow-modal/index.vue';
   import WorkflowStep from './workflowStep.vue';
 
   import { getReasonConfig } from '@/api/modules';
 
+  defineOptions({
+    inheritAttrs: false,
+  });
+
   const { t } = useI18n();
   const Message = useMessage();
+  const attrs = useAttrs();
 
   const props = defineProps<{
-    stageConfigList: StageConfigItem[]; // 阶段列表
+    formKey?: FormDesignKeyEnum;
+    stageConfig?: OpportunityStageConfig; // 阶段配置
     sourceId: string; // 资源id
     showErrorBtn?: boolean;
     showConfirmStatus?: boolean; // 是否二次确认更新成功 | 成败
@@ -105,7 +129,9 @@
   const rules: FormRules = {
     status: [{ required: true, message: t('common.pleaseSelect') }],
   };
-  const failureStage = computed(() => props.stageConfigList.find((e) => e.type === 'END' && e.rate === '0')?.id || '');
+  const failureStage = computed(
+    () => props.stageConfig?.stageConfigList.find((e) => e.type === 'END' && e.rate === '0')?.id || ''
+  );
 
   const form = ref<UpdateStageParams>({
     id: '',
@@ -115,10 +141,12 @@
 
   const getFailureReason = computed(() => reasonList.value.find((e) => e.value === props.failureReason)?.label);
   const workflowList = computed<SelectOption[]>(() => {
-    return props.stageConfigList.map((item) => ({
-      label: item.name,
-      value: item.id,
-    }));
+    return (
+      props.stageConfig?.stageConfigList.map((item) => ({
+        label: item.name,
+        value: item.id,
+      })) || []
+    );
   });
 
   function handleCancel() {
@@ -151,6 +179,17 @@
     }
   }
 
+  function handleFlowSuccess() {
+    emit('loadDetail');
+  }
+
+  const flowModalShow = ref(false);
+  const currentStageConfig = computed(() =>
+    props.stageConfig?.stageConfigList.find((e) => e.id === currentStage.value)
+  );
+  const targetStageConfig = ref<StageConfigItem>();
+  const circulationFieldValues = ref<CirculationFieldValueItem[]>([]);
+
   const enableReason = ref(false);
   // 更新状态
   async function handleUpdateStatus(stage: string) {
@@ -168,8 +207,21 @@
       form.value.stage = failureStage.value;
       return;
     }
-    handleSave(stage);
+    targetStageConfig.value = props.stageConfig?.stageConfigList.find((e) => e.id === stage);
+    circulationFieldValues.value =
+      props.stageConfig?.advancedConfigs
+        ?.find((e) => e.originId === currentStage.value)
+        ?.targets.find((e) => e.targetId === targetStageConfig.value?.id)?.circulationFieldValues || [];
+    if (
+      circulationFieldValues.value.length > 0 &&
+      props.stageConfig?.circulationType === CirculationTypeEnum.ADVANCED
+    ) {
+      flowModalShow.value = true;
+    } else {
+      handleSave(stage);
+    }
   }
+
   // 确认更新
   async function handleConfirm() {
     if (enableReason.value) {

@@ -1,15 +1,23 @@
 package cn.cordys.crm.system.service;
 
+import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.LinkScenarioKey;
 import cn.cordys.common.dto.JsonDifferenceDTO;
+import cn.cordys.common.dto.stage.CirculationFieldValue;
+import cn.cordys.common.dto.stage.StageConfigResponse;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
+import cn.cordys.crm.contract.mapper.ExtContractStageConfigMapper;
+import cn.cordys.crm.order.mapper.ExtOrderStageConfigMapper;
 import cn.cordys.crm.search.constants.SearchModuleEnum;
+import cn.cordys.crm.system.constants.CirculationFieldValueTypeEnum;
 import cn.cordys.crm.system.domain.ModuleField;
+import cn.cordys.crm.system.domain.StageAdvancedConfig;
 import cn.cordys.crm.system.dto.ScopeNameDTO;
-import cn.cordys.crm.system.dto.form.FormProp;
+import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -30,6 +38,14 @@ public class SystemModuleLogService extends BaseModuleLogService {
     private BaseMapper<ModuleField> moduleFieldMapper;
     @Resource
     private UserExtendService userExtendService;
+    @Resource
+    private ExtOrderStageConfigMapper extOrderStageConfigMapper;
+    @Resource
+    private ExtContractStageConfigMapper extContractStageConfigMapper;
+    @Resource
+    private ModuleFormCacheService moduleFormCacheService;
+    private List<BaseField> fields;
+    private List<StageConfigResponse> stageConfigList;
 
     @Override
     public List<JsonDifferenceDTO> handleLogField(List<JsonDifferenceDTO> differences, String orgId) {
@@ -58,20 +74,20 @@ public class SystemModuleLogService extends BaseModuleLogService {
                 handleModuleMainNav(differ);
             }
 
-			if (Strings.CS.equals("viewSize", differ.getColumn())) {
-				differ.setColumnName(Translator.get("form.view.size"));
-				differ.setOldValueName(Translator.get(differ.getOldValue().toString()));
-				differ.setNewValueName(Translator.get(differ.getNewValue().toString()));
-			}
+            if (Strings.CS.equals("viewSize", differ.getColumn())) {
+                differ.setColumnName(Translator.get("form.view.size"));
+                differ.setOldValueName(Translator.get(differ.getOldValue().toString()));
+                differ.setNewValueName(Translator.get(differ.getNewValue().toString()));
+            }
 
-			if (Strings.CS.equals("formProp", differ.getColumn())) {
-				differ.setColumnName(Translator.get("log.form.prop"));
-				handleFormPropLogDetail(differ);
-			}
+            if (Strings.CS.equals("formProp", differ.getColumn())) {
+                differ.setColumnName(Translator.get("log.form.prop"));
+                handleFormPropLogDetail(differ);
+            }
 
 
             if (Strings.CI.equalsAny(differ.getColumn(),
-                    "rate", "stage", "contractStage", "orderStage","afootRollBack", "endRollBack","name")) {
+                    "rate", "stage", "contractStage", "orderStage", "afootRollBack", "endRollBack", "name")) {
                 differ.setColumnName(Translator.get("log.".concat(differ.getColumn())));
                 differ.setNewValueName(differ.getNewValue());
                 differ.setOldValueName(differ.getOldValue());
@@ -94,10 +110,77 @@ public class SystemModuleLogService extends BaseModuleLogService {
             if (differ.getColumn().contains("searchAdvanced")) {
                 searchSetting(differ);
             }
+
+            if (Strings.CS.equalsAny(differ.getColumn(), "orderSetting", "contractSetting")) {
+                differ.setColumnName(Translator.get("advanced_circulation_setting"));
+                differ.setNewValueName(String.join(", ", handleConfig(differ.getNewValue(), orgId, Strings.CI.equals(differ.getColumn(), "orderSetting") ? FormKey.ORDER.getKey() : FormKey.CONTRACT.getKey())));
+                differ.setOldValueName(String.join(", ", handleConfig(differ.getOldValue(), orgId, Strings.CI.equals(differ.getColumn(), "orderSetting") ? FormKey.ORDER.getKey() : FormKey.CONTRACT.getKey()).toString()));
+            }
+
+            if (Strings.CS.equals("circulationType", differ.getColumn())) {
+                differ.setColumnName(Translator.get("circulation_setting"));
+                differ.setNewValueName(differ.getNewValue());
+                differ.setOldValueName(differ.getOldValue());
+            }
+
         });
 
-		differences.removeIf(differ -> differ.getOldValueName() == null && differ.getNewValueName() == null);
+        differences.removeIf(differ -> differ.getOldValueName() == null && differ.getNewValueName() == null);
         return differences;
+    }
+
+    private List<String> handleConfig(Object value, String orgId, String formKey) {
+        List<String> newValuesList = new ArrayList<>();
+        if (value != null) {
+            try {
+                List<StageAdvancedConfig> values = JSON.parseArray(
+                        JSON.toJSONString(value),
+                        StageAdvancedConfig.class
+                );
+                List<StageAdvancedConfig> list = values.stream().filter(valueConfig -> !Strings.CI.equals(valueConfig.getOriginId(), valueConfig.getTargetId())).toList();
+
+                if (CollectionUtils.isNotEmpty(list)) {
+                    if (Strings.CI.equals(formKey, FormKey.ORDER.getKey())) {
+                        stageConfigList = extOrderStageConfigMapper.getStageConfigList(orgId);
+                    } else if (Strings.CI.equals(formKey, FormKey.CONTRACT.getKey())) {
+                        stageConfigList = extContractStageConfigMapper.getStageConfigList(orgId);
+                    } else {
+
+                    }
+                    fields = moduleFormCacheService.getBusinessFormConfig(formKey, orgId).getFields();
+
+                    Map<String, String> configNameMap = stageConfigList.stream().collect(Collectors.toMap(StageConfigResponse::getId, StageConfigResponse::getName));
+
+                    list.forEach(item -> {
+                        String stageName = configNameMap.getOrDefault(item.getOriginId(), "") + " - " + configNameMap.getOrDefault(item.getTargetId(), "")
+                                + ": " + Translator.get("log.enable." + String.valueOf(item.getEnable()));
+                        List<CirculationFieldValue> circulationFieldValues = JSON.parseObject(item.getFieldConfig(), new TypeReference<List<CirculationFieldValue>>() {
+                        });
+                        if (CollectionUtils.isNotEmpty(circulationFieldValues)) {
+                            String title = Translator.get("advanced_circulation_condition") + "\n" +
+                                    Translator.get("advanced_circulation_condition_field") + "|" + Translator.get("advanced_circulation_condition_type") + "|" + Translator.get("advanced_circulation_condition_default_value") + "|" + Translator.get("isRequired");
+                            String data = "";
+                            for (CirculationFieldValue fieldValue : circulationFieldValues) {
+                                BaseField baseField = fields.stream().filter(field -> Strings.CI.equals(field.getId(), fieldValue.getFieldId())).findFirst().orElse(null);
+                                if (baseField != null) {
+                                    String s = baseField.getName() + "|" + Translator.get(fieldValue.getValueType()) + "|" + ((Strings.CI.equals(fieldValue.getValueType(), CirculationFieldValueTypeEnum.FIXED_VALUE.name()) && (fieldValue.getFieldValue() != null)) ? transformFieldValue(baseField, fieldValue.getFieldValue()) : "") + "|" + Translator.get(fieldValue.getRequired().toString());
+                                    data = (data + s) + "\n";
+                                }
+                            }
+                            ;
+                            newValuesList.add(stageName + "\n" + title + "\n" + data);
+                        } else {
+                            newValuesList.add(stageName+"\n");
+                        }
+                    });
+                }
+
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+                return newValuesList;
+            }
+        }
+        return newValuesList;
     }
 
     private List<String> getBtnContentList(Object value) {

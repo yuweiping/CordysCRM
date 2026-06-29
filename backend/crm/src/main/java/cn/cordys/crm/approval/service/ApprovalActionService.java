@@ -960,6 +960,14 @@ public class ApprovalActionService {
 		ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
 		if (resourceService != null) {
 			resourceService.updateResourceApprovalStatus(FormKey.ofKey(instance.getType()), instance.getResourceId(), instance.getApprovalStatus(), currentUserId, currentOrgId);
+				// 审批流程结束，删除中间数据
+				if (ApprovalNodeTypeEnum.valueOf(node.getNodeType()) == ApprovalNodeTypeEnum.END || ApprovalNodeTypeEnum.valueOf(node.getNodeType()) == ApprovalNodeTypeEnum.EXCEPTION) {
+					// DELETE审批通过后，执行实际的删除操作
+					if (ApprovalNodeTypeEnum.valueOf(node.getNodeType()) == ApprovalNodeTypeEnum.END
+							&& Strings.CI.equals(instance.getExecuteTime(), ExecuteTimingEnum.DELETE.name())) {
+						resourceService.executeDeleteAction(instance.getType(), instance.getResourceId(), currentUserId, currentOrgId);
+					}
+				}
 		}
 		if (ApprovalNodeTypeEnum.valueOf(node.getNodeType()) == ApprovalNodeTypeEnum.APPROVER) {
 			handlerNextNodeApproverTasks((ApprovalNodeApproverResponse) node, instance, preApproverId, currentUserId, ApprovalTaskType.NL.name(), currentOrgId);

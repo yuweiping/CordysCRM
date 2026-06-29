@@ -33,7 +33,8 @@
       <CrmWorkflowCard
         v-model:stage="currentStatus"
         class="mb-[16px]"
-        :stage-config-list="stageConfig?.stageConfigList || []"
+        :formKey="FormDesignKeyEnum.ORDER"
+        :stageConfig="stageConfig"
         is-limit-back
         is-no-resign-flow
         :readonly="!canUpdateStage"
@@ -41,14 +42,13 @@
         :source-id="sourceId"
         :operation-permission="['ORDER:UPDATE']"
         :update-api="updateOrderStage"
-        :afoot-roll-back="stageConfig?.afootRollBack"
-        :end-roll-back="stageConfig?.endRollBack"
         @load-detail="handleSaved()"
       />
       <CrmCard contentHeight="100%" hide-footer :special-height="122" no-content-padding>
         <CrmApprovalDetail
           :form-key="FormDesignKeyEnum.ORDER"
           :source-id="props.sourceId"
+          :refresh-key="approvalDetailRefreshKey"
           :approval-status="detailInfo?.approvalStatus"
           @saveApproval="handleSaveApproval"
         >
@@ -83,7 +83,7 @@
       :source-id="props.sourceId"
       need-init-detail
       :link-form-key="FormDesignKeyEnum.ORDER"
-      @saved="() => handleSaved()"
+      @saved="handleFormCreateSaved"
       @review="handleFormReview"
     />
     <ContractDetailDrawer
@@ -187,35 +187,22 @@
   }
 
   const refreshKey = ref(0);
+  const approvalDetailRefreshKey = ref(0);
   function handleSaved() {
     refreshKey.value += 1;
     emit('refresh');
   }
 
+  function handleFormCreateSaved(_res: any, isUpdateReview?: boolean) {
+    if (isUpdateReview) {
+      approvalDetailRefreshKey.value += 1;
+    }
+    handleSaved();
+  }
+
   const { reviewByFormResult, reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
     formKey: FormDesignKeyEnum.ORDER,
   });
-
-  async function handleDelete(row: OrderItem) {
-    openModal({
-      type: 'error',
-      title: t('common.deleteConfirmTitle', { name: characterLimit(row.name) }),
-      content: t('common.deleteConfirmContent'),
-      positiveText: t('common.confirmDelete'),
-      negativeText: t('common.cancel'),
-      onPositiveClick: async () => {
-        try {
-          await deleteOrder(row.id);
-          Message.success(t('common.deleteSuccess'));
-          visible.value = false;
-          emit('delete');
-        } catch (error) {
-          // eslint-disable-next-line no-console
-          console.error(error);
-        }
-      },
-    });
-  }
 
   const orderDetailDataActionMap = {
     edit: {
@@ -236,11 +223,33 @@
     },
   };
 
-  const { initApprovalPermission, resolveRowOperation, hasApprovalScopedPermission } = useApprovalOperation<OrderItem>({
-    formType: FormDesignKeyEnum.ORDER,
-    dataActionMap: orderDetailDataActionMap,
-    isDetail: true,
-  });
+  const { initApprovalPermission, resolveRowOperation, deleteExecute, hasApprovalScopedPermission } =
+    useApprovalOperation<OrderItem>({
+      formType: FormDesignKeyEnum.ORDER,
+      dataActionMap: orderDetailDataActionMap,
+      isDetail: true,
+    });
+
+  async function handleDelete(row: OrderItem) {
+    openModal({
+      type: 'error',
+      title: t('common.deleteConfirmTitle', { name: characterLimit(row.name) }),
+      content: t('common.deleteConfirmContent'),
+      positiveText: deleteExecute.value ? t('crm.approval.confirmAndSubmitReview') : t('common.confirmDelete'),
+      negativeText: t('common.cancel'),
+      onPositiveClick: async () => {
+        try {
+          await deleteOrder(row.id);
+          Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
+          visible.value = false;
+          emit('delete');
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error(error);
+        }
+      },
+    });
+  }
 
   const canUpdateStage = computed(() => {
     if (!detailInfo.value) {

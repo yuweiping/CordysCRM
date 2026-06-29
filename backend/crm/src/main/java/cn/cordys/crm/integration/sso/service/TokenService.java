@@ -1,7 +1,8 @@
 package cn.cordys.crm.integration.sso.service;
 
 import cn.cordys.common.exception.GenericException;
-import cn.cordys.common.util.EncryptUtils;
+import cn.cordys.common.service.SSRFValidationService;
+import cn.cordys.common.util.CodingUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.integration.agent.constant.MaxKBApiPaths;
@@ -55,7 +56,8 @@ public class TokenService {
 
     @Resource
     private QrCodeClient qrCodeClient;
-
+    @Resource
+    private SSRFValidationService ssrfValidationService;
     /**
      * 获取assess_Token
      *
@@ -200,34 +202,6 @@ public class TokenService {
     }
 
     /**
-     * 获取sqlBot的src 是否能连通
-     */
-    public boolean getSqlBotSrc(String scriptCode) {
-        Pattern pattern = Pattern.compile("src\\s*=\\s*\"([^\"]+)\"");
-        Matcher matcher = pattern.matcher(scriptCode);
-
-        String jsUrl;
-        if (matcher.find()) {
-            jsUrl = matcher.group(1);
-        } else {
-            return false;
-        }
-        try {
-            URL url = URI.create(jsUrl).toURL();
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("HEAD"); // 更轻量，只请求头部
-            connection.setConnectTimeout(3000);
-            connection.setReadTimeout(3000);
-            int responseCode = connection.getResponseCode();
-            return responseCode == HttpURLConnection.HTTP_OK;
-        } catch (Exception e) {
-            log.error(e.getMessage(), e);
-            return false;
-        }
-
-    }
-
-    /**
      * @param code   code
      * @param config 认证配置的map
      * @return access_token
@@ -242,7 +216,7 @@ public class TokenService {
 
         Map<String, String> resultObj = null;
         try {
-            String credentials = EncryptUtils.base64Encoding(config.get("clientId") + ":" + config.get("secret"));
+            String credentials = CodingUtils.base64Encoding(config.get("clientId") + ":" + config.get("secret"));
             String content = qrCodeClient.postExchange(url, "Basic " + credentials, HttpHeaders.AUTHORIZATION, HttpEntity.EMPTY, MediaType.APPLICATION_JSON, MediaType.APPLICATION_JSON);
             resultObj = JSON.parseObject(content, new TypeReference<HashMap<String, String>>() {
             });
@@ -321,8 +295,11 @@ public class TokenService {
      * @return
      */
     public Boolean getMaxKBToken(String mkAddress, String apiKey) {
+        String urlTransfer = HttpClientUtils.urlTransfer(mkAddress.concat(MaxKBApiPaths.APPLICATION), "default");
+        ssrfValidationService.validate(urlTransfer);
+
         String body = qrCodeClient.exchange(
-                HttpClientUtils.urlTransfer(mkAddress.concat(MaxKBApiPaths.APPLICATION), "default"),
+                urlTransfer,
                 "Bearer " + apiKey,
                 HttpHeaders.AUTHORIZATION,
                 MediaType.APPLICATION_JSON,
@@ -352,7 +329,7 @@ public class TokenService {
     public boolean getQcc(String qccAddress, String qccAccessKey, String qccSecretKey) {
 
         long time = System.currentTimeMillis() / 1000;
-        String token = EncryptUtils.md5(qccAccessKey + time + qccSecretKey).toUpperCase();
+        String token = CodingUtils.md5(qccAccessKey + time + qccSecretKey).toUpperCase();
 
         Map<String, String> headers = new HashMap<>();
         headers.put("Token", token);

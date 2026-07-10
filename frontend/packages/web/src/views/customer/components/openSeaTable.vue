@@ -9,7 +9,7 @@
     :columns="filterColumns"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
-    @sorter-change="propsEvent.sorterChange"
+    @sorter-change="handleSorterChange"
     @filter-change="propsEvent.filterChange"
     @batch-action="handleBatchAction"
     @refresh="searchData"
@@ -117,7 +117,7 @@
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import useLocale from '@lib/shared/locale/useLocale';
   import { characterLimit } from '@lib/shared/method';
-  import { ExportTableColumnItem, TableQueryParams } from '@lib/shared/models/common';
+  import { ExportTableColumnItem, type SortParams, TableQueryParams } from '@lib/shared/models/common';
   import { CluePoolItem } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
@@ -546,6 +546,13 @@
     return propsRes.value.columns.filter((item) => !hiddenColumns.value.includes(item.key as string));
   });
 
+  function handleSorterChange(sorter: SortParams) {
+    if (openSea.value) {
+      setLoadListParams({ keyword: keyword.value, poolId: openSea.value, viewId: activeTab.value });
+      propsEvent.value.sorterChange(sorter);
+    }
+  }
+
   const exportParams = computed(() => {
     return {
       ...tableQueryParams.value,
@@ -619,9 +626,14 @@
   );
 
   async function initOpenSeaOptions() {
-    const res = await getOpenSeaOptions();
-    openSeaOptions.value = res;
-    openSea.value = openSeaOptions.value[0]?.id || '';
+    try {
+      const res = await getOpenSeaOptions();
+      openSeaOptions.value = res;
+      openSea.value = openSeaOptions.value[0]?.id || '';
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
   }
 
   const filterConfigList = computed(
@@ -643,8 +655,8 @@
     getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value, true)
   );
 
-  async function init() {
-    await initOpenSeaOptions();
+  function init() {
+    initOpenSeaOptions();
   }
 
   function handleRefresh() {

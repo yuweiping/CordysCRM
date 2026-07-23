@@ -4,11 +4,17 @@ import cn.cordys.aspectj.annotation.OperationLog;
 import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
+import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.InternalUser;
+import cn.cordys.common.domain.BaseModuleFieldValue;
+import cn.cordys.common.domain.BaseResourceSubField;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.mapper.CommonMapper;
+import cn.cordys.common.service.BaseService;
+import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.TimeUtils;
@@ -18,36 +24,57 @@ import cn.cordys.crm.clue.domain.*;
 import cn.cordys.crm.clue.dto.CluePoolDTO;
 import cn.cordys.crm.clue.dto.CluePoolPickRuleDTO;
 import cn.cordys.crm.clue.dto.CluePoolRecycleRuleDTO;
+import cn.cordys.crm.clue.dto.request.CluePoolImportRequest;
 import cn.cordys.crm.clue.dto.request.PoolCluePickRequest;
 import cn.cordys.crm.clue.mapper.ExtClueCapacityMapper;
 import cn.cordys.crm.clue.mapper.ExtClueMapper;
+import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.constants.NotificationConstants;
+import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.domain.User;
 import cn.cordys.crm.system.dto.RuleConditionDTO;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.request.PoolBatchAssignRequest;
 import cn.cordys.crm.system.dto.request.PoolBatchPickRequest;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
+import cn.cordys.crm.system.dto.response.ImportResponse;
+import cn.cordys.crm.system.excel.CustomImportAfterDoConsumer;
+import cn.cordys.crm.system.excel.handler.CustomHeadColWidthStyleStrategy;
+import cn.cordys.crm.system.excel.handler.CustomTemplateWriteHandler;
+import cn.cordys.crm.system.excel.listener.CustomFieldCheckEventListener;
+import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
+import cn.cordys.crm.system.service.ModuleFormService;
 import cn.cordys.crm.system.service.UserExtendService;
+import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
+import cn.idev.excel.FastExcelFactory;
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.Strings;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
+@Slf4j
 public class PoolClueService {
 
     public static final long DAY_MILLIS = 24 * 60 * 60 * 1000;
@@ -79,13 +106,22 @@ public class PoolClueService {
     private CluePoolService cluePoolService;
     @Resource
     private ClueFieldService clueFieldService;
+    @Resource
+    private ModuleFormService moduleFormService;
+    @Resource
+    private BaseMapper<ClueField> clueFieldMapper;
+    @Resource
+    private BaseMapper<ClueFieldBlob> clueFieldBlobMapper;
+    @Resource
+    private SqlSessionFactory sqlSessionFactory;
+    @Resource
+    private BaseService baseService;
 
     /**
      * 获取当前用户线索池选项
      *
      * @param currentUser  当前用户ID
      * @param currentOrgId 当前组织ID
-     *
      * @return 线索池选项
      */
     public List<CluePoolDTO> getPoolOptions(String currentUser, String currentOrgId) {
@@ -314,7 +350,6 @@ public class PoolClueService {
      *
      * @param userId         用户ID
      * @param organizationId 组织ID
-     *
      * @return 库容
      */
     public Integer getUserCapacity(String userId, String organizationId) {
@@ -383,9 +418,9 @@ public class PoolClueService {
     /**
      * 校验当前用户是否为线索池成员（成员或管理员均可访问）
      *
-     * @param poolId   线索池ID
-     * @param userId   当前用户ID
-     * @param orgId    组织ID
+     * @param poolId 线索池ID
+     * @param userId 当前用户ID
+     * @param orgId  组织ID
      */
     public void checkPoolMember(String poolId, String userId, String orgId) {
         CluePool pool = poolMapper.selectByPrimaryKey(poolId);
@@ -429,4 +464,182 @@ public class PoolClueService {
 
         clueFieldService.batchUpdate(request, field, originCustomers, Clue.class, LogModule.CLUE_POOL_INDEX, extClueMapper::batchUpdate, userId, organizationId);
     }
+
+
+    /**
+     * 下载导入模板
+     *
+     * @param response
+     * @param orgId
+     */
+    public void downloadImportTpl(HttpServletResponse response, String orgId) {
+        List<List<String>> headList = moduleFormService.getCustomImportHeadsNoRefAndOwner(FormKey.CLUE.getKey(), orgId);
+        new EasyExcelExporter().exportMultiSheetTplWithSharedHandler(response,
+                headList,
+                Translator.get("clue_pool.import_tpl.name"), Translator.get(SheetKey.DATA), Translator.get(SheetKey.COMMENT),
+                new CustomTemplateWriteHandler(moduleFormService.getAllCustomImportFieldsNoOwner(FormKey.CLUE.getKey(), orgId)),
+                new CustomHeadColWidthStyleStrategy());
+    }
+
+    /**
+     * 导入校验
+     *
+     * @param file
+     * @param request
+     * @param orgId
+     * @return
+     */
+    public ImportResponse importPreCheck(MultipartFile file, CluePoolImportRequest request, String orgId) {
+        if (file == null) {
+            throw new GenericException(Translator.get("file_cannot_be_null"));
+        }
+        CluePool pool = poolMapper.selectByPrimaryKey(request.getPoolId());
+        if (pool == null) {
+            throw new GenericException(Translator.get("clue_pool_not_exist"));
+        }
+        return checkImportExcel(file, request.getImportType(), orgId);
+    }
+
+    private ImportResponse checkImportExcel(MultipartFile file, String importType, String currentOrg) {
+        try {
+            List<BaseField> fields = moduleFormService.getAllCustomImportFields(FormKey.CLUE.getKey(), currentOrg);
+            fields.removeIf(baseField -> Strings.CI.equals(baseField.getBusinessKey(), BusinessModuleField.CLUE_OWNER.getBusinessKey()));
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "clue", "clue_field", currentOrg, importType);
+            FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
+            return ImportResponse.builder().errorMessages(eventListener.getErrList())
+                    .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
+        } catch (Exception e) {
+            log.error("clue import pre-check error: {}", e.getMessage());
+            throw new GenericException(e.getMessage());
+        }
+    }
+
+    /**
+     * 导入
+     *
+     * @param file
+     * @param request
+     * @param orgId
+     * @param userId
+     * @return
+     */
+    public ImportResponse realImport(MultipartFile file, CluePoolImportRequest request, String orgId, String userId) {
+        try {
+            List<BaseField> fields = moduleFormService.getAllFields(FormKey.CLUE.getKey(), orgId);
+            fields.removeIf(baseField -> Strings.CI.equals(baseField.getBusinessKey(), BusinessModuleField.CLUE_OWNER.getBusinessKey()));
+            CustomImportAfterDoConsumer<Clue, BaseResourceSubField> afterDo = (clues, clueFields, clueFieldBlobs) -> {
+                List<LogDTO> logs = new ArrayList<>();
+                ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
+                switch (importType) {
+                    case ADD -> {
+                        clues.forEach(clue -> {
+                            clue.setStage(ClueStatus.NEW.name());
+                            clue.setInSharedPool(true);
+                            clue.setPoolId(request.getPoolId());
+                            logs.add(new LogDTO(orgId, clue.getId(), userId, LogType.ADD, LogModule.CLUE_POOL_INDEX, clue.getName()));
+                        });
+                        clueMapper.batchInsert(clues);
+                        clueFieldMapper.batchInsert(clueFields.stream().map(field -> BeanUtils.copyBean(new ClueField(), field)).toList());
+                        clueFieldBlobMapper.batchInsert(clueFieldBlobs.stream().map(field -> BeanUtils.copyBean(new ClueFieldBlob(), field)).toList());
+                        // 日志
+                        logService.batchAdd(logs);
+                    }
+                    case UPDATE -> {
+                        List<String> ids = clues.stream().map(Clue::getId).toList();
+                        if (CollectionUtils.isEmpty(ids)) {
+                            break;
+                        }
+                        //原数据
+                        List<Clue> originClueList = clueMapper.selectByIds(ids);
+                        if (CollectionUtils.isEmpty(originClueList)) {
+                            break;
+                        }
+                        Map<String, Clue> originClueMaps = originClueList.stream().collect(Collectors.toMap(Clue::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> originFieldValueMap = clueFieldService.getResourceFieldMap(ids, true);
+
+                        List<ClueField> insertField = new ArrayList<>();
+                        List<ClueFieldBlob> insertFieldBlob = new ArrayList<>();
+                        SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+                        ExtClueMapper clueBatchMapper = sqlSession.getMapper(ExtClueMapper.class);
+                        CommonMapper commonMapper = sqlSession.getMapper(CommonMapper.class);
+                        //更新
+                        if (CollectionUtils.isNotEmpty(clues)) {
+                            clues.forEach(clue -> {
+                                clue.setInSharedPool(true);
+                                clue.setPoolId(request.getPoolId());
+                                clueBatchMapper.updateClue(clue);
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(clueFields)) {
+                            List<ClueField> fieldList = clueFieldMapper.selectByIds(clueFields.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, ClueField> fieldMap = fieldList.stream().collect(Collectors.toMap(ClueField::getId, Function.identity()));
+                            clueFields.forEach(clueField -> {
+                                if (fieldMap.containsKey(clueField.getId())) {
+                                    commonMapper.updateCustomerField("clue_field", clueField);
+                                } else {
+                                    insertField.add(BeanUtils.copyBean(new ClueField(), clueField));
+                                }
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(clueFieldBlobs)) {
+                            List<ClueFieldBlob> blobList = clueFieldBlobMapper.selectByIds(clueFieldBlobs.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, ClueFieldBlob> blobMap = blobList.stream().collect(Collectors.toMap(ClueFieldBlob::getId, Function.identity()));
+                            clueFieldBlobs.forEach(clueFieldBlob -> {
+                                if (blobMap.containsKey(clueFieldBlob.getId())) {
+                                    commonMapper.updateCustomerField("clue_field_blob", clueFieldBlob);
+                                } else {
+                                    insertFieldBlob.add(BeanUtils.copyBean(new ClueFieldBlob(), clueFieldBlob));
+                                }
+                            });
+                        }
+
+                        sqlSession.flushStatements();
+                        SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+
+                        if (CollectionUtils.isNotEmpty(insertField)) {
+                            clueFieldMapper.batchInsert(insertField);
+                        }
+                        if (CollectionUtils.isNotEmpty(insertFieldBlob)) {
+                            clueFieldBlobMapper.batchInsert(insertFieldBlob);
+                        }
+
+                        SqlSession currentSession =
+                                SqlSessionUtils.getSqlSession(sqlSessionFactory);
+                        currentSession.clearCache();
+
+                        Map<String, Clue> modifiedClueMaps = clueMapper.selectByIds(ids).stream().collect(Collectors.toMap(Clue::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> modifiedFieldValueMap = clueFieldService.getResourceFieldMap(ids, true);
+
+                        //日志
+                        ids.forEach(id -> {
+                            Clue originDate = originClueMaps.get(id);
+                            Clue modifiedDate = modifiedClueMaps.get(id);
+                            baseService.handleUpdateLog(originDate, modifiedDate, originFieldValueMap.get(id), modifiedFieldValueMap.get(id), id, modifiedDate.getName());
+                            LogContextInfo contextInfo = OperationLogContext.getContext();
+                            if (contextInfo != null) {
+                                LogDTO logDTO = new LogDTO(orgId, id, userId, LogType.UPDATE, LogModule.CLUE_POOL_INDEX, modifiedDate.getName());
+                                logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                                logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                                logs.add(logDTO);
+                                OperationLogContext.clear();
+                            }
+                        });
+                        logService.batchAdd(logs);
+                    }
+                }
+
+            };
+            CustomFieldImportEventListener<Clue> eventListener = new CustomFieldImportEventListener<>(fields, Clue.class, orgId, userId,
+                    "clue_field", "clue_field_blob", afterDo, 2000, null, null, request.getImportType());
+            FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
+            return ImportResponse.builder().errorMessages(eventListener.getErrList())
+                    .successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
+        } catch (Exception e) {
+            log.error("clue import error: ", e);
+            throw new GenericException(e.getMessage());
+        }
+    }
+
 }

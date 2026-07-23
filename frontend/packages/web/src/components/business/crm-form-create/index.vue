@@ -151,6 +151,7 @@
     saveForm,
     initForm,
     initFormShowControl,
+    applyFieldLink,
     detail,
   } = useFormCreateApi({
     formKey,
@@ -234,32 +235,6 @@
     }
     if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type)) {
       return CrmFormCreateComponents.advancedComponents.dataTable;
-    }
-  }
-
-  function applyFieldLink(item: FormCreateField) {
-    const currentFieldValue = formDetail.value[item.id];
-    const linkField = fieldList.value.find((f) => f.id === item.linkProp?.targetField);
-    if (item.linkProp?.linkOptions) {
-      for (let i = 0; i < item.linkProp?.linkOptions.length; i++) {
-        const option = item.linkProp?.linkOptions[i];
-        if (isEqual(currentFieldValue, option.current)) {
-          if (linkField) {
-            if (option.method === 'HIDDEN') {
-              linkField.linkRange = Array.isArray(option.target) ? option.target : [option.target];
-            } else {
-              linkField.linkRange = undefined;
-              formDetail.value[linkField.id] = option.target;
-            }
-            return;
-          }
-        } else if (linkField) {
-          linkField.linkRange = undefined;
-        }
-      }
-      nextTick(() => {
-        formRef.value?.restoreValidation();
-      });
     }
   }
 
@@ -628,7 +603,11 @@
     }
     // 字段联动
     if (item.linkProp?.targetField && item.linkProp?.linkOptions.length) {
-      applyFieldLink(item);
+      applyFieldLink(item, () => {
+        nextTick(() => {
+          formRef.value?.restoreValidation();
+        });
+      });
     }
     // 单选数据源字段联动
     if (item.linkFields?.length && value && value.length) {
@@ -675,8 +654,11 @@
   function transformSubFieldsValue(item: FormCreateField, result: Record<string, any>[]) {
     const currentFieldValues = result.map((res) => res[item.businessKey || item.id]);
     currentFieldValues.forEach((fieldValue, index) => {
-      if ([FieldTypeEnum.DATA_SOURCE].includes(item.type) && Array.isArray(fieldValue)) {
-        // 处理数据源字段，单选传单个值
+      if (
+        [FieldTypeEnum.DATA_SOURCE, FieldTypeEnum.MEMBER, FieldTypeEnum.DEPARTMENT].includes(item.type) &&
+        Array.isArray(fieldValue)
+      ) {
+        // 处理数据源/成员/部门字段，单选传单个值
         result[index][item.businessKey || item.id] = result[index].price_sub
           ? fieldValue?.filter((e) => e !== result[index].price_sub)[0] // 价格表子表格特殊处理，price_sub是行号，这里不填充到fieldValue中
           : fieldValue?.[0];

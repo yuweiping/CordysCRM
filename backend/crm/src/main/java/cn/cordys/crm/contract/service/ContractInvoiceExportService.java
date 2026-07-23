@@ -50,7 +50,7 @@ public class ContractInvoiceExportService extends BaseExportService {
     public List<List<Object>> getExportData(String taskId, ExportDTO exportDTO) throws InterruptedException {
         ContractInvoicePageRequest pageRequest = (ContractInvoicePageRequest) exportDTO.getPageRequest();
         String orgId = exportDTO.getOrgId();
-        PageHelper.startPage(pageRequest.getCurrent(), pageRequest.getPageSize());
+        PageHelper.startPage(pageRequest.getCurrent(), pageRequest.getPageSize(), false);
         //获取数据
         List<ContractInvoiceListResponse> allList = extContractInvoiceMapper.list(pageRequest, orgId, exportDTO.getUserId(), exportDTO.getDeptDataPermission());
         // 根据审批状态导出权限过滤
@@ -88,6 +88,7 @@ public class ContractInvoiceExportService extends BaseExportService {
     public LinkedHashMap<String, Object> getSystemFieldMap(ContractInvoiceListResponse data, Map<String, BaseField> fieldConfigMap) {
         LinkedHashMap<String, Object> systemFieldMap = new LinkedHashMap<>();
         systemFieldMap.put("contractId", data.getContractName());
+        systemFieldMap.put("id", data.getId());
         systemFieldMap.put("owner", data.getOwnerName());
         systemFieldMap.put("name", data.getName());
         systemFieldMap.put("departmentId", data.getDepartmentName());
@@ -151,7 +152,7 @@ public class ContractInvoiceExportService extends BaseExportService {
      * 根据审批流状态权限过滤可导出的数据
      *
      * @param exportList 原始导出数据列表
-     * @param orgId    组织ID
+     * @param orgId      组织ID
      * @return 过滤后可导出的数据列表
      */
     private List<ContractInvoiceListResponse> filterExportPermission(List<ContractInvoiceListResponse> exportList, String orgId) {

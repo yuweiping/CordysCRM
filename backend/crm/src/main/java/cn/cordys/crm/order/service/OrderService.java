@@ -32,6 +32,7 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.approval.annotation.HitApproval;
 import cn.cordys.crm.approval.constants.ApprovalFormTypeEnum;
+import cn.cordys.crm.approval.constants.ApprovalResourceUpdateType;
 import cn.cordys.crm.approval.constants.ApprovalStatus;
 import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
 import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
@@ -138,9 +139,6 @@ public class OrderService implements ApprovalResourceHandler {
     public Order add(OrderAddRequest request, String operatorId, String orgId) {
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
-        if (CollectionUtils.isEmpty(moduleFields)) {
-            throw new GenericException(Translator.get("order.field.required"));
-        }
         if (moduleFormConfigDTO == null) {
             throw new GenericException(Translator.get("order.form.config.required"));
         }
@@ -158,6 +156,7 @@ public class OrderService implements ApprovalResourceHandler {
         order.setCreateUser(operatorId);
         order.setUpdateTime(System.currentTimeMillis());
         order.setUpdateUser(operatorId);
+        order.setApproved(false);
 
         //判断总金额
         setAmount(request.getAmount(), order);
@@ -355,9 +354,6 @@ public class OrderService implements ApprovalResourceHandler {
         Order oldOrder = orderMapper.selectByPrimaryKey(request.getId());
         List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
-        if (CollectionUtils.isEmpty(moduleFields)) {
-            throw new GenericException(Translator.get("order.field.required"));
-        }
         if (moduleFormConfigDTO == null) {
             throw new GenericException(Translator.get("order.form.config.required"));
         }
@@ -546,15 +542,15 @@ public class OrderService implements ApprovalResourceHandler {
         }
 
         ResourceApprovalFieldUpdateParam stageField = postFieldParam.getFields().stream().filter(param -> Strings.CS.equals(param.getFieldId(), "stage") && param.getFieldValue() != null).findFirst().orElse(null);
-        handleStageSetting(stageField, order, postFieldParam);
+        boolean stageFlag = handleStageSetting(stageField, order, postFieldParam);
 
         for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postFieldParam.getFields()) {
-            if (Strings.CS.equals(fieldUpdateParam.getFieldId(), "stage") && fieldUpdateParam.getFieldValue() != null) {
+            if (Strings.CS.equals(fieldUpdateParam.getFieldId(), "stage") && fieldUpdateParam.getFieldValue() != null && stageFlag) {
                 orderFieldService.setResourceFieldValue(order, "stage", fieldUpdateParam.getFieldValue());
                 continue;
             }
             if (!fieldConfigMap.containsKey(fieldUpdateParam.getFieldId()) || fieldUpdateParam.getFieldValue() == null) {
-                return;
+                continue;
             }
             BaseField fieldConfig = fieldConfigMap.get(fieldUpdateParam.getFieldId());
             AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
@@ -631,16 +627,23 @@ public class OrderService implements ApprovalResourceHandler {
      * @param originOrder
      * @param postFieldParam
      */
-    private void handleStageSetting(ResourceApprovalFieldUpdateParam stageField, Order originOrder, ResourceApprovalPostUpdateParam postFieldParam) {
+    private boolean handleStageSetting(ResourceApprovalFieldUpdateParam stageField, Order originOrder, ResourceApprovalPostUpdateParam postFieldParam) {
         if (stageField == null) {
-            return;
+            return true;
         }
-        if (!stageAdvancedConfigService.checkStage(originOrder.getStage(), stageField.getFieldValue().toString(), FormKey.ORDER.getKey())) {
-            return;
+        try {
+            if (!stageAdvancedConfigService.checkStage(originOrder.getStage(), stageField.getFieldValue().toString(), FormKey.ORDER.getKey())) {
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
         }
         StageConfigResponse first = extOrderStageConfigMapper.getStageConfigList(originOrder.getOrganizationId()).getFirst();
         if (Strings.CI.equals(first.getCirculationType(), CirculationTypeEnum.ADVANCED.name())) {
             StageAdvancedConfig config = extStageAdvancedConfigMapper.getConfigByOriginAndTarget(originOrder.getStage(), stageField.getFieldValue().toString(), FormKey.ORDER.name());
+            if (config == null || config.getFieldConfig() == null) {
+                return true;
+            }
             List<CirculationFieldValue> circulationFieldValues = JSON.parseObject(config.getFieldConfig(), new TypeReference<List<CirculationFieldValue>>() {
             });
             List<ResourceApprovalFieldUpdateParam> fields = new ArrayList<>();
@@ -663,6 +666,7 @@ public class OrderService implements ApprovalResourceHandler {
             postFieldParam.setFields(newFields);
 
         }
+        return true;
     }
 
 
@@ -1050,5 +1054,34 @@ public class OrderService implements ApprovalResourceHandler {
             updateSnapshotApprovalStatus(param);
         });
         extOrderMapper.updateOldApprovalStatusNone();
+    }
+
+    @Override
+    public String getPreUpdateSnapshotData(String resourceId, String userId, String orgId) {
+        Order order = orderMapper.selectByPrimaryKey(resourceId);
+        if (order == null) {
+            return null;
+        }
+        List<BaseModuleFieldValue> orderFields = orderFieldService.getModuleFieldValuesByResourceId(resourceId);
+        OrderUpdateRequest snapshotReq = BeanUtils.copyBean(new OrderUpdateRequest(), order);
+        snapshotReq.setAmount(order.getAmount() != null ? order.getAmount().toString() : null);
+        snapshotReq.setUpdateType(ApprovalResourceUpdateType.APPROVAL.getValue());
+        ModuleFormConfigDTO orderFormConfig = getFormConfig(order.getOrganizationId());
+        snapshotReq.setModuleFormConfigDTO(orderFormConfig);
+        moduleFormService.processBusinessFieldValues(snapshotReq, orderFields, orderFormConfig);
+        return JSON.toJSONString(snapshotReq);
+    }
+
+    @Override
+    public void revertToSnapshot(String resourceId, String userId, String orgId, String snapshotData) {
+        try {
+            OrderUpdateRequest request = JSON.parseObject(snapshotData, OrderUpdateRequest.class);
+            if (request == null) {
+                return;
+            }
+            CommonBeanFactory.getBean(OrderService.class).update(request, userId, orgId);
+        } catch (Exception e) {
+            log.error("审批回退还原业务数据失败, resourceId:{}", resourceId, e);
+        }
     }
 }

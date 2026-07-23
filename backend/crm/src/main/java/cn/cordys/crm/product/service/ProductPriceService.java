@@ -30,6 +30,7 @@ import cn.cordys.crm.product.dto.request.ProductPricePageRequest;
 import cn.cordys.crm.product.dto.response.ProductPriceGetResponse;
 import cn.cordys.crm.product.dto.response.ProductPriceResponse;
 import cn.cordys.crm.product.mapper.ExtProductPriceMapper;
+import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
@@ -403,7 +404,8 @@ public class ProductPriceService {
                             "product_price_field",
                             currentOrg,
                             mergeCellEventListener.getMergeCellMap(),
-                            mergeCellEventListener.getMergeRowDataMap()
+                            mergeCellEventListener.getMergeRowDataMap(),
+                            ImportType.ADD.name()
                     );
 
             FastExcelFactory.read(file.getInputStream(), eventListener)
@@ -542,10 +544,12 @@ public class ProductPriceService {
                 currentOrg,
                 currentUser,
                 "product_price_field",
+                "product_price_field_blob",
                 afterDo,
                 2000,
                 mergeCellMap,
-                mergeRowDataMap
+                mergeRowDataMap,
+                ImportType.ADD.name()
         );
     }
 

@@ -22,6 +22,7 @@ import {
   DeleteClueUrl,
   DeleteClueViewUrl,
   DeletePoolLeadViewUrl,
+  DownloadPoolLeadTemplateUrl,
   DownloadTemplateUrl,
   DragClueViewUrl,
   DragPoolLeadViewUrl,
@@ -59,9 +60,11 @@ import {
   GetPoolLeadViewListUrl,
   GetPoolOptionsUrl,
   ImportLeadUrl,
+  ImportPoolLeadUrl,
   MoveToPoolLeadUrl,
   PickClueUrl,
   PreCheckImportUrl,
+  PreCheckPoolLeadImportUrl,
   ReTransitionCustomerUrl,
   TransformClueUrl,
   UpdateClueFollowPlanStatusUrl,
@@ -90,6 +93,7 @@ import type {
   ChartResponseDataItem,
   CommonList,
   GenerateChartParams,
+  ImportUploadParams,
   TableDraggedParams,
   TableExportParams,
   TableExportSelectedParams,
@@ -380,8 +384,8 @@ export default function useProductApi(CDR: CordysAxios) {
     return CDR.post({ url: DragClueViewUrl, data });
   }
 
-  function preCheckImportLead(file: File) {
-    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckImportUrl }, { fileList: [file] }, 'file');
+  function preCheckImportLead(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckImportUrl }, params, 'file');
   }
 
   function downloadLeadTemplate() {
@@ -394,8 +398,34 @@ export default function useProductApi(CDR: CordysAxios) {
     );
   }
 
-  function importLead(file: File) {
-    return CDR.uploadFile({ url: ImportLeadUrl }, { fileList: [file] }, 'file');
+  function importLead(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportLeadUrl }, params, 'file');
+  }
+
+  function preCheckImportPoolLead(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>(
+      { url: PreCheckPoolLeadImportUrl },
+      params,
+      'file'
+    );
+  }
+
+  function downloadPoolLeadTemplate() {
+    return CDR.get(
+      {
+        url: DownloadPoolLeadTemplateUrl,
+        responseType: 'blob',
+      },
+      { isTransformResponse: false, isReturnNativeResponse: true }
+    );
+  }
+
+  function importPoolLead(params: ImportUploadParams) {
+    return CDR.uploadFile(
+      { url: ImportPoolLeadUrl },
+      params,
+      'file'
+    );
   }
 
   function getAdvancedSearchClueList(data: CustomerTableParams) {
@@ -511,6 +541,9 @@ export default function useProductApi(CDR: CordysAxios) {
     preCheckImportLead,
     downloadLeadTemplate,
     importLead,
+    preCheckImportPoolLead,
+    downloadPoolLeadTemplate,
+    importPoolLead,
     getAdvancedSearchClueList,
     getAdvancedCluePoolList,
     getAdvancedSearchClueDetail,

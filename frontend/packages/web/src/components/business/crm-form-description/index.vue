@@ -43,9 +43,9 @@
               showLabel: false,
             }"
             :path="item.fieldInfo.id"
-            :disabled="!hasAnyPermission(['OPPORTUNITY_MANAGEMENT:UPDATE'])"
             isDescriptionRender
             :feedback="feedbackMap[item.fieldInfo.id]"
+            needInitDetail
             class="flex-1"
           />
           <div v-else>{{ item.value || '-' }}</div>
@@ -70,9 +70,10 @@
             :disabled="!hasAnyPermission(['OPPORTUNITY_MANAGEMENT:UPDATE'])"
             isDescriptionRender
             :feedback="feedbackMap[item.fieldInfo.id]"
+            needInitDetail
             class="flex-1"
           />
-          <div v-if="item.value" v-html="item.value?.toString().replace(/\n/g, '<br />')"></div>
+          <div v-else-if="item.value" v-html="item.value?.toString().replace(/\n/g, '<br />')"></div>
           <div v-else>-</div>
         </div>
       </template>
@@ -85,14 +86,15 @@
           >
             {{ item.label }}
           </div>
-          <n-tooltip :delay="300">
+          <n-tooltip v-if="item.value !== '-'" :delay="300">
             <template #trigger>
               <div class="one-line-text cursor-pointer text-[var(--primary-8)]" @click="openLink(item)">
-                {{ item.value || '-' }}
+                {{ item.value }}
               </div>
             </template>
-            {{ item.value || '-' }}
+            {{ item.value }}
           </n-tooltip>
+          <div v-else>-</div>
         </div>
       </template>
 
@@ -103,7 +105,7 @@
             {{ item.label }}
           </div>
           <CrmTableButton
-            v-if="canOpenDataSource(item) && item.value"
+            v-if="canOpenDataSource(item) && item.value !== '-'"
             class="crm-form-description-link-button flex-1 overflow-hidden"
             :class="`justify-${props.valueAlign ?? 'end'}`"
             @click="openDataSource(item)"
@@ -114,20 +116,21 @@
             {{ item.value }}
           </CrmTableButton>
           <n-tooltip
-            v-else
+            v-else-if="
+              item.value !== undefined && item.value !== null && item.value?.toString() !== '' && item.value !== '-'
+            "
             :delay="300"
             :placement="(props.tooltipPosition || item.tooltipPosition) ?? 'top-start'"
             :disabled="item.value === undefined || item.value === null || item.value?.toString() === ''"
           >
             <template #trigger>
               <div class="one-line-text">
-                {{
-                  item.value === undefined || item.value === null || item.value?.toString() === '' ? '-' : item.value
-                }}
+                {{ item.value }}
               </div>
             </template>
             {{ item.value }}
           </n-tooltip>
+          <div v-else>-</div>
         </div>
       </template>
 
@@ -165,17 +168,75 @@
             {{ item.label }}
           </div>
           <CrmDateTime
+            v-if="
+              editableByPermission.includes(item.fieldInfo.id) ||
+              (item.fieldInfo.businessKey === 'expectedEndTime' && !item.fieldInfo.resourceFieldId)
+            "
             v-model:value="formDetail[item.fieldInfo.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
             :path="item.fieldInfo.id"
-            :disabled="!hasAnyPermission(['OPPORTUNITY_MANAGEMENT:UPDATE'])"
+            :disabled="
+              item.fieldInfo.businessKey === 'expectedEndTime' && !item.fieldInfo.resourceFieldId
+                ? !item.fieldInfo.editable
+                : !editableByPermission.includes(item.fieldInfo.id)
+            "
             isDescriptionRender
             :feedback="feedbackMap[item.fieldInfo.id]"
-            @change="() => handleFormChange()"
+            needInitDetail
+            @change="editableByPermission.includes(item.fieldInfo.id) ? undefined : handleFormChange()"
           />
+          <div v-else>{{ item.value }}</div>
+        </div>
+      </template>
+      <template #[FieldTypeEnum.SELECT]="{ item }">
+        <div class="field-line flex w-full items-center">
+          <div class="mr-[16px] text-nowrap text-[var(--text-n2)]" :style="{ width: props.labelWidth || '120px' }">
+            {{ item.label }}
+          </div>
+          <CrmSelect
+            v-if="editableByPermission.includes(item.fieldInfo.id)"
+            v-model:value="formDetail[item.fieldInfo.id]"
+            :field-config="{
+              ...item.fieldInfo,
+              showLabel: false,
+            }"
+            :path="item.fieldInfo.id"
+            isDescriptionRender
+            :feedback="feedbackMap[item.fieldInfo.id]"
+            class="w-[180px]"
+            needInitDetail
+            @update:value="handleFieldChange(item.fieldInfo, $event)"
+          />
+          <CrmTagGroup
+            v-else-if="Array.isArray(item.value) && item.value.length"
+            :tags="item.value"
+            :label-key="item.tagProps?.labelKey"
+            :class="`justify-${props.valueAlign ?? 'end'}`"
+          />
+          <div v-else>-</div>
+        </div>
+      </template>
+      <template #[FieldTypeEnum.INPUT_NUMBER]="{ item }">
+        <div class="field-line flex w-full items-center">
+          <div class="mr-[16px] text-[var(--text-n2)]" :style="{ width: props.labelWidth || '120px' }">
+            {{ item.label }}
+          </div>
+          <CrmInputNumber
+            v-if="editableByPermission.includes(item.fieldInfo.id)"
+            v-model:value="formDetail[item.fieldInfo.id]"
+            :field-config="{
+              ...item.fieldInfo,
+              showLabel: false,
+            }"
+            :path="item.fieldInfo.id"
+            isDescriptionRender
+            :feedback="feedbackMap[item.fieldInfo.id]"
+            needInitDetail
+          />
+          <div v-else>{{ item.value }}</div>
         </div>
       </template>
       <template #[FieldTypeEnum.ATTACHMENT]="{ item }">
@@ -254,6 +315,8 @@
   import CrmFormCreateDivider from '@/components/business/crm-form-create/components/basic/divider.vue';
   import CrmSubTable from '@/components/business/crm-sub-table/index.vue';
   import CrmDateTime from '../crm-form-create/components/basic/dateTime.vue';
+  import CrmInputNumber from '../crm-form-create/components/basic/inputNumber.vue';
+  import CrmSelect from '../crm-form-create/components/basic/select.vue';
   import CrmSingleText from '../crm-form-create/components/basic/singleText.vue';
   import CrmTextarea from '../crm-form-create/components/basic/textarea.vue';
 
@@ -352,6 +415,8 @@
     initFormConfig,
     initFormDescription,
     saveForm,
+    initFormShowControl,
+    applyFieldLink,
   } = useFormCreateApi({
     formKey,
     sourceId,
@@ -366,7 +431,8 @@
       .filter(
         (item) =>
           !props.hiddenFields?.includes(item.fieldInfo.id) &&
-          !hiddenFieldByPermission.value?.includes(item.fieldInfo.id)
+          !hiddenFieldByPermission.value?.includes(item.fieldInfo.id) &&
+          item.fieldInfo?.show !== false
       )
       .map((item) => {
         // 独占一行
@@ -414,6 +480,17 @@
     return true;
   }
 
+  function handleFieldChange(item: FormCreateField, value: any) {
+    // 控制显示规则
+    if (item.showControlRules?.length) {
+      initFormShowControl();
+    }
+    // 字段联动
+    if (item.linkProp?.targetField && item.linkProp?.linkOptions.length) {
+      applyFieldLink(item);
+    }
+  }
+
   function handleFormChange(callback?: () => void) {
     nextTick(async () => {
       try {
@@ -441,7 +518,7 @@
               });
             }
           }
-          if (!validateField(item)) {
+          if (item.show && !validateField(item)) {
             hasErrorField = true;
             break;
           }

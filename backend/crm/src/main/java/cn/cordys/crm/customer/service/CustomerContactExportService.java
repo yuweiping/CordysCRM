@@ -37,7 +37,7 @@ public class CustomerContactExportService extends BaseExportService {
         return buildExportMergeResult(taskId, exportParam, dataList,
                 CustomerContactListResponse::getModuleFields,
                 (detail, fieldParam, metas, cache) -> buildDataWithSub(detail.getModuleFields(), fieldParam, metas,
-                        CustomerContactFieldUtils.getSystemFieldMap(detail), cache));
+                        CustomerContactFieldUtils.getSystemFieldMap(detail, exportParam.getLocale()), cache));
     }
 
     private List<CustomerContactListResponse> collectExportList(ExportDTO exportParam) {
@@ -48,7 +48,7 @@ public class CustomerContactExportService extends BaseExportService {
             return extCustomerContactMapper.getListByIds(exportParam.getSelectIds());
         }
         var request = (CustomerContactPageRequest) exportParam.getPageRequest();
-        PageHelper.startPage(request.getCurrent(), request.getPageSize());
+        PageHelper.startPage(request.getCurrent(), request.getPageSize(), false);
         return extCustomerContactMapper.list(request, userId, orgId, deptDataPermission);
     }
 }

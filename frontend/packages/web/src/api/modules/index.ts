@@ -177,6 +177,8 @@ export const {
   preCheckImportProductPrice,
   importProductPrice,
   copyProductPrice,
+  exportProductAll,
+  exportProductSelected,
 } = productApi;
 
 export const {
@@ -264,6 +266,7 @@ export const {
   assignClue,
   getClueTab,
   importLead,
+  importPoolLead,
   getClueList,
   getPoolClue,
   addClueView,
@@ -298,6 +301,7 @@ export const {
   generateLeadChart,
   exportClueSelected,
   preCheckImportLead,
+  preCheckImportPoolLead,
   deleteLeadPoolView,
   updateLeadPoolView,
   enableLeadPoolView,
@@ -311,6 +315,7 @@ export const {
   deleteClueFollowPlan,
   cancelClueFollowPlan,
   downloadLeadTemplate,
+  downloadPoolLeadTemplate,
   getClueFollowPlanList,
   getGlobalCluePoolList,
   getLeadPoolViewDetail,
@@ -334,6 +339,7 @@ export const {
   getCustomer,
   mergeAccount,
   importAccount,
+  importPoolAccount,
   importContact,
   updateCustomer,
   deleteCustomer,
@@ -393,6 +399,7 @@ export const {
   getGlobalCustomerList,
   exportContactSelected,
   preCheckImportAccount,
+  preCheckImportPoolAccount,
   preCheckImportContact,
   deleteAccountPoolView,
   updateAccountPoolView,
@@ -410,6 +417,7 @@ export const {
   isCustomerOpenSeaNoPick,
   getCustomerRelationList,
   downloadAccountTemplate,
+  downloadPoolAccountTemplate,
   downloadContactTemplate,
   updateCustomerFollowPlan,
   deleteCustomerFollowPlan,
@@ -544,6 +552,9 @@ export const {
   getInvoicedFormSnapshotConfig,
   exportInvoicedAll,
   exportInvoicedSelected,
+  preCheckImportContractInvoiced,
+  downloadContractInvoicedTemplate,
+  importContractInvoiced,
   revokeInvoiced,
   approvalInvoiced,
   batchDeleteInvoiced,
@@ -571,6 +582,9 @@ export const {
   updateContractStage,
   saveContractAdvanceConfig,
   switchContractCirculationType,
+  preCheckImportContractPaymentPlan,
+  importContractPaymentPlan,
+  downloadContractPaymentPlanTemplate,
 } = contractApi;
 
 export const {
@@ -754,7 +768,7 @@ export const {
   batchRemoveRoleMember,
 } = roleApi;
 
-export const { login, signout, isLogin, getKey, getThirdCallback, getThirdOauthCallback } = loginApi;
+export const { login, signout, isLogin, getKey, getThirdCallback, getThirdOauthCallback, getOauthState } = loginApi;
 
 export const { getSystemVersion, changeLocaleBackEnd } = sysApi;
 

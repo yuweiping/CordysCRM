@@ -4,28 +4,29 @@ import cn.cordys.aspectj.annotation.OperationLog;
 import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
+import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
 import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.domain.BaseResourceSubField;
 import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.mapper.CommonMapper;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.response.result.CrmHttpResultCode;
 import cn.cordys.common.service.BaseResourceFieldService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
+import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.form.domain.*;
-import cn.cordys.crm.form.dto.request.CustomFormDataAddRequest;
-import cn.cordys.crm.form.dto.request.CustomFormDataBatchUpdateRequest;
-import cn.cordys.crm.form.dto.request.CustomFormDataPageRequest;
-import cn.cordys.crm.form.dto.request.CustomFormDataUpdateRequest;
+import cn.cordys.crm.form.dto.request.*;
 import cn.cordys.crm.form.dto.response.CustomFormDataGetResponse;
 import cn.cordys.crm.form.dto.response.CustomFormDataListResponse;
 import cn.cordys.crm.form.mapper.ExtCustomFormDataMapper;
+import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.domain.ModuleForm;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.ImportResponse;
@@ -51,11 +52,17 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -91,6 +98,8 @@ public class CustomFormDataService {
     private BaseMapper<CustomFormDataField> customFormDataFieldMapper;
     @Resource
     private BaseMapper<CustomFormDataFieldBlob> customFormDataFieldBlobMapper;
+    @Resource
+    private SqlSessionFactory sqlSessionFactory;
 
     public PagerWithOption<List<CustomFormDataListResponse>> page(CustomFormDataPageRequest request, String userId, String orgId, boolean checkDataPermission) {
         String formId = request.getCustomFormId();
@@ -199,7 +208,6 @@ public class CustomFormDataService {
      * 获取详情（⚠️反射调用; 勿修改入参, 返回, 方法名!）
      *
      * @param id 订单ID
-     *
      * @return 详情
      */
     public CustomFormDataGetResponse getSimple(String id) {
@@ -216,6 +224,7 @@ public class CustomFormDataService {
 
     /**
      * 批量获取自定义数据详情 (用于数据源批量查询优化)
+     *
      * @param ids ID集合
      * @return 详情列表
      */
@@ -291,7 +300,7 @@ public class CustomFormDataService {
                 // 过滤掉引用字段（显示字段），这些字段不需要参与日志对比
                 List<BaseModuleFieldValue> logOriginFields = filterRefFields(originFields);
                 List<BaseModuleFieldValue> logModifiedFields = filterRefFields(request.getModuleFields());
-				baseService.handleUpdateLog(originData, updateData, logOriginFields, logModifiedFields, originData.getId(), originData.getName());
+                baseService.handleUpdateLog(originData, updateData, logOriginFields, logModifiedFields, originData.getId(), originData.getName());
                 customFormDataFieldService.deleteByResourceId(request.getId());
                 customFormDataFieldService.saveModuleField(updateData, orgId, userId, request.getModuleFields(), true);
             } else {
@@ -471,9 +480,9 @@ public class CustomFormDataService {
     /**
      * 下载导入模板
      *
-     * @param response   响应
+     * @param response     响应
      * @param customFormId 自定义表单ID
-     * @param orgId      组织ID
+     * @param orgId        组织ID
      */
     public void downloadImportTpl(HttpServletResponse response, String customFormId, String orgId) {
         CustomForm customForm = customFormMapper.selectByPrimaryKey(customFormId);
@@ -488,52 +497,144 @@ public class CustomFormDataService {
     /**
      * 导入预检查
      *
-     * @param file         导入文件
-     * @param customFormId 自定义表单ID
-     * @param orgId        组织ID
-     *
+     * @param file    导入文件
+     * @param request
+     * @param orgId   组织ID
      * @return 导入检查信息
      */
-    public ImportResponse importPreCheck(MultipartFile file, String customFormId, String orgId) {
+    public ImportResponse importPreCheck(MultipartFile file, CustomerFormImportRequest request, String orgId) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
-        return checkImportExcel(file, customFormId, orgId);
+        return checkImportExcel(file, request, orgId);
     }
 
     /**
      * 自定义表单数据导入
      *
-     * @param file         导入文件
-     * @param customFormId 自定义表单ID
-     * @param orgId        组织ID
-     * @param userId       用户ID
-     *
+     * @param file    导入文件
+     * @param request
+     * @param orgId   组织ID
+     * @param userId  用户ID
      * @return 导入结果
      */
-    public ImportResponse realImport(MultipartFile file, String customFormId, String orgId, String userId) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ImportResponse realImport(MultipartFile file, CustomerFormImportRequest request, String orgId, String userId) {
         try {
-            CustomFormDataFieldService.setFormKey(customFormId);
-            List<BaseField> fields = moduleFormService.getAllFields(customFormId, orgId);
+            CustomFormDataFieldService.setFormKey(request.getCustomFormId());
+            List<BaseField> fields = moduleFormService.getAllFields(request.getCustomFormId(), orgId);
             CustomImportAfterDoConsumer<CustomFormData, BaseResourceSubField> afterDo = (dataList, fieldList, fieldBlobList) -> {
                 var logs = new ArrayList<LogDTO>();
-                dataList.forEach(data -> {
-                    data.setCustomFormId(customFormId);
-                    data.setOrganizationId(orgId);
-                    if (StringUtils.isBlank(data.getOwner())) {
-                        data.setOwner(userId);
+                ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
+                switch (importType) {
+                    case ADD -> {
+                        dataList.forEach(data -> {
+                            data.setCustomFormId(request.getCustomFormId());
+                            data.setOrganizationId(orgId);
+                            if (StringUtils.isBlank(data.getOwner())) {
+                                data.setOwner(userId);
+                            }
+                            logs.add(new LogDTO(orgId, data.getId(), userId, LogType.ADD, LogModule.CUSTOM_FORM_DATA, data.getName()));
+                        });
+                        customFormDataMapper.batchInsert(dataList);
+                        customFormDataFieldMapper.batchInsert(fieldList.stream()
+                                .map(field -> BeanUtils.copyBean(new CustomFormDataField(), field)).toList());
+                        customFormDataFieldBlobMapper.batchInsert(fieldBlobList.stream()
+                                .map(field -> BeanUtils.copyBean(new CustomFormDataFieldBlob(), field)).toList());
+                        logService.batchAdd(logs);
+
                     }
-                    logs.add(new LogDTO(orgId, data.getId(), userId, LogType.ADD, LogModule.CUSTOM_FORM_DATA, data.getName()));
-                });
-                customFormDataMapper.batchInsert(dataList);
-                customFormDataFieldMapper.batchInsert(fieldList.stream()
-                        .map(field -> BeanUtils.copyBean(new CustomFormDataField(), field)).toList());
-                customFormDataFieldBlobMapper.batchInsert(fieldBlobList.stream()
-                        .map(field -> BeanUtils.copyBean(new CustomFormDataFieldBlob(), field)).toList());
-                logService.batchAdd(logs);
+                    case UPDATE -> {
+                        List<String> ids = dataList.stream().map(CustomFormData::getId).toList();
+                        if (CollectionUtils.isEmpty(ids)) {
+                            break;
+                        }
+                        //原数据
+                        List<CustomFormData> originList = customFormDataMapper.selectByIds(ids);
+                        if (CollectionUtils.isEmpty(originList)) {
+                            break;
+                        }
+                        Map<String, CustomFormData> originMaps = originList.stream().collect(Collectors.toMap(CustomFormData::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> originFieldValueMap = customFormDataFieldService.getResourceFieldMap(ids, true);
+
+                        List<CustomFormDataField> insertField = new ArrayList<>();
+                        List<CustomFormDataFieldBlob> insertFieldBlob = new ArrayList<>();
+                        SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+                        ExtCustomFormDataMapper batchMapper = sqlSession.getMapper(ExtCustomFormDataMapper.class);
+                        CommonMapper commonMapper = sqlSession.getMapper(CommonMapper.class);
+                        //更新
+                        if (CollectionUtils.isNotEmpty(dataList)) {
+                            dataList.forEach(data -> {
+                                data.setCustomFormId(request.getCustomFormId());
+                                data.setOrganizationId(orgId);
+                                if (StringUtils.isBlank(data.getOwner())) {
+                                    data.setOwner(userId);
+                                }
+                                batchMapper.updateData(data);
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(fieldList)) {
+                            List<CustomFormDataField> formFieldList = customFormDataFieldMapper.selectByIds(fieldList.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, CustomFormDataField> fieldMap = formFieldList.stream().collect(Collectors.toMap(CustomFormDataField::getId, Function.identity()));
+                            fieldList.forEach(field -> {
+                                if (fieldMap.containsKey(field.getId())) {
+                                    commonMapper.updateCustomerField("custom_form_data_field", field);
+                                } else {
+                                    insertField.add(BeanUtils.copyBean(new CustomFormDataField(), field));
+                                }
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(fieldBlobList)) {
+                            List<CustomFormDataFieldBlob> blobList = customFormDataFieldBlobMapper.selectByIds(fieldBlobList.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, CustomFormDataFieldBlob> blobMap = blobList.stream().collect(Collectors.toMap(CustomFormDataFieldBlob::getId, Function.identity()));
+                            fieldBlobList.forEach(fieldBlob -> {
+                                if (blobMap.containsKey(fieldBlob.getId())) {
+                                    commonMapper.updateCustomerField("custom_form_data_field_blob", fieldBlob);
+                                } else {
+                                    insertFieldBlob.add(BeanUtils.copyBean(new CustomFormDataFieldBlob(), fieldBlob));
+                                }
+                            });
+                        }
+
+                        sqlSession.flushStatements();
+                        SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+
+                        if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(insertField)) {
+                            customFormDataFieldMapper.batchInsert(insertField);
+                        }
+                        if (org.apache.commons.collections4.CollectionUtils.isNotEmpty(insertFieldBlob)) {
+                            customFormDataFieldBlobMapper.batchInsert(insertFieldBlob);
+                        }
+
+                        SqlSession currentSession =
+                                SqlSessionUtils.getSqlSession(sqlSessionFactory);
+                        currentSession.clearCache();
+
+                        Map<String, CustomFormData> modifiedMaps = customFormDataMapper.selectByIds(ids).stream().collect(Collectors.toMap(CustomFormData::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> modifiedFieldValueMap = customFormDataFieldService.getResourceFieldMap(ids, true);
+
+                        //日志
+                        ids.forEach(id -> {
+                            CustomFormData originDate = originMaps.get(id);
+                            CustomFormData modifiedDate = modifiedMaps.get(id);
+                            baseService.handleUpdateLog(originDate, modifiedDate, originFieldValueMap.get(id), modifiedFieldValueMap.get(id), id, modifiedDate.getName());
+                            LogContextInfo contextInfo = OperationLogContext.getContext();
+                            if (contextInfo != null) {
+                                LogDTO logDTO = new LogDTO(orgId, id, userId, LogType.UPDATE, LogModule.CUSTOM_FORM_DATA, modifiedDate.getName());
+                                logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                                logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                                logs.add(logDTO);
+                                OperationLogContext.clear();
+                            }
+                        });
+                        logService.batchAdd(logs);
+                    }
+                }
             };
             CustomFieldImportEventListener<CustomFormData> eventListener = new CustomFieldImportEventListener<>(
-                    fields, CustomFormData.class, orgId, userId, "custom_form_data_field", afterDo, 2000, null, null);
+                    fields, CustomFormData.class, orgId, userId, "custom_form_data_field","custom_form_data_field_blob", afterDo, 2000, null, null, request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener)
                     .headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
@@ -549,17 +650,16 @@ public class CustomFormDataService {
     /**
      * 检查导入文件
      *
-     * @param file         文件
-     * @param customFormId 自定义表单ID
-     * @param orgId        组织ID
-     *
+     * @param file    文件
+     * @param request
+     * @param orgId   组织ID
      * @return 检查结果
      */
-    private ImportResponse checkImportExcel(MultipartFile file, String customFormId, String orgId) {
+    private ImportResponse checkImportExcel(MultipartFile file, CustomerFormImportRequest request, String orgId) {
         try {
-            CustomFormDataFieldService.setFormKey(customFormId);
-            List<BaseField> fields = moduleFormService.getAllCustomImportFields(customFormId, orgId);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "custom_form_data", "custom_form_data_field", orgId);
+            CustomFormDataFieldService.setFormKey(request.getCustomFormId());
+            List<BaseField> fields = moduleFormService.getAllCustomImportFields(request.getCustomFormId(), orgId);
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "custom_form_data", "custom_form_data_field", orgId, request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener)
                     .headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())

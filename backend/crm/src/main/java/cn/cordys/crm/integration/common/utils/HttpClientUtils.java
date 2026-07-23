@@ -143,9 +143,7 @@ public class HttpClientUtils {
      * @param callable   请求逻辑
      * @param maxRetries 最大重试次数
      * @param url        请求 URL（仅用于日志）
-     *
      * @return 响应字符串
-     *
      * @throws RestClientException 重试耗尽后抛出
      */
     private static String executeWithRetry(HttpCallable callable, int maxRetries, String url) {

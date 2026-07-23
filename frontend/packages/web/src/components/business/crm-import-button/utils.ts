@@ -1,98 +1,140 @@
 import { ImportTypeExcludeFormDesignEnum } from '@lib/shared/enums/commonEnum';
 import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+import type { ImportUploadParams } from '@lib/shared/models/common';
 import { ValidateInfo } from '@lib/shared/models/system/org';
 
 import {
   downloadAccountTemplate,
   downloadBusinessTitleTemplate,
   downloadContactTemplate,
+  downloadContractInvoicedTemplate,
+  downloadContractPaymentPlanTemplate,
   downloadContractPaymentRecordTemplate,
   downloadCustomFormTemplate,
   downloadLeadTemplate,
   downloadOptTemplate,
+  downloadPoolAccountTemplate,
+  downloadPoolLeadTemplate,
   downloadProductPriceTemplate,
   downloadProductTemplate,
   importAccount,
   importBusinessTitle,
   importContact,
+  importContractInvoiced,
+  importContractPaymentPlan,
   importContractPaymentRecord,
   importCustomForm,
   importLead,
   importOpportunity,
+  importPoolAccount,
+  importPoolLead,
   importProduct,
   importProductPrice,
   preCheckImportAccount,
   preCheckImportBusinessTitle,
   preCheckImportContact,
+  preCheckImportContractInvoiced,
+  preCheckImportContractPaymentPlan,
   preCheckImportContractPaymentRecord,
   preCheckImportCustomForm,
   preCheckImportLead,
   preCheckImportOpt,
+  preCheckImportPoolAccount,
+  preCheckImportPoolLead,
   preCheckImportProduct,
   preCheckImportProductPrice,
 } from '@/api/modules';
 
 export type ImportApiType =
   | FormDesignKeyEnum.CLUE
+  | FormDesignKeyEnum.CLUE_POOL
   | FormDesignKeyEnum.BUSINESS
   | FormDesignKeyEnum.CUSTOMER
+  | FormDesignKeyEnum.CUSTOMER_OPEN_SEA
   | FormDesignKeyEnum.CONTACT
   | FormDesignKeyEnum.PRODUCT
+  | FormDesignKeyEnum.INVOICE
+  | FormDesignKeyEnum.CONTRACT_PAYMENT
   | FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD
   | FormDesignKeyEnum.PRICE
   | ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_TITLE_IMPORT
   | FormDesignKeyEnum.CUSTOM_FORM;
 
 export interface importRequestType {
-  preCheck: (file: File, importType?: string, customFormId?: string) => Promise<{ data: ValidateInfo }>;
-  save: (file: File, importType?: string, customFormId?: string) => Promise<any>;
+  preCheck: (params: ImportRequestParams) => Promise<{ data: ValidateInfo }>;
+  save: (params: ImportRequestParams) => Promise<any>;
   download?: (customFormId?: string) => Promise<File>;
+}
+
+export interface ImportRequestParams {
+  uploadParams: ImportUploadParams;
+  customFormId?: string;
 }
 
 export const importApiMap: Record<ImportApiType, importRequestType> = {
   [FormDesignKeyEnum.CLUE]: {
-    preCheck: preCheckImportLead,
-    save: importLead,
+    preCheck: (params) => preCheckImportLead(params.uploadParams),
+    save: (params) => importLead(params.uploadParams),
     download: downloadLeadTemplate,
   },
+  [FormDesignKeyEnum.CLUE_POOL]: {
+    preCheck: (params) => preCheckImportPoolLead(params.uploadParams),
+    save: (params) => importPoolLead(params.uploadParams),
+    download: downloadPoolLeadTemplate,
+  },
   [FormDesignKeyEnum.CUSTOMER]: {
-    preCheck: preCheckImportAccount,
-    save: importAccount,
+    preCheck: (params) => preCheckImportAccount(params.uploadParams),
+    save: (params) => importAccount(params.uploadParams),
     download: downloadAccountTemplate,
   },
+  [FormDesignKeyEnum.CUSTOMER_OPEN_SEA]: {
+    preCheck: (params) => preCheckImportPoolAccount(params.uploadParams),
+    save: (params) => importPoolAccount(params.uploadParams),
+    download: downloadPoolAccountTemplate,
+  },
   [FormDesignKeyEnum.CONTACT]: {
-    preCheck: preCheckImportContact,
-    save: importContact,
+    preCheck: (params) => preCheckImportContact(params.uploadParams),
+    save: (params) => importContact(params.uploadParams),
     download: downloadContactTemplate,
   },
   [FormDesignKeyEnum.BUSINESS]: {
-    preCheck: preCheckImportOpt,
-    save: importOpportunity,
+    preCheck: (params) => preCheckImportOpt(params.uploadParams),
+    save: (params) => importOpportunity(params.uploadParams),
     download: downloadOptTemplate,
   },
   [FormDesignKeyEnum.PRODUCT]: {
-    preCheck: preCheckImportProduct,
-    save: importProduct,
+    preCheck: (params) => preCheckImportProduct(params.uploadParams),
+    save: (params) => importProduct(params.uploadParams),
     download: downloadProductTemplate,
   },
   [FormDesignKeyEnum.PRICE]: {
-    preCheck: preCheckImportProductPrice,
-    save: importProductPrice,
+    preCheck: (params) => preCheckImportProductPrice(params.uploadParams),
+    save: (params) => importProductPrice(params.uploadParams),
     download: downloadProductPriceTemplate,
   },
   [FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD]: {
-    preCheck: preCheckImportContractPaymentRecord,
-    save: importContractPaymentRecord,
+    preCheck: (params) => preCheckImportContractPaymentRecord(params.uploadParams),
+    save: (params) => importContractPaymentRecord(params.uploadParams),
     download: downloadContractPaymentRecordTemplate,
   },
+  [FormDesignKeyEnum.INVOICE]: {
+    preCheck: (params) => preCheckImportContractInvoiced(params.uploadParams),
+    save: (params) => importContractInvoiced(params.uploadParams),
+    download: downloadContractInvoicedTemplate,
+  },
+  [FormDesignKeyEnum.CONTRACT_PAYMENT]: {
+    preCheck: (params) => preCheckImportContractPaymentPlan(params.uploadParams),
+    save: (params) => importContractPaymentPlan(params.uploadParams),
+    download: downloadContractPaymentPlanTemplate,
+  },
   [ImportTypeExcludeFormDesignEnum.CONTRACT_BUSINESS_TITLE_IMPORT]: {
-    preCheck: preCheckImportBusinessTitle,
-    save: importBusinessTitle,
+    preCheck: (params) => preCheckImportBusinessTitle(params.uploadParams),
+    save: (params) => importBusinessTitle(params.uploadParams),
     download: downloadBusinessTitleTemplate,
   },
   [FormDesignKeyEnum.CUSTOM_FORM]: {
-    preCheck: (file: File, _importType?: string, customFormId?: string) => preCheckImportCustomForm(file, customFormId),
-    save: (file: File, _importType?: string, customFormId?: string) => importCustomForm(file, customFormId),
+    preCheck: (params) => preCheckImportCustomForm(params.uploadParams),
+    save: (params) => importCustomForm(params.uploadParams),
     download: downloadCustomFormTemplate,
   },
 };

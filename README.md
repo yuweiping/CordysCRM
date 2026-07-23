@@ -15,9 +15,7 @@
 
 **Cordys CRM** 是新一代的开源 AI CRM 系统，是集信息化、数字化、智能化于一体的「客户关系管理系统」，由 [飞致云](https://fit2cloud.com/) 匠心出品。
 
-Cordys CRM 能够帮助企业实现从线索到回款（L2C）的全流程精细化管理，覆盖线索获取、智能分配、客户与联系人管理、商机跟进、合同签约及回款执行，构建端到端的销售运营闭环。
-
-<img alt="Cordys CRM Overview" src="https://cordys.cn/images/cordyscrm-202606.png" />
+<img alt="Cordys CRM Overview" src="https://cordys.cn/images/cordyscrm-202607.png" />
 
 ## 核心优势
 
@@ -73,16 +71,13 @@ docker run -d \
   </tr>
   <tr>
     <td style="padding: 5px;background-color:#fff;"><img src= "https://resource.fit2cloud.com/1panel/cordys-crm/img/bi.png" alt="BI" /></td>
-    <td style="padding: 5px;background-color:#fff;"><img src= "https://resource.fit2cloud.com/1panel/cordys-crm/img/ai.png" alt="AI" /></td>
+    <td style="padding: 5px;background-color:#fff;"><img src= "https://cordys.cn/images/blog/cordys-25.png" alt="WorkBuddy集成" /></td>
   </tr>  
 </table>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=1Panel-dev/CordysCRM&type=date&legend=top-left)](https://www.star-history.com/#1Panel-dev/CordysCRM&type=date&legend=top-left)
-
 ## Roadmap
 
+- [x] 2026.07：[Cordys x WorkBuddy：飞致云 AI CRM 案例发布](https://cordys.cn/blog/fit2cloud-ai-crm-case-study.html) 
 - [x] 2026.06: Cordys CRM 下载量突破 30 万次
 - [x] 2026.05.29：[v1.7.0 新增审批流、审批记录功能](https://github.com/1Panel-dev/CordysCRM/releases/tag/v1.7.0) 发布
 - [x] 2026.03.26：[v1.6.0 新增订单模块、计算组件函数功能增强](https://github.com/1Panel-dev/CordysCRM/releases/tag/v1.6.0) 发布

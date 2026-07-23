@@ -1,12 +1,21 @@
 <template>
   <CrmPageWrapper :title="t('common.moveInReason')">
     <div class="flex h-full flex-col">
-      <van-notice-bar
-        wrapable
-        :scrollable="false"
-        :text="contentTip"
-      />
+      <van-notice-bar wrapable :scrollable="false" :text="contentTip" />
+      <div v-if="isPoolReason" class="flex-1 overflow-hidden px-[16px]">
+        <div class="p-[16px_0_8px] text-[14px] text-[var(--text-n3)]">{{ poolLabel }}</div>
+        <CrmSelectList
+          v-model:value="poolValue"
+          v-model:selected-rows="selectedPoolRows"
+          :data="poolList"
+          :multiple="false"
+          no-page-nation
+        ></CrmSelectList>
+      </div>
       <div v-if="enableReason" class="flex-1 overflow-hidden px-[16px]">
+        <div v-if="isPoolReason" class="p-[16px_0_8px] text-[14px] text-[var(--text-n3)]">
+          {{ t('common.moveInReason') }}
+        </div>
         <CrmSelectList
           v-model:value="value"
           v-model:selected-rows="selectedRows"
@@ -15,7 +24,7 @@
           no-page-nation
         ></CrmSelectList>
       </div>
-      <div v-else class="mx-auto mt-[32px]">
+      <div v-else-if="!isPoolReason" class="mx-auto mt-[32px]">
         {{ t('common.noReason') }}
       </div>
     </div>
@@ -33,7 +42,7 @@
         <van-button
           type="primary"
           :loading="loading"
-          :disabled="enableReason ? !selectedRows.length : false"
+          :disabled="confirmDisabled"
           class="!rounded-[var(--border-radius-small)] !text-[16px]"
           block
           @click="handleSave"
@@ -56,7 +65,13 @@
 
   import CrmSelectList from '@/components/business/crm-select-list/index.vue';
 
-  import { getReasonConfig, moveCustomerToPool, moveToLeadPool } from '@/api/modules';
+  import {
+    getOpenSeaOptions,
+    getPoolOptions,
+    getReasonConfig,
+    moveCustomerToPool,
+    moveToLeadPool,
+  } from '@/api/modules';
 
   import { ClueRouteEnum, CustomerRouteEnum } from '@/enums/routeEnum';
 
@@ -66,6 +81,9 @@
 
   const value = ref<string>('');
   const selectedRows = ref<Record<string, any>[]>([]);
+  const poolValue = ref<string>('');
+  const selectedPoolRows = ref<Record<string, any>[]>([]);
+  const poolList = ref<Record<string, any>[]>([]);
   const loading = ref(false);
 
   export type ReasonKey = ReasonTypeEnum.CLUE_POOL_RS | ReasonTypeEnum.CUSTOMER_POOL_RS;
@@ -75,6 +93,16 @@
   const reasonKey = computed<ReasonKey>(
     () => (route.query.reasonKey?.toString() as ReasonKey) ?? ReasonTypeEnum.CLUE_POOL_RS
   );
+  const isCluePoolReason = computed(() => reasonKey.value === ReasonTypeEnum.CLUE_POOL_RS);
+  const isCustomerPoolReason = computed(() => reasonKey.value === ReasonTypeEnum.CUSTOMER_POOL_RS);
+  const isPoolReason = computed(() => isCluePoolReason.value || isCustomerPoolReason.value);
+  const poolLabel = computed(() => (isCluePoolReason.value ? t('clue.moveIntoCluePool') : t('customer.moveToOpenSea')));
+  const confirmDisabled = computed(() => {
+    if (enableReason.value && !selectedRows.value.length) {
+      return true;
+    }
+    return isPoolReason.value && !selectedPoolRows.value.length;
+  });
 
   const moveApiMap: Record<ReasonKey, (params: MoveToPublicPoolParams) => Promise<any>> = {
     [ReasonTypeEnum.CLUE_POOL_RS]: moveToLeadPool,
@@ -96,16 +124,47 @@
     }
   }
 
+  async function initPoolOptions() {
+    if (!isPoolReason.value) {
+      return;
+    }
+    try {
+      poolValue.value = '';
+      selectedPoolRows.value = [];
+      poolList.value = [];
+      poolList.value = isCluePoolReason.value ? await getPoolOptions() : await getOpenSeaOptions();
+      const defaultPool = [...poolList.value].sort((prev, next) => next.createTime - prev.createTime)[0];
+      poolValue.value = defaultPool?.id || '';
+      selectedPoolRows.value = defaultPool ? [defaultPool] : [];
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.log(e);
+    }
+  }
+
+  function resetForm() {
+    value.value = '';
+    selectedRows.value = [];
+    poolValue.value = '';
+    selectedPoolRows.value = [];
+    poolList.value = [];
+    reasonList.value = [];
+    enableReason.value = false;
+  }
+
   onBeforeMount(() => {
+    resetForm();
     initReasonConfig();
+    initPoolOptions();
   });
 
   async function handleSave() {
     try {
       loading.value = true;
-      const { success, fail } = await moveApiMap[reasonKey.value]({
+      const { fail } = await moveApiMap[reasonKey.value]({
         id: route.query.id?.toString() ?? '',
         reasonId: value.value,
+        poolId: isPoolReason.value ? poolValue.value : null,
       });
       if (fail > 0) {
         showFailToast(t('common.transferFailed'));

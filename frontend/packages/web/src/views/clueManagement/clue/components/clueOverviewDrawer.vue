@@ -11,6 +11,7 @@
     :form-key="FormDesignKeyEnum.CLUE"
     :show-tab-setting="false"
     :formViewSize="formViewSize"
+    @button-pop-update="handleTransferPopUpdate"
     @button-select="handleSelect"
     @saved="
       (res) => {
@@ -67,9 +68,15 @@
     :reason-key="ReasonTypeEnum.CLUE_POOL_RS"
     :source-id="sourceId"
     :name="sourceName"
+    type="warning"
     @refresh="handleMovedSuccess"
   />
-  <convertClueModal v-model:show="showConvertClueModal" :clue-id="sourceId" @success="emit('remove')" />
+  <convertClueModal
+    v-model:show="showConvertClueModal"
+    :clue-id="sourceId"
+    @success="emit('remove')"
+    @finish="show = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -136,6 +143,17 @@
 
   // 转移
   const transferFormRef = ref<InstanceType<typeof TransferForm>>();
+
+  function resetTransferForm() {
+    transferForm.value = { ...defaultTransferForm };
+  }
+
+  function handleTransferPopUpdate(key: string, visible: boolean) {
+    if (key === 'transfer' && visible) {
+      resetTransferForm();
+    }
+  }
+
   function handleTransfer() {
     transferFormRef.value?.formRef?.validate(async (error) => {
       if (!error) {
@@ -146,7 +164,7 @@
             ids: [sourceId.value],
           });
           Message.success(t('common.transferSuccess'));
-          transferForm.value = { ...defaultTransferForm };
+          resetTransferForm();
           closeAndRefresh();
         } catch (e) {
           // eslint-disable-next-line no-console

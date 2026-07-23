@@ -28,7 +28,16 @@
           :show-checkmark="false"
           label-field="name"
           class="w-[200px]"
-          @update-value="(e) => searchData(undefined, e)"
+          @update-value="handlePoolChange"
+        />
+        <CrmImportButton
+          v-if="hasAnyPermission(['CLUE_MANAGEMENT_POOL:IMPORT']) && !props.readonly"
+          :api-type="FormDesignKeyEnum.CLUE_POOL"
+          :title="t('module.cluePool')"
+          :pool-id="poolId"
+          :readonly="!poolId"
+          :disabled-tooltip="!poolId ? t('common.emptyPoolImportTip', { name: t('module.cluePool') }) : ''"
+          @import-success="() => searchData()"
         />
         <n-button
           v-if="hasAnyPermission(['CLUE_MANAGEMENT_POOL:EXPORT']) && !props.readonly"
@@ -41,13 +50,6 @@
           {{ t('common.exportAll') }}
         </n-button>
       </div>
-      <!-- 先不上 -->
-      <!-- <CrmImportButton
-          :validate-api="importUserPreCheck"
-          :import-save-api="importUsers"
-         :title="t('module.clueManagement')"
-          @import-success="() => searchData()"
-        /> -->
     </template>
     <template #actionRight>
       <div class="flex gap-[12px]">
@@ -137,7 +139,7 @@
   import { BatchActionConfig } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmBatchEditModal from '@/components/business/crm-batch-edit-modal/index.vue';
-  // import CrmImportButton from '@/components/business/crm-import-button/index.vue';
+  import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
   import TransferModal from '@/components/business/crm-transfer-modal/index.vue';
@@ -587,13 +589,15 @@
     }
   }
 
+  function handlePoolChange(e: string) {
+    checkedRowKeys.value = [];
+    searchData(undefined, e);
+  }
+
   async function getCluePoolOptions() {
     try {
       cluePoolOptions.value = await getPoolOptions();
       poolId.value = cluePoolOptions.value[0]?.id || '';
-      if (poolId.value) {
-        searchData();
-      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);

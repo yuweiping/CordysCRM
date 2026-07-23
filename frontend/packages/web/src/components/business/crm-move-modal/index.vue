@@ -6,15 +6,39 @@
     show-icon
     :mask-closable="false"
     :type="props.type"
-    :ok-button-props="{ disabled: enableReason ? !form.reason : false, type: props.type || 'primary' }"
+    :ok-button-props="{ disabled: confirmDisabled, type: props.type || 'primary' }"
     :positive-text="t('common.confirmMoveIn')"
     :ok-loading="loading"
     @confirm="handleConfirm"
     @cancel="handleCancel"
   >
     <div class="mb-[16px]">{{ contentTip }}</div>
-    <n-form v-if="enableReason" ref="formRef" :model="form" label-placement="left" require-mark-placement="left">
-      <n-form-item path="reason" :label="t('common.moveInReason')">
+    <n-form
+      v-if="enableReason || isPoolReason"
+      ref="formRef"
+      :model="form"
+      :label-width="90"
+      label-placement="left"
+      require-mark-placement="left"
+    >
+      <n-form-item v-if="isPoolReason" path="poolId" :label="poolLabel">
+        <n-select
+          v-model:value="form.poolId"
+          :placeholder="t('common.pleaseSelect')"
+          :options="poolOptions"
+          :loading="poolLoading"
+        >
+          <template #empty>
+            <div class="flex items-center justify-center">
+              <span>{{ poolConfigTip }}</span>
+              <n-button text type="primary" @mousedown.prevent @click.stop="handleGoConfig">
+                {{ poolConfigActionText }}
+              </n-button>
+            </div>
+          </template>
+        </n-select>
+      </n-form-item>
+      <n-form-item v-if="enableReason" path="reason" :label="t('common.moveInReason')">
         <n-select v-model:value="form.reason" :placeholder="t('common.pleaseSelect')" clearable :options="reasonList" />
       </n-form-item>
     </n-form>
@@ -31,7 +55,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue';
-  import { DataTableRowKey, FormInst, NForm, NFormItem, NSelect } from 'naive-ui';
+  import { DataTableRowKey, FormInst, NButton, NForm, NFormItem, NSelect } from 'naive-ui';
 
   import { ReasonTypeEnum } from '@lib/shared/enums/moduleEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -45,12 +69,18 @@
   import {
     batchMoveCustomer,
     batchToCluePool,
+    getOpenSeaOptions,
+    getPoolOptions,
     getReasonConfig,
     moveCustomerToPool,
     moveToLeadPool,
   } from '@/api/modules';
+  import useOpenNewPage from '@/hooks/useOpenNewPage';
+
+  import { SystemRouteEnum } from '@/enums/routeEnum';
 
   const { t } = useI18n();
+  const { openNewPage } = useOpenNewPage();
 
   export type ReasonKey = ReasonTypeEnum.CLUE_POOL_RS | ReasonTypeEnum.CUSTOMER_POOL_RS;
 
@@ -80,13 +110,38 @@
     [ReasonTypeEnum.CUSTOMER_POOL_RS]: moveCustomerToPool,
   };
 
-  const form = ref({
+  const form = ref<{
+    reason: string | null;
+    poolId: string | null;
+  }>({
     reason: null,
+    poolId: null,
   });
   const successCount = ref<number>(0);
   const failCount = ref<number>(0);
 
   const reasonList = ref<Option[]>([]);
+  const poolOptions = ref<Option[]>([]);
+  const poolLoading = ref(false);
+  const enableReason = ref(false);
+
+  const isCluePoolReason = computed(() => props.reasonKey === ReasonTypeEnum.CLUE_POOL_RS);
+  const isCustomerPoolReason = computed(() => props.reasonKey === ReasonTypeEnum.CUSTOMER_POOL_RS);
+  const isPoolReason = computed(() => isCluePoolReason.value || isCustomerPoolReason.value);
+  const isBatchMultiSource = computed(() => Array.isArray(props.sourceId) && props.sourceId.length > 1);
+  const poolLabel = computed(() => (isCluePoolReason.value ? t('clue.moveIntoCluePool') : t('customer.moveToOpenSea')));
+  const poolConfigTip = computed(() =>
+    isCluePoolReason.value ? t('clue.moveIntoCluePoolFailedContent1') : t('customer.moveToOpenSeaFailedContent1')
+  );
+  const poolConfigActionText = computed(() =>
+    isCluePoolReason.value ? t('clue.moveIntoCluePoolFailedContent2') : t('customer.moveToOpenSeaFailedContent2')
+  );
+  const confirmDisabled = computed(() => {
+    if (enableReason.value && !form.value.reason) {
+      return true;
+    }
+    return isPoolReason.value && !form.value.poolId;
+  });
 
   const title = computed(() => {
     const isArraySourceIds = Array.isArray(props.sourceId);
@@ -112,9 +167,17 @@
     props.reasonKey === ReasonTypeEnum.CLUE_POOL_RS ? t('clue.moveToLeadPoolTip') : t('customer.batchMoveContentTip')
   );
 
+  function resetForm() {
+    form.value.reason = null;
+    form.value.poolId = null;
+    poolOptions.value = [];
+    reasonList.value = [];
+    enableReason.value = false;
+  }
+
   function handleCancel() {
     showModal.value = false;
-    form.value.reason = null;
+    resetForm();
   }
 
   const showToPoolResultModel = ref(false);
@@ -130,6 +193,7 @@
         const { success, fail } = await batchMoveApiMap[props.reasonKey]({
           ids: props.sourceId,
           reasonId: form.value.reason,
+          poolId: isPoolReason.value ? form.value.poolId : null,
         });
         successCount.value = success;
         failCount.value = fail;
@@ -138,6 +202,7 @@
         const { success, fail } = await moveApiMap[props.reasonKey]({
           id: props.sourceId,
           reasonId: form.value.reason,
+          poolId: isPoolReason.value ? form.value.poolId : null,
         });
         successCount.value = success;
         failCount.value = fail;
@@ -166,9 +231,8 @@
     }
   }
 
-  const enableReason = ref(false);
   function handleConfirm() {
-    if (enableReason.value) {
+    if (enableReason.value || isPoolReason.value) {
       formRef.value?.validate(async (error) => {
         if (!error) {
           handleSave();
@@ -176,6 +240,29 @@
       });
     } else {
       handleSave();
+    }
+  }
+
+  async function initPoolOptions() {
+    if (!isPoolReason.value) {
+      return;
+    }
+    try {
+      poolLoading.value = true;
+      form.value.poolId = null;
+      poolOptions.value = [];
+      const options = isCluePoolReason.value ? await getPoolOptions() : await getOpenSeaOptions();
+      poolOptions.value = options.map((item) => ({ label: item.name, value: item.id }));
+      if (isBatchMultiSource.value) {
+        return;
+      }
+      const defaultPool = [...options].sort((prev, next) => next.createTime - prev.createTime)[0];
+      form.value.poolId = defaultPool?.id ?? null;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.log(e);
+    } finally {
+      poolLoading.value = false;
     }
   }
 
@@ -195,11 +282,29 @@
     showToPoolResultModel.value = false;
   }
 
+  function handleGoConfig() {
+    showModal.value = false;
+    openNewPage(
+      SystemRouteEnum.SYSTEM_MODULE,
+      isCluePoolReason.value
+        ? {
+            openCluePoolDrawer: 'Y',
+          }
+        : {
+            openOpenSeaDrawer: 'Y',
+          }
+    );
+  }
+
   watch(
     () => showModal.value,
     (val) => {
       if (val) {
+        resetForm();
         initReasonConfig();
+        initPoolOptions();
+      } else {
+        resetForm();
       }
     }
   );

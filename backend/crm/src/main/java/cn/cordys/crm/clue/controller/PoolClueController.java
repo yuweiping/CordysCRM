@@ -7,35 +7,36 @@ import cn.cordys.common.dto.ExportDTO;
 import cn.cordys.common.dto.ExportSelectRequest;
 import cn.cordys.common.dto.chart.ChartResult;
 import cn.cordys.common.exception.GenericException;
-import cn.cordys.common.util.Translator;
-import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.common.pager.PagerWithOption;
+import cn.cordys.common.permission.CsPermission;
+import cn.cordys.common.util.Translator;
 import cn.cordys.common.utils.ConditionFilterUtils;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.clue.dto.CluePoolDTO;
-import cn.cordys.crm.clue.dto.request.ClueExportRequest;
-import cn.cordys.crm.clue.dto.request.CluePageRequest;
-import cn.cordys.crm.clue.dto.request.PoolClueAssignRequest;
-import cn.cordys.crm.clue.dto.request.PoolCluePickRequest;
+import cn.cordys.crm.clue.dto.request.*;
 import cn.cordys.crm.clue.dto.response.ClueGetResponse;
 import cn.cordys.crm.clue.dto.response.ClueListResponse;
 import cn.cordys.crm.clue.service.CluePoolExportService;
 import cn.cordys.crm.clue.service.ClueService;
 import cn.cordys.crm.clue.service.PoolClueService;
 import cn.cordys.crm.customer.dto.request.PoolClueChartAnalysisRequest;
+import cn.cordys.crm.system.constants.ExportConstants;
 import cn.cordys.crm.system.dto.request.PoolBatchAssignRequest;
 import cn.cordys.crm.system.dto.request.PoolBatchPickRequest;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
+import cn.cordys.crm.system.dto.response.ImportResponse;
 import cn.cordys.security.SessionUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotEmpty;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -187,5 +188,30 @@ public class PoolClueController {
     public List<ChartResult> chart(@Validated @RequestBody PoolClueChartAnalysisRequest request) {
         poolClueService.checkPoolMember(request.getPoolId(), SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
         return cluePoolExportService.chart(request, SessionUtils.getUserId(), OrganizationContext.getOrganizationId(), null);
+    }
+
+
+    @GetMapping("/template/download")
+    @CsPermission(PermissionConstants.CLUE_MANAGEMENT_POOL_IMPORT)
+    @Operation(summary = "下载导入模板")
+    public void downloadImportTpl(HttpServletResponse response) {
+        poolClueService.downloadImportTpl(response, OrganizationContext.getOrganizationId());
+    }
+
+    @PostMapping("/import/pre-check")
+    @Operation(summary = "导入检查")
+    @CsPermission(PermissionConstants.CLUE_MANAGEMENT_POOL_IMPORT)
+    public ImportResponse preCheck(@Validated @RequestPart("request") CluePoolImportRequest request, @RequestPart(value = "file") MultipartFile file) {
+        poolClueService.checkPoolMember(request.getPoolId(), SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
+        return poolClueService.importPreCheck(file, request, OrganizationContext.getOrganizationId());
+    }
+
+
+    @PostMapping("/import")
+    @Operation(summary = "导入")
+    @CsPermission(PermissionConstants.CLUE_MANAGEMENT_POOL_IMPORT)
+    public ImportResponse realImport(@Validated @RequestPart("request") CluePoolImportRequest request, @RequestPart(value = "file") MultipartFile file) {
+        poolClueService.checkPoolMember(request.getPoolId(), SessionUtils.getUserId(), OrganizationContext.getOrganizationId());
+        return poolClueService.realImport(file, request, OrganizationContext.getOrganizationId(), SessionUtils.getUserId());
     }
 }

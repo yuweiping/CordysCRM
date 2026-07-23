@@ -98,4 +98,12 @@ export default {
   'common.hasConvertToRecord': 'Have record',
   'common.moveInReason': 'Move-in reason',
   'common.noReason': 'Reason for migration not configured',
+  'common.sum': 'Sum',
+  'common.voided': 'Voided',
+  'common.creator': 'Creator',
+  'common.updateUserName': 'Updated by',
+  'common.updateTime': 'Update time',
+  'common.department': 'Department',
+  'common.alreadyPayAmount': 'Amount received',
+  'common.status': 'Status',
 };

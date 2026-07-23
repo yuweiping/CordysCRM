@@ -1,5 +1,5 @@
 import { useMessage } from 'naive-ui';
-import { cloneDeep } from 'lodash-es';
+import { cloneDeep, isEqual } from 'lodash-es';
 import dayjs from 'dayjs';
 
 import {
@@ -10,7 +10,7 @@ import {
   type FormLinkScenarioEnum,
 } from '@lib/shared/enums/formDesignEnum';
 import { useI18n } from '@lib/shared/hooks/useI18n';
-import { getCityPath, getIndustryPath, safeFractionConvert } from '@lib/shared/method';
+import { formatTimeValue, getCityPath, getIndustryPath, safeFractionConvert } from '@lib/shared/method';
 import {
   dataSourceTypes,
   departmentTypes,
@@ -42,6 +42,7 @@ import type { FormCreateField, FormCreateFieldRule, FormDetail } from '@/compone
 
 import { checkRepeat, getDatasourceFieldConfig } from '@/api/modules';
 import useUserStore from '@/store/modules/user';
+import { hasAnyPermission } from '@/utils/permission';
 
 export interface FormCreateApiProps {
   sourceId?: Ref<string | undefined>;
@@ -347,6 +348,36 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   }
 
   /**
+   * 字段联动
+   * @param item 触发字段
+   */
+  function applyFieldLink(item: FormCreateField, callback?: () => void) {
+    const currentFieldValue = formDetail.value[item.id];
+    const linkField = fieldList.value.find((f) => f.id === item.linkProp?.targetField);
+    if (item.linkProp?.linkOptions) {
+      for (let i = 0; i < item.linkProp?.linkOptions.length; i++) {
+        const option = item.linkProp?.linkOptions[i];
+        if (isEqual(currentFieldValue, option.current)) {
+          if (linkField) {
+            if (option.method === 'HIDDEN') {
+              linkField.linkRange = Array.isArray(option.target) ? option.target : [option.target];
+            } else {
+              linkField.linkRange = undefined;
+              formDetail.value[linkField.id] = option.target;
+            }
+            return;
+          }
+        } else if (linkField) {
+          linkField.linkRange = undefined;
+        }
+      }
+      if (callback) {
+        callback();
+      }
+    }
+  }
+
+  /**
    * 表单描述显示规则处理
    * @param form 表单数据
    */
@@ -409,14 +440,16 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   }
 
   function makeDescriptionItem(item: FormCreateField, form: FormDetail) {
-    if (item.show === false || !item.readable) return;
+    if (!item.readable) return; // 这里不过滤 show = false字段，在描述组件内过滤
     if (item.businessKey === 'expectedEndTime' && !item.resourceFieldId) {
-      // TODO:商机结束时间原位编辑
       descriptions.value.push({
         label: item.name,
         value: parseFormDetailValue(item, form),
         slotName: FieldTypeEnum.DATE_TIME,
-        fieldInfo: item,
+        fieldInfo: {
+          ...item,
+          editable: !hasAnyPermission(['OPPORTUNITY_MANAGEMENT:UPDATE']),
+        },
         tooltipPosition: 'top-end',
       });
     } else if (
@@ -514,8 +547,6 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         FieldTypeEnum.DEPARTMENT_MULTIPLE,
         FieldTypeEnum.MEMBER,
         FieldTypeEnum.MEMBER_MULTIPLE,
-        FieldTypeEnum.SELECT,
-        FieldTypeEnum.SELECT_MULTIPLE,
         FieldTypeEnum.RADIO,
         FieldTypeEnum.CHECKBOX,
       ].includes(item.type)
@@ -526,11 +557,20 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         fieldInfo: item,
         tooltipPosition: 'top-end',
       });
+    } else if ([FieldTypeEnum.SELECT, FieldTypeEnum.SELECT_MULTIPLE].includes(item.type)) {
+      descriptions.value.push({
+        label: item.name,
+        value: parseFormDetailValue(item, form),
+        slotName: FieldTypeEnum.SELECT,
+        fieldInfo: item,
+        tooltipPosition: 'top-end',
+      });
     } else if (item.type === FieldTypeEnum.DATE_TIME) {
       descriptions.value.push({
         label: item.name,
         value: parseFormDetailValue(item, form),
         fieldInfo: item,
+        slotName: FieldTypeEnum.DATE_TIME,
         tooltipPosition: 'top-end',
       });
     } else if (item.type === FieldTypeEnum.INPUT_NUMBER) {
@@ -538,6 +578,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         label: item.name,
         value: parseFormDetailValue(item, form),
         fieldInfo: item,
+        slotName: FieldTypeEnum.INPUT_NUMBER,
         tooltipPosition: 'top-end',
       });
     } else if (item.type === FieldTypeEnum.TEXTAREA) {
@@ -741,13 +782,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
                 formDetail.value[field.id] = linkField.value.join(',').slice(0, limitLength);
               } else if (linkField.type === FieldTypeEnum.DATE_TIME) {
                 // 联动的字段是日期时间则转换
-                if (linkField.dateType === 'month') {
-                  formDetail.value[field.id] = dayjs(linkField.value).format('YYYY-MM');
-                } else if (linkField.dateType === 'date') {
-                  formDetail.value[field.id] = dayjs(linkField.value).format('YYYY-MM-DD');
-                } else {
-                  formDetail.value[field.id] = dayjs(linkField.value).format('YYYY-MM-DD HH:mm:ss');
-                }
+                formDetail.value[field.id] = formatTimeValue(linkField.value, linkField.dateType);
               } else if (linkField.type === FieldTypeEnum.LOCATION) {
                 // 联动的字段是省市区则填充城市路径
                 const addressArr: string[] = linkField.value.split('-') || [];
@@ -821,9 +856,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     } else {
       // 其他的字段读取moduleFields
       const field = res.moduleFields?.find((moduleField: ModuleField) => moduleField.fieldId === item.id);
-      if (field) {
-        formDetail.value[item.id] = initFieldValue(item, field.fieldValue);
-      }
+      formDetail.value[item.id] = initFieldValue(item, field?.fieldValue);
       const options = res.optionMap?.[item.id];
       if (
         [
@@ -870,7 +903,15 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   function makeSubFieldInitialOptions(subField: FormCreateField, parentFieldId: string, res: FormDetail) {
     if (subField.businessKey) {
       const options = res.optionMap?.[subField.businessKey];
-      if ([FieldTypeEnum.DATA_SOURCE].includes(subField.type)) {
+      if (
+        [
+          FieldTypeEnum.DATA_SOURCE,
+          FieldTypeEnum.MEMBER,
+          FieldTypeEnum.MEMBER_MULTIPLE,
+          FieldTypeEnum.DEPARTMENT,
+          FieldTypeEnum.DEPARTMENT_MULTIPLE,
+        ].includes(subField.type)
+      ) {
         // 处理成员和数据源类型的字段
         subField.initialOptions = options
           ?.filter((e) =>
@@ -885,7 +926,15 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       }
     } else {
       const options = res.optionMap?.[subField.id];
-      if ([FieldTypeEnum.DATA_SOURCE].includes(subField.type)) {
+      if (
+        [
+          FieldTypeEnum.DATA_SOURCE,
+          FieldTypeEnum.MEMBER,
+          FieldTypeEnum.MEMBER_MULTIPLE,
+          FieldTypeEnum.DEPARTMENT,
+          FieldTypeEnum.DEPARTMENT_MULTIPLE,
+        ].includes(subField.type)
+      ) {
         // 处理成员和数据源类型的字段
         subField.initialOptions = options
           ?.filter((e) =>
@@ -1296,7 +1345,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
                 if (info.repeat) {
                   return Promise.reject(
                     new Error(
-                      info.name.length
+                      info.name?.length
                         ? t('crmFormCreate.repeatTip', { name: info.name })
                         : t('crmFormCreate.repeatTipWithoutName')
                     )
@@ -1328,23 +1377,6 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
       }
     });
     item.rules = fullRules;
-  }
-
-  function subFieldInit(field: FormCreateField) {
-    let defaultValue = field.defaultValue || '';
-    if (field.resourceFieldId && field.defaultValue) {
-      defaultValue = parseModuleFieldValue(field, field.defaultValue, field.initialOptions);
-    } else if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(field.type)) {
-      defaultValue = Number.isNaN(Number(defaultValue)) || defaultValue === '' ? null : Number(defaultValue);
-    } else if ([FieldTypeEnum.PICTURE, FieldTypeEnum.ATTACHMENT].includes(field.type)) {
-      defaultValue = defaultValue || [];
-    } else if (getRuleType(field) === 'array') {
-      defaultValue =
-        field.type === FieldTypeEnum.DATA_SOURCE && typeof field.defaultValue === 'string'
-          ? [defaultValue]
-          : defaultValue || [];
-    }
-    field.defaultValue = defaultValue;
   }
 
   function initFormCreateFieldDefaultValue(field: FormCreateField) {
@@ -1399,7 +1431,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     fieldList.value.forEach((item) => {
       if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type)) {
         item.subFields?.forEach((subField) => {
-          subFieldInit(subField);
+          initFormCreateFieldDefaultValue(subField);
           replaceRule(subField, item.id);
         });
         if (!formDetail.value[item.id]) {
@@ -1481,7 +1513,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         } else {
           params.moduleFields.push({
             fieldId: item.id,
-            fieldValue: getNormalFieldValue(item, form[item.id]),
+            fieldValue: getNormalFieldValue(item, form[item.id] === t('common.optionNotExist') ? '' : form[item.id]),
           });
         }
       });
@@ -1551,6 +1583,8 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     resetForm,
     initFormShowControl,
     makeLinkFormFields,
+    applyFieldLink,
+    formDescriptionShowControlRulesSet,
     moduleFormConfig,
     detail,
   };

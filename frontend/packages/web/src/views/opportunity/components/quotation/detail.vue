@@ -39,7 +39,7 @@
       :approval-status="detailInfo?.approvalStatus"
       @saveApproval="handleSaveApproval"
     >
-      <template #left="{ fieldPermissions }">
+      <template #left="{ fieldPermissions, taskNode }">
         <CrmFormDescription
           ref="formDescriptionRef"
           :form-key="FormDesignKeyEnum.OPPORTUNITY_QUOTATION_SNAPSHOT"
@@ -49,7 +49,7 @@
           :fieldPermissions="fieldPermissions"
           :otherSaveParams="{
             updateType: 'approval',
-            approvalTaskId: props.approvalTaskId,
+            approvalTaskId: props.approvalTaskId || taskNode?.taskId,
           }"
           label-width="auto"
           value-align="start"
@@ -68,6 +68,7 @@
     :initial-source-name="initialSourceName"
     :other-save-params="otherSaveParams"
     @saved="handleFormCreateSaved"
+    @review="handleFormReview"
   />
 </template>
 
@@ -142,7 +143,7 @@
     emit('refresh');
   }
 
-  const { reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
+  const { reviewByFormResult, reviewByResourceId, revokeByResourceId } = useApprovalResourceAction({
     formKey: FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
   });
 
@@ -168,6 +169,14 @@
 
   function handleRevoke() {
     revokeByResourceId(props.sourceId, {
+      onSuccess: () => {
+        handleSavedRefresh();
+      },
+    });
+  }
+
+  function handleFormReview(res: any) {
+    reviewByFormResult(res, {
       onSuccess: () => {
         handleSavedRefresh();
       },

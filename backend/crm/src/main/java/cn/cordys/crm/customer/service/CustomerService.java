@@ -14,6 +14,7 @@ import cn.cordys.common.domain.BaseResourceSubField;
 import cn.cordys.common.dto.*;
 import cn.cordys.common.dto.chart.ChartResult;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.mapper.CommonMapper;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
@@ -23,6 +24,7 @@ import cn.cordys.common.service.BaseChartService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
+import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
@@ -44,12 +46,14 @@ import cn.cordys.crm.follow.service.FollowUpRecordService;
 import cn.cordys.crm.opportunity.domain.Opportunity;
 import cn.cordys.crm.opportunity.mapper.ExtOpportunityMapper;
 import cn.cordys.crm.system.constants.DictModule;
+import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.constants.NotificationConstants;
 import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.domain.Dict;
 import cn.cordys.crm.system.dto.DictConfigDTO;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.request.BatchPoolReasonRequest;
+import cn.cordys.crm.system.dto.request.ImportRequest;
 import cn.cordys.crm.system.dto.request.PoolReasonRequest;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
 import cn.cordys.crm.system.dto.response.BatchAffectResponse;
@@ -75,11 +79,17 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -106,6 +116,8 @@ public class CustomerService {
     private CustomerOwnerHistoryService customerOwnerHistoryService;
     @Resource
     private CustomerPoolService customerPoolService;
+    @Resource
+    private BaseMapper<CustomerPool> customerPoolMapper;
     @Resource
     private BaseMapper<CustomerPoolRecycleRule> customerPoolRecycleRuleMapper;
     @Resource
@@ -154,6 +166,8 @@ public class CustomerService {
     private BaseMapper<CustomerCollaboration> customerCollaborationMapper;
     @Resource
     private BaseMapper<CustomerContact> customerContactMapper;
+    @Resource
+    private SqlSessionFactory sqlSessionFactory;
 
     public PagerWithOption<List<CustomerListResponse>> list(CustomerPageRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {
         Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
@@ -386,46 +400,48 @@ public class CustomerService {
         return customerGetResponse;
     }
 
-	/**
-	 * 获取客户详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
-	 * @param id 客户ID
-	 * @return 客户详情
-	 */
-	public CustomerGetResponse getSimple(String id) {
-		Customer customer = customerMapper.selectByPrimaryKey(id);
-		if (customer == null) {
-			return null;
-		}
-		CustomerGetResponse response = BeanUtils.copyBean(new CustomerGetResponse(), customer);
-		List<BaseModuleFieldValue> fvs = customerFieldService.getModuleFieldValuesByResourceId(id);
-		response.setModuleFields(fvs);
-		return response;
-	}
+    /**
+     * 获取客户详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     *
+     * @param id 客户ID
+     * @return 客户详情
+     */
+    public CustomerGetResponse getSimple(String id) {
+        Customer customer = customerMapper.selectByPrimaryKey(id);
+        if (customer == null) {
+            return null;
+        }
+        CustomerGetResponse response = BeanUtils.copyBean(new CustomerGetResponse(), customer);
+        List<BaseModuleFieldValue> fvs = customerFieldService.getModuleFieldValuesByResourceId(id);
+        response.setModuleFields(fvs);
+        return response;
+    }
 
-	/**
-	 * 批量获取客户详情 (用于数据源批量查询优化)
-	 * @param ids 客户ID集合
-	 * @return 客户详情列表
-	 */
-	public List<CustomerGetResponse> batchGetSimpleByIds(List<String> ids) {
-		if (CollectionUtils.isEmpty(ids)) {
-			return List.of();
-		}
-		// 批量查询资源基本信息
-		List<Customer> customers = customerMapper.selectByIds(ids);
-		if (CollectionUtils.isEmpty(customers)) {
-			return List.of();
-		}
-		// 批量查询自定义字段值
-		Map<String, List<BaseModuleFieldValue>> fieldValueMap = customerFieldService.getResourceFieldMap(ids, true);
+    /**
+     * 批量获取客户详情 (用于数据源批量查询优化)
+     *
+     * @param ids 客户ID集合
+     * @return 客户详情列表
+     */
+    public List<CustomerGetResponse> batchGetSimpleByIds(List<String> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return List.of();
+        }
+        // 批量查询资源基本信息
+        List<Customer> customers = customerMapper.selectByIds(ids);
+        if (CollectionUtils.isEmpty(customers)) {
+            return List.of();
+        }
+        // 批量查询自定义字段值
+        Map<String, List<BaseModuleFieldValue>> fieldValueMap = customerFieldService.getResourceFieldMap(ids, true);
 
-		// 组装结果
-		return customers.stream().map(customer -> {
-			CustomerGetResponse response = BeanUtils.copyBean(new CustomerGetResponse(), customer);
-			response.setModuleFields(fieldValueMap.get(customer.getId()));
-			return response;
-		}).toList();
-	}
+        // 组装结果
+        return customers.stream().map(customer -> {
+            CustomerGetResponse response = BeanUtils.copyBean(new CustomerGetResponse(), customer);
+            response.setModuleFields(fieldValueMap.get(customer.getId()));
+            return response;
+        }).toList();
+    }
 
     @OperationLog(module = LogModule.CUSTOMER_INDEX, type = LogType.ADD)
     public Customer add(CustomerAddRequest request, String userId, String orgId) {
@@ -621,13 +637,25 @@ public class CustomerService {
      */
     public BatchAffectResponse batchToPool(BatchPoolReasonRequest request, String currentUser, String orgId) {
         List<Customer> customers = customerMapper.selectByIds(request.getIds());
-        List<String> ownerIds = getOwners(customers);
-        Map<String, CustomerPool> ownersDefaultPoolMap = customerPoolService.getOwnersDefaultPoolMap(ownerIds, orgId);
+        customers = customers.stream()
+                .filter(customer -> !BooleanUtils.isTrue(customer.getInSharedPool()))
+                .toList();
+        if (CollectionUtils.isEmpty(customers)) {
+            return BatchAffectResponse.builder().success(0).fail(request.getIds().size()).build();
+        }
+        CustomerPool targetPool = null;
+        Map<String, CustomerPool> ownersDefaultPoolMap = new HashMap<>(4);
+        if (StringUtils.isNotBlank(request.getPoolId())) {
+            targetPool = getTargetCustomerPool(request.getPoolId(), orgId);
+        } else {
+            List<String> ownerIds = getOwners(customers);
+            ownersDefaultPoolMap = customerPoolService.getOwnersDefaultPoolMap(ownerIds, orgId);
+        }
 
         int success = 0;
         var logs = new ArrayList<LogDTO>();
         for (Customer customer : customers) {
-            CustomerPool customerPool = ownersDefaultPoolMap.get(customer.getOwner());
+            CustomerPool customerPool = targetPool != null ? targetPool : ownersDefaultPoolMap.get(customer.getOwner());
             if (customerPool == null) {
                 // 未找到默认公海，不移入
                 continue;
@@ -675,8 +703,17 @@ public class CustomerService {
     public BatchAffectResponse toPool(PoolReasonRequest request, String currentUser, String orgId) {
         BatchPoolReasonRequest batchRequest = new BatchPoolReasonRequest();
         batchRequest.setReasonId(request.getReasonId());
+        batchRequest.setPoolId(request.getPoolId());
         batchRequest.setIds(List.of(request.getId()));
         return batchToPool(batchRequest, currentUser, orgId);
+    }
+
+    private CustomerPool getTargetCustomerPool(String poolId, String orgId) {
+        CustomerPool customerPool = customerPoolMapper.selectByPrimaryKey(poolId);
+        if (customerPool == null || !Strings.CS.equals(customerPool.getOrganizationId(), orgId) || !BooleanUtils.isTrue(customerPool.getEnable())) {
+            throw new GenericException(Translator.get("customer_pool_not_exist"));
+        }
+        return customerPool;
     }
 
     public List<OptionDTO> getCustomerOptions(String keyword, String organizationId) {
@@ -727,14 +764,13 @@ public class CustomerService {
      *
      * @param file       导入文件
      * @param currentOrg 当前组织
-     *
      * @return 导入检查信息
      */
-    public ImportResponse importPreCheck(MultipartFile file, String currentOrg) {
+    public ImportResponse importPreCheck(MultipartFile file, String importType, String currentOrg) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
-        return checkImportExcel(file, currentOrg);
+        return checkImportExcel(file, importType, currentOrg);
     }
 
     /**
@@ -743,27 +779,116 @@ public class CustomerService {
      * @param file        导入文件
      * @param currentOrg  当前组织
      * @param currentUser 当前用户
-     *
      * @return 导入返回信息
      */
-    public ImportResponse realImport(MultipartFile file, String currentOrg, String currentUser) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ImportResponse realImport(MultipartFile file, ImportRequest request, String currentOrg, String currentUser) {
         try {
             List<BaseField> fields = moduleFormService.getAllFields(FormKey.CUSTOMER.getKey(), currentOrg);
             CustomImportAfterDoConsumer<Customer, BaseResourceSubField> afterDo = (customers, customerFields, customerFieldBlobs) -> {
                 var logs = new ArrayList<LogDTO>();
-                customers.forEach(customer -> {
-                    customer.setCollectionTime(customer.getCreateTime());
-                    customer.setInSharedPool(false);
-                    logs.add(new LogDTO(currentOrg, customer.getId(), currentUser, LogType.ADD, LogModule.CUSTOMER_INDEX, customer.getName()));
-                });
-                customerMapper.batchInsert(customers);
-                customerFieldMapper.batchInsert(customerFields.stream().map(field -> BeanUtils.copyBean(new CustomerField(), field)).toList());
-                customerFieldBlobMapper.batchInsert(customerFieldBlobs.stream().map(field -> BeanUtils.copyBean(new CustomerFieldBlob(), field)).toList());
-                // record logs
-                logService.batchAdd(logs);
+                ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
+                switch (importType) {
+                    case ADD -> {
+                        customers.forEach(customer -> {
+                            customer.setCollectionTime(customer.getCreateTime());
+                            customer.setInSharedPool(false);
+                            logs.add(new LogDTO(currentOrg, customer.getId(), currentUser, LogType.ADD, LogModule.CUSTOMER_INDEX, customer.getName()));
+                        });
+                        customerMapper.batchInsert(customers);
+                        customerFieldMapper.batchInsert(customerFields.stream().map(field -> BeanUtils.copyBean(new CustomerField(), field)).toList());
+                        customerFieldBlobMapper.batchInsert(customerFieldBlobs.stream().map(field -> BeanUtils.copyBean(new CustomerFieldBlob(), field)).toList());
+                        // record logs
+                        logService.batchAdd(logs);
+                    }
+                    case UPDATE -> {
+                        List<String> ids = customers.stream().map(Customer::getId).toList();
+                        if (CollectionUtils.isEmpty(ids)) {
+                            break;
+                        }
+                        //原数据
+                        List<Customer> originCustomerList = customerMapper.selectByIds(ids);
+                        if (CollectionUtils.isEmpty(originCustomerList)) {
+                            break;
+                        }
+                        Map<String, Customer> originCustomerMaps = originCustomerList.stream().collect(Collectors.toMap(Customer::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> originFieldValueMap = customerFieldService.getResourceFieldMap(ids, true);
+
+                        List<CustomerField> insertField = new ArrayList<>();
+                        List<CustomerFieldBlob> insertFieldBlob = new ArrayList<>();
+                        SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+                        ExtCustomerMapper customerBatchMapper = sqlSession.getMapper(ExtCustomerMapper.class);
+                        CommonMapper commonMapper = sqlSession.getMapper(CommonMapper.class);
+
+                        if (CollectionUtils.isNotEmpty(customers)) {
+                            customers.forEach(customer -> {
+                                customer.setInSharedPool(false);
+                                customerBatchMapper.updateCustomer(customer);
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(customerFields)) {
+                            List<CustomerField> fieldList = customerFieldMapper.selectByIds(customerFields.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, CustomerField> fieldMap = fieldList.stream().collect(Collectors.toMap(CustomerField::getId, Function.identity()));
+                            customerFields.forEach(customerField -> {
+                                if (fieldMap.containsKey(customerField.getId())) {
+                                    commonMapper.updateCustomerField("customer_field", customerField);
+                                } else {
+                                    insertField.add(BeanUtils.copyBean(new CustomerField(), customerField));
+                                }
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(customerFieldBlobs)) {
+                            List<CustomerFieldBlob> blobList = customerFieldBlobMapper.selectByIds(customerFieldBlobs.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, CustomerFieldBlob> blobMap = blobList.stream().collect(Collectors.toMap(CustomerFieldBlob::getId, Function.identity()));
+                            customerFieldBlobs.forEach(customerFieldBlob -> {
+                                if (blobMap.containsKey(customerFieldBlob.getId())) {
+                                    commonMapper.updateCustomerField("customer_field_blob", customerFieldBlob);
+                                } else {
+                                    insertFieldBlob.add(BeanUtils.copyBean(new CustomerFieldBlob(), customerFieldBlob));
+                                }
+                            });
+
+                        }
+
+                        sqlSession.flushStatements();
+                        SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+
+                        if (CollectionUtils.isNotEmpty(insertField)) {
+                            customerFieldMapper.batchInsert(insertField);
+                        }
+                        if (CollectionUtils.isNotEmpty(insertFieldBlob)) {
+                            customerFieldBlobMapper.batchInsert(insertFieldBlob);
+                        }
+
+                        SqlSession currentSession =
+                                SqlSessionUtils.getSqlSession(sqlSessionFactory);
+                        currentSession.clearCache();
+
+                        Map<String, Customer> modifiedCustomerMaps = customerMapper.selectByIds(ids).stream().collect(Collectors.toMap(Customer::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> modifiedFieldValueMap = customerFieldService.getResourceFieldMap(ids, true);
+
+                        ids.forEach(id -> {
+                            Customer originDate = originCustomerMaps.get(id);
+                            Customer modifiedDate = modifiedCustomerMaps.get(id);
+                            baseService.handleUpdateLog(originDate, modifiedDate, originFieldValueMap.get(id), modifiedFieldValueMap.get(id), id, modifiedDate.getName());
+                            LogContextInfo contextInfo = OperationLogContext.getContext();
+                            if (contextInfo != null) {
+                                LogDTO logDTO = new LogDTO(currentOrg, id, currentUser, LogType.UPDATE, LogModule.CUSTOMER_INDEX, modifiedDate.getName());
+                                logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                                logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                                logs.add(logDTO);
+                                OperationLogContext.clear();
+                            }
+                        });
+                        logService.batchAdd(logs);
+
+                    }
+                }
             };
             CustomFieldImportEventListener<Customer> eventListener = new CustomFieldImportEventListener<>(fields, Customer.class, currentOrg, currentUser,
-                    "customer_field", afterDo, 2000, null, null);
+                    "customer_field","customer_field_blob", afterDo, 2000, null, null, request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
@@ -778,13 +903,12 @@ public class CustomerService {
      *
      * @param file       文件
      * @param currentOrg 当前组织
-     *
      * @return 检查信息
      */
-    private ImportResponse checkImportExcel(MultipartFile file, String currentOrg) {
+    private ImportResponse checkImportExcel(MultipartFile file, String importType, String currentOrg) {
         try {
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(FormKey.CUSTOMER.getKey(), currentOrg);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "customer", "customer_field", currentOrg);
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "customer", "customer_field", currentOrg, importType);
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
@@ -950,7 +1074,6 @@ public class CustomerService {
      * @param mergeRequest 合并请求参数
      * @param currentUser  当前用户
      * @param currentOrgId 当前组织ID
-     *
      * @return 日志列表
      */
     private List<LogDTO> getMergeRelateLogs(CustomerMergeRequest mergeRequest, String currentUser, String currentOrgId) {

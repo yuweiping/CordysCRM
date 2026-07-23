@@ -45,7 +45,7 @@ public class ClueExportService extends BaseExportService {
         // 构建自定义字段数据
         var dataList = clueService.buildListData(exportList, exportParam.getOrgId());
         // 构建选项数据
-        Map<String, List<OptionDTO>> optionMap = buildOptionMap(dataList, exportParam.getExportFieldParam());
+        Map<String, List<OptionDTO>> optionMap = clueService.buildOptionMap(exportParam.getOrgId(), exportList, dataList);
         return buildExportMergeResult(taskId, exportParam, dataList, ClueListResponse::getModuleFields,
                 (detail, fieldParam, metas, cache) -> buildDataWithSub(detail.getModuleFields(), fieldParam, metas,
                         PoolClueFieldUtils.getSystemFieldMap(detail, optionMap), cache));
@@ -59,7 +59,7 @@ public class ClueExportService extends BaseExportService {
             return extClueMapper.getListByIds(exportParam.getSelectIds());
         }
         var request = (CluePageRequest) exportParam.getPageRequest();
-        PageHelper.startPage(request.getCurrent(), request.getPageSize());
+        PageHelper.startPage(request.getCurrent(), request.getPageSize(), false);
         return extClueMapper.list(request, orgId, userId, deptDataPermission, false);
     }
 

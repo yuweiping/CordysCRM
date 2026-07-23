@@ -15,6 +15,7 @@ import cn.cordys.common.dto.*;
 import cn.cordys.common.dto.chart.ChartResult;
 import cn.cordys.common.dto.stage.StageSortRequest;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.mapper.CommonMapper;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
@@ -23,6 +24,7 @@ import cn.cordys.common.service.BaseChartService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.service.DataScopeService;
 import cn.cordys.common.uid.IDGenerator;
+import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
@@ -45,15 +47,13 @@ import cn.cordys.crm.opportunity.mapper.ExtOpportunityMapper;
 import cn.cordys.crm.opportunity.mapper.ExtOpportunityStageConfigMapper;
 import cn.cordys.crm.product.mapper.ExtProductMapper;
 import cn.cordys.crm.product.service.ProductService;
-import cn.cordys.crm.system.constants.DictModule;
-import cn.cordys.crm.system.constants.FieldType;
-import cn.cordys.crm.system.constants.NotificationConstants;
-import cn.cordys.crm.system.constants.SheetKey;
+import cn.cordys.crm.system.constants.*;
 import cn.cordys.crm.system.domain.Dict;
 import cn.cordys.crm.system.dto.DictConfigDTO;
 import cn.cordys.crm.system.dto.field.SelectField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.field.base.OptionProp;
+import cn.cordys.crm.system.dto.request.ImportRequest;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
 import cn.cordys.crm.system.dto.response.ImportResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
@@ -86,6 +86,7 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -178,14 +179,14 @@ public class OpportunityService {
         // 联系人
         List<OptionDTO> contactFieldOption = moduleFormService.getBusinessFieldOption(buildList,
                 OpportunityListResponse::getContactId, OpportunityListResponse::getContactName);
-		if (CollectionUtils.isNotEmpty(contactFieldOption)) {
-			optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
-		}
+        if (CollectionUtils.isNotEmpty(contactFieldOption)) {
+            optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+        }
 
         List<OptionDTO> productOption = extProductMapper.getOptions(orgId);
-		if (CollectionUtils.isNotEmpty(productOption)) {
-			optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
-		}
+        if (CollectionUtils.isNotEmpty(productOption)) {
+            optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+        }
 
         return optionMap;
 
@@ -202,7 +203,7 @@ public class OpportunityService {
         List<String> opportunityIds = list.stream().map(OpportunityListResponse::getId)
                 .collect(Collectors.toList());
         Map<String, List<BaseModuleFieldValue>> opportunityFiledMap = opportunityFieldService.getResourceFieldMap(opportunityIds, true);
-		Map<String, List<BaseModuleFieldValue>> fvMap = opportunityFieldService.setBusinessRefFieldValue(list, moduleFormService.getFlattenFormFields(FormKey.OPPORTUNITY.getKey(), orgId), opportunityFiledMap);
+        Map<String, List<BaseModuleFieldValue>> fvMap = opportunityFieldService.setBusinessRefFieldValue(list, moduleFormService.getFlattenFormFields(FormKey.OPPORTUNITY.getKey(), orgId), opportunityFiledMap);
 
         List<String> ownerIds = list.stream()
                 .map(OpportunityListResponse::getOwner)
@@ -315,10 +316,10 @@ public class OpportunityService {
 
         baseService.handleAddLogWithResourceName(opportunity, request.getModuleFields());
 
-		// 消息通知
-		commonNoticeSendService.sendNotice(NotificationConstants.Module.OPPORTUNITY,
-				NotificationConstants.Event.BUSINESS_ADD, opportunity.getName(), operatorId,
-				orgId, List.of(opportunity.getOwner()), true);
+        // 消息通知
+        commonNoticeSendService.sendNotice(NotificationConstants.Module.OPPORTUNITY,
+                NotificationConstants.Event.BUSINESS_ADD, opportunity.getName(), operatorId,
+                orgId, List.of(opportunity.getOwner()), true);
         return opportunity;
     }
 
@@ -412,15 +413,16 @@ public class OpportunityService {
 
     /**
      * 商机转移 (与商机阶段无关, 都可转移)
-	 * @param request 请求参数
-	 * @param userId 用户ID
-	 * @param orgId 组织ID
+     *
+     * @param request 请求参数
+     * @param userId  用户ID
+     * @param orgId   组织ID
      */
     public void transfer(OpportunityTransferRequest request, String userId, String orgId) {
         List<Opportunity> opportunityList = opportunityMapper.selectByIds(request.getIds());
-		if (CollectionUtils.isEmpty(opportunityList)) {
-			return;
-		}
+        if (CollectionUtils.isEmpty(opportunityList)) {
+            return;
+        }
         List<String> ids = opportunityList.stream().map(Opportunity::getId).toList();
         SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
         ExtOpportunityMapper batchUpdateMapper = sqlSession.getMapper(ExtOpportunityMapper.class);
@@ -499,18 +501,18 @@ public class OpportunityService {
     }
 
 
-	/**
-	 * @param id 商机ID
-	 * @return 商机详情
-	 */
+    /**
+     * @param id 商机ID
+     * @return 商机详情
+     */
     public OpportunityDetailResponse get(String id) {
         OpportunityDetailResponse response = extOpportunityMapper.getDetail(id);
         if (response == null) {
             return null;
         }
         List<BaseModuleFieldValue> fieldValueList = opportunityFieldService.getModuleFieldValuesByResourceId(id);
-		fieldValueList = opportunityFieldService.setBusinessRefFieldValue(List.of(response),
-				moduleFormService.getFlattenFormFields(FormKey.OPPORTUNITY.getKey(), response.getOrganizationId()), new HashMap<>(Map.of(id, fieldValueList))).get(id);
+        fieldValueList = opportunityFieldService.setBusinessRefFieldValue(List.of(response),
+                moduleFormService.getFlattenFormFields(FormKey.OPPORTUNITY.getKey(), response.getOrganizationId()), new HashMap<>(Map.of(id, fieldValueList))).get(id);
         response.setModuleFields(fieldValueList);
         List<String> userIds = Stream.of(Arrays.asList(response.getCreateUser(), response.getUpdateUser(), response.getOwner(), response.getFollower()))
                 .flatMap(Collection::stream)
@@ -559,18 +561,18 @@ public class OpportunityService {
         // 联系人
         List<OptionDTO> contactFieldOption = moduleFormService.getBusinessFieldOption(response,
                 OpportunityDetailResponse::getContactId, OpportunityDetailResponse::getContactName);
-		if (CollectionUtils.isNotEmpty(contactFieldOption)) {
-			optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
-		}
+        if (CollectionUtils.isNotEmpty(contactFieldOption)) {
+            optionMap.put(BusinessModuleField.OPPORTUNITY_CONTACT.getBusinessKey(), contactFieldOption);
+        }
 
         List<OptionDTO> customerOption = moduleFormService.getBusinessFieldOption(response,
                 OpportunityDetailResponse::getCustomerId, OpportunityDetailResponse::getCustomerName);
         optionMap.put(BusinessModuleField.OPPORTUNITY_CUSTOMER_NAME.getBusinessKey(), customerOption);
 
         List<OptionDTO> productOption = extProductMapper.getOptions(response.getOrganizationId());
-		if (CollectionUtils.isNotEmpty(productOption)) {
-			optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
-		}
+        if (CollectionUtils.isNotEmpty(productOption)) {
+            optionMap.put(BusinessModuleField.OPPORTUNITY_PRODUCTS.getBusinessKey(), productOption);
+        }
 
         response.setOptionMap(optionMap);
 
@@ -580,45 +582,47 @@ public class OpportunityService {
         return response;
     }
 
-	/**
-	 * 获取商机详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
-	 * @param id 商机ID
-	 * @return 商机详情
-	 */
-	public OpportunityDetailResponse getSimple(String id) {
-		OpportunityDetailResponse response = extOpportunityMapper.getDetail(id);
-		if (response == null) {
-			return null;
-		}
-		List<BaseModuleFieldValue> fvs = opportunityFieldService.getModuleFieldValuesByResourceId(id);
-		response.setModuleFields(fvs);
-		return response;
-	}
+    /**
+     * 获取商机详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     *
+     * @param id 商机ID
+     * @return 商机详情
+     */
+    public OpportunityDetailResponse getSimple(String id) {
+        OpportunityDetailResponse response = extOpportunityMapper.getDetail(id);
+        if (response == null) {
+            return null;
+        }
+        List<BaseModuleFieldValue> fvs = opportunityFieldService.getModuleFieldValuesByResourceId(id);
+        response.setModuleFields(fvs);
+        return response;
+    }
 
-	/**
-	 * 批量获取商机详情 (用于数据源批量查询优化)
-	 * @param ids 商机ID集合
-	 * @return 商机详情列表
-	 */
-	public List<OpportunityDetailResponse> batchGetSimpleByIds(List<String> ids) {
-		if (CollectionUtils.isEmpty(ids)) {
-			return Collections.emptyList();
-		}
-		// 批量查询资源基本信息
-		List<Opportunity> opportunities = opportunityMapper.selectByIds(ids);
-		if (CollectionUtils.isEmpty(opportunities)) {
-			return Collections.emptyList();
-		}
-		// 批量查询自定义字段值
-		Map<String, List<BaseModuleFieldValue>> fieldValueMap = opportunityFieldService.getResourceFieldMap(ids, true);
+    /**
+     * 批量获取商机详情 (用于数据源批量查询优化)
+     *
+     * @param ids 商机ID集合
+     * @return 商机详情列表
+     */
+    public List<OpportunityDetailResponse> batchGetSimpleByIds(List<String> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        // 批量查询资源基本信息
+        List<Opportunity> opportunities = opportunityMapper.selectByIds(ids);
+        if (CollectionUtils.isEmpty(opportunities)) {
+            return Collections.emptyList();
+        }
+        // 批量查询自定义字段值
+        Map<String, List<BaseModuleFieldValue>> fieldValueMap = opportunityFieldService.getResourceFieldMap(ids, true);
 
-		// 组装结果
-		return opportunities.stream().map(opportunity -> {
-			OpportunityDetailResponse response = BeanUtils.copyBean(new OpportunityDetailResponse(), opportunity);
-			response.setModuleFields(fieldValueMap.get(opportunity.getId()));
-			return response;
-		}).toList();
-	}
+        // 组装结果
+        return opportunities.stream().map(opportunity -> {
+            OpportunityDetailResponse response = BeanUtils.copyBean(new OpportunityDetailResponse(), opportunity);
+            response.setModuleFields(fieldValueMap.get(opportunity.getId()));
+            return response;
+        }).toList();
+    }
 
 
     /**
@@ -735,11 +739,11 @@ public class OpportunityService {
      * @param currentOrg 当前组织
      * @return 导入检查信息
      */
-    public ImportResponse importPreCheck(MultipartFile file, String currentOrg) {
+    public ImportResponse importPreCheck(MultipartFile file, String importType, String currentOrg) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
-        return checkImportExcel(file, currentOrg);
+        return checkImportExcel(file, importType, currentOrg);
     }
 
     /**
@@ -750,32 +754,118 @@ public class OpportunityService {
      * @param currentUser 当前用户
      * @return 导入返回信息
      */
-    public ImportResponse realImport(MultipartFile file, String currentOrg, String currentUser) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ImportResponse realImport(MultipartFile file, ImportRequest request, String currentOrg, String currentUser) {
         try {
             List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(currentOrg);
 
             List<BaseField> fields = moduleFormService.getAllFields(FormKey.OPPORTUNITY.getKey(), currentOrg);
-            long nextPos = getNextPos(currentOrg, stageConfigList.getFirst().getId());
             CustomImportAfterDoConsumer<Opportunity, BaseResourceSubField> afterDo = (opportunities, opportunityFields, opportunityFieldBlobs) -> {
                 List<LogDTO> logs = new ArrayList<>();
-                for (int i = 0; i < opportunities.size(); i++) {
-                    Opportunity opportunity = opportunities.get(i);
-                    opportunity.setStage(stageConfigList.getFirst().getId());
-                    opportunity.setPos(nextPos + i);
-                    logs.add(new LogDTO(currentOrg, opportunity.getId(), currentUser, LogType.ADD, LogModule.OPPORTUNITY_INDEX, opportunity.getName()));
-					// 消息通知(异步)
-					commonNoticeSendService.sendNotice(NotificationConstants.Module.OPPORTUNITY,
-							NotificationConstants.Event.BUSINESS_ADD, opportunity.getName(), currentUser,
-							currentOrg, List.of(opportunity.getOwner()), true);
+                ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
+                switch (importType) {
+                    case ADD -> {
+                        long nextPos = getNextPos(currentOrg, stageConfigList.getFirst().getId());
+                        for (int i = 0; i < opportunities.size(); i++) {
+                            Opportunity opportunity = opportunities.get(i);
+                            opportunity.setStage(stageConfigList.getFirst().getId());
+                            opportunity.setPos(nextPos + i);
+                            logs.add(new LogDTO(currentOrg, opportunity.getId(), currentUser, LogType.ADD, LogModule.OPPORTUNITY_INDEX, opportunity.getName()));
+                            commonNoticeSendService.sendNotice(NotificationConstants.Module.OPPORTUNITY,
+                                    NotificationConstants.Event.BUSINESS_ADD, opportunity.getName(), currentUser,
+                                    currentOrg, List.of(opportunity.getOwner()), true);
+                        }
+                        opportunityMapper.batchInsert(opportunities);
+                        opportunityFieldMapper.batchInsert(opportunityFields.stream().map(field -> BeanUtils.copyBean(new OpportunityField(), field)).toList());
+                        opportunityFieldBlobMapper.batchInsert(opportunityFieldBlobs.stream().map(field -> BeanUtils.copyBean(new OpportunityFieldBlob(), field)).toList());
+                        // record logs
+                        logService.batchAdd(logs);
+                    }
+                    case UPDATE -> {
+                        List<String> ids = opportunities.stream().map(Opportunity::getId).toList();
+                        if (CollectionUtils.isEmpty(ids)) {
+                            break;
+                        }
+                        //原数据
+                        List<Opportunity> originOpportunityList = opportunityMapper.selectByIds(ids);
+                        if (CollectionUtils.isEmpty(originOpportunityList)) {
+                            break;
+                        }
+                        Map<String, Opportunity> originOpportunityMaps = originOpportunityList.stream().collect(Collectors.toMap(Opportunity::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> originFieldValueMap = opportunityFieldService.getResourceFieldMap(ids, true);
+
+                        List<OpportunityField> insertField = new ArrayList<>();
+                        List<OpportunityFieldBlob> insertFieldBlob = new ArrayList<>();
+                        SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+                        ExtOpportunityMapper batchMapper = sqlSession.getMapper(ExtOpportunityMapper.class);
+                        CommonMapper commonMapper = sqlSession.getMapper(CommonMapper.class);
+
+                        if (CollectionUtils.isNotEmpty(opportunities)) {
+                            opportunities.forEach(opportunity -> {
+                                batchMapper.updateOpportunity(opportunity);
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(opportunityFields)) {
+                            List<OpportunityField> fieldList = opportunityFieldMapper.selectByIds(opportunityFields.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, OpportunityField> fieldMap = fieldList.stream().collect(Collectors.toMap(OpportunityField::getId, Function.identity()));
+                            opportunityFields.forEach(opportunityField -> {
+                                if (fieldMap.containsKey(opportunityField.getId())) {
+                                    commonMapper.updateCustomerField("opportunity_field", opportunityField);
+                                } else {
+                                    insertField.add(BeanUtils.copyBean(new OpportunityField(), opportunityField));
+                                }
+                            });
+                        }
+
+                        if (CollectionUtils.isNotEmpty(opportunityFieldBlobs)) {
+                            List<OpportunityFieldBlob> blobList = opportunityFieldBlobMapper.selectByIds(opportunityFieldBlobs.stream().map(BaseResourceSubField::getId).toList());
+                            Map<String, OpportunityFieldBlob> blobMap = blobList.stream().collect(Collectors.toMap(OpportunityFieldBlob::getId, Function.identity()));
+                            opportunityFieldBlobs.forEach(opportunityFieldBlob -> {
+                                if (blobMap.containsKey(opportunityFieldBlob.getId())) {
+                                    commonMapper.updateCustomerField("opportunity_field_blob", opportunityFieldBlob);
+                                } else {
+                                    insertFieldBlob.add(BeanUtils.copyBean(new OpportunityFieldBlob(), opportunityFieldBlob));
+                                }
+                            });
+                        }
+
+                        sqlSession.flushStatements();
+                        SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+
+                        if (CollectionUtils.isNotEmpty(insertField)) {
+                            opportunityFieldMapper.batchInsert(insertField);
+                        }
+                        if (CollectionUtils.isNotEmpty(insertFieldBlob)) {
+                            opportunityFieldBlobMapper.batchInsert(insertFieldBlob);
+                        }
+
+                        SqlSession currentSession =
+                                SqlSessionUtils.getSqlSession(sqlSessionFactory);
+                        currentSession.clearCache();
+
+                        Map<String, Opportunity> modifiedOpportunityMaps = opportunityMapper.selectByIds(ids).stream().collect(Collectors.toMap(Opportunity::getId, Function.identity()));
+                        Map<String, List<BaseModuleFieldValue>> modifiedFieldValueMap = opportunityFieldService.getResourceFieldMap(ids, true);
+
+                        ids.forEach(id -> {
+                            Opportunity originDate = originOpportunityMaps.get(id);
+                            Opportunity modifiedDate = modifiedOpportunityMaps.get(id);
+                            baseService.handleUpdateLog(originDate, modifiedDate, originFieldValueMap.get(id), modifiedFieldValueMap.get(id), id, modifiedDate.getName());
+                            LogContextInfo contextInfo = OperationLogContext.getContext();
+                            if (contextInfo != null) {
+                                LogDTO logDTO = new LogDTO(currentOrg, id, currentUser, LogType.UPDATE, LogModule.OPPORTUNITY_INDEX, modifiedDate.getName());
+                                logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                                logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                                logs.add(logDTO);
+                                OperationLogContext.clear();
+                            }
+                        });
+                        logService.batchAdd(logs);
+                    }
                 }
-                opportunityMapper.batchInsert(opportunities);
-                opportunityFieldMapper.batchInsert(opportunityFields.stream().map(field -> BeanUtils.copyBean(new OpportunityField(), field)).toList());
-                opportunityFieldBlobMapper.batchInsert(opportunityFieldBlobs.stream().map(field -> BeanUtils.copyBean(new OpportunityFieldBlob(), field)).toList());
-                // record logs
-                logService.batchAdd(logs);
             };
             CustomFieldImportEventListener<Opportunity> eventListener = new CustomFieldImportEventListener<>(fields, Opportunity.class, currentOrg, currentUser,
-                    "opportunity_field", afterDo, 2000, null, null);
+                    "opportunity_field", "opportunity_field_blob", afterDo, 2000, null, null, request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
@@ -792,10 +882,10 @@ public class OpportunityService {
      * @param currentOrg 当前组织
      * @return 检查信息
      */
-    private ImportResponse checkImportExcel(MultipartFile file, String currentOrg) {
+    private ImportResponse checkImportExcel(MultipartFile file, String importType, String currentOrg) {
         try {
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(FormKey.OPPORTUNITY.getKey(), currentOrg);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "opportunity", "opportunity_field", currentOrg);
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "opportunity", "opportunity_field", currentOrg, importType);
             FastExcelFactory.read(file.getInputStream(), eventListener).headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();

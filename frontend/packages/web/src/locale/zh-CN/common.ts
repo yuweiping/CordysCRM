@@ -255,6 +255,7 @@ export default {
   'common.addTime': '添加时间',
   'common.opened': '已开启',
   'common.disabled': '已禁用',
+  'common.showDisabledUsers': '显示已禁用/离职人员',
   'common.ViewMore': '查看更多',
   'common.unNamed': '未命名',
   'common.revokeChange': '撤销更改',
@@ -353,6 +354,7 @@ export default {
   'common.unApprovedSuccess': '审批不通过',
   'common.skipped': '跳过',
   'common.backToTop': '回到顶部',
+  'common.lastStep': '上一步',
   'common.nextStep': '下一步',
   'common.approvalStatus': '审批状态',
   'common.pending': '待提审',
@@ -377,4 +379,6 @@ export default {
   'common.testLink': '测试连接',
   'common.batchDeleteTitle': '确认删除 {count} 个数据吗？',
   'common.businessFeatureTip': '当前为企业版功能，可点击链接查看企业版本功能详情',
+  'common.uniqueID': '唯一ID',
+  'common.emptyPoolImportTip': '请先添加{name}，再进行导入操作',
 };

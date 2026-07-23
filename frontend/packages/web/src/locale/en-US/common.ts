@@ -257,6 +257,7 @@ export default {
   'common.addTime': 'Add time',
   'common.opened': 'Enabled',
   'common.disabled': 'Disabled',
+  'common.showDisabledUsers': 'Show disabled/resigned users',
   'common.ViewMore': 'View more',
   'common.unNamed': 'Not named',
   'common.revokeChange': 'Revoke change',
@@ -343,6 +344,7 @@ export default {
   'common.unApprovedSuccess': 'Approval not passed',
   'common.skipped': 'Skipped',
   'common.backToTop': 'Back to top',
+  'common.lastStep': 'Last step',
   'common.nextStep': 'Next step',
   'common.approvalStatus': 'Approval status',
   'common.pending': 'Pending',
@@ -366,4 +368,6 @@ export default {
   'common.batchDeleteTitle': 'Confirm delete {count} data?',
   'common.businessFeatureTip':
     'This is the Enterprise Edition feature; click the link to view details of the Enterprise Edition features.',
+  'common.uniqueID': 'ID',
+  'common.emptyPoolImportTip': 'Please add {name}, and then to import operation',
 };

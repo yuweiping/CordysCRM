@@ -386,6 +386,16 @@
     owner: null,
   });
 
+  function resetTransferForm() {
+    transferForm.value.owner = null;
+  }
+
+  function handleTransferPopUpdate(key: string, show: boolean) {
+    if (key === 'transfer' && show) {
+      resetTransferForm();
+    }
+  }
+
   async function transferCustomer() {
     try {
       transferLoading.value = true;
@@ -395,7 +405,7 @@
       });
 
       Message.success(t('common.transferSuccess'));
-      transferForm.value.owner = null;
+      resetTransferForm();
       tableRefreshId.value += 1;
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -537,9 +547,8 @@
                         : []),
                     ],
                     onSelect: (key: string) => handleActionSelect(row, key),
-                    onCancel: () => {
-                      transferForm.value.owner = null;
-                    },
+                    onCancel: resetTransferForm,
+                    onPopUpdate: handleTransferPopUpdate,
                   },
                   {
                     transferPopContent: () => {
@@ -700,13 +709,13 @@
   }
   handleSearchData.value = searchData;
 
-  function handleFormCreateSaved(res: any) {
+  function handleFormCreateSaved(res: any, isUpdateReview?: boolean, isContinue?: boolean) {
     if (needInitDetail.value || activeFormKey.value === FormDesignKeyEnum.FOLLOW_RECORD_CUSTOMER) {
       searchData(undefined, res.id);
     } else {
       searchData();
     }
-    if (activeFormKey.value === FormDesignKeyEnum.CUSTOMER && !needInitDetail.value) {
+    if (activeFormKey.value === FormDesignKeyEnum.CUSTOMER && !needInitDetail.value && !isContinue) {
       // 新建客户后打开新建联系人
       activeSourceId.value = res.id;
       initialSourceName.value = res.name;

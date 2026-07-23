@@ -39,7 +39,7 @@
             :approval-status="detailInfo?.approvalStatus"
             @save-approval="handleSaveApproval"
           >
-            <template #left="{ fieldPermissions }">
+            <template #left="{ fieldPermissions, taskNode }">
               <CrmFormDescription
                 ref="formDescriptionRef"
                 :form-key="FormDesignKeyEnum.INVOICE_SNAPSHOT"
@@ -49,7 +49,7 @@
                 :fieldPermissions="fieldPermissions"
                 :otherSaveParams="{
                   updateType: 'approval',
-                  approvalTaskId: props.approvalTaskId,
+                  approvalTaskId: props.approvalTaskId || taskNode?.taskId,
                 }"
                 label-width="auto"
                 value-align="start"
@@ -239,12 +239,12 @@
   async function handleSaveApproval(callback: () => Promise<any>, hasFieldPermission: boolean) {
     if (hasFieldPermission) {
       formDescriptionRef.value?.handleFormChange(async () => {
-        await callback();
+        // await callback();
         refreshKey.value += 1;
         emit('refresh');
       });
     } else {
-      await callback();
+      // await callback();
       refreshKey.value += 1;
       emit('refresh');
     }

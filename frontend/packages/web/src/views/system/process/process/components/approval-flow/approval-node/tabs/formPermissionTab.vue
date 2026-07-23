@@ -15,13 +15,14 @@
   import { h, ref, watch } from 'vue';
   import { DataTableColumn, NDataTable, NRadio, NScrollbar } from 'naive-ui';
 
-  import { FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
+  import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import { ApprovalFieldPermissionModeEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import type { ApprovalActionNode } from '@lib/shared/models/system/process';
 
-  import { getFormConfigApiMap } from '@/components/business/crm-form-create/config';
   import type { FormCreateField } from '@/components/business/crm-form-create/types';
+
+  import { getDatasourceFieldConfig } from '@/api/modules';
 
   defineOptions({
     name: 'FormPermissionTab',
@@ -55,17 +56,32 @@
     },
   ];
 
-  // 仅单行文本、多行文本支持编辑， 其它类型的编辑按钮禁用
+  function isReadableField(field: FormCreateField) {
+    return field.readable !== false;
+  }
+
+  // 仅部分类型支持编辑， 其它类型的编辑按钮禁用
   function isEditableField(field: FormCreateField) {
     return (
-      [FieldTypeEnum.INPUT, FieldTypeEnum.TEXTAREA].includes(field.type) &&
+      [
+        FieldTypeEnum.INPUT,
+        FieldTypeEnum.TEXTAREA,
+        FieldTypeEnum.INPUT_NUMBER,
+        FieldTypeEnum.SELECT,
+        FieldTypeEnum.SELECT_MULTIPLE,
+        FieldTypeEnum.DATE_TIME,
+      ].includes(field.type) &&
       field.editable !== false &&
+      isReadableField(field) &&
       !field.resourceFieldId
     );
   }
 
   function getFieldPermission(fieldId: string) {
-    return nodeConfig.value.fieldPermissions?.find((item) => item.fieldId === fieldId)?.permissionType ?? 'VIEW';
+    return (
+      nodeConfig.value.fieldPermissions?.find((item) => item.fieldId === fieldId)?.permissionType ??
+      ApprovalFieldPermissionModeEnum.VIEW
+    );
   }
 
   function setFieldPermission(fieldId: string, permissionType: ApprovalFieldPermissionModeEnum) {
@@ -85,6 +101,14 @@
   }
 
   function isPermissionDisabled(field: FormCreateField, permissionType: ApprovalFieldPermissionModeEnum) {
+    const isViewOrEditPermission =
+      permissionType === ApprovalFieldPermissionModeEnum.VIEW ||
+      permissionType === ApprovalFieldPermissionModeEnum.EDIT;
+
+    if (isViewOrEditPermission && !isReadableField(field)) {
+      return true;
+    }
+
     return permissionType === ApprovalFieldPermissionModeEnum.EDIT && !isEditableField(field);
   }
 
@@ -153,6 +177,14 @@
 
     nodeConfig.value.fieldPermissions = fields.map((field) => {
       const permissionType = existingPermissionMap.get(field.id) ?? ApprovalFieldPermissionModeEnum.VIEW;
+
+      if (!isReadableField(field)) {
+        return {
+          fieldId: field.id,
+          permissionType: ApprovalFieldPermissionModeEnum.HIDDEN,
+        };
+      }
+
       return {
         fieldId: field.id,
         permissionType:
@@ -166,8 +198,7 @@
   async function loadFormFields() {
     try {
       loading.value = true;
-      const api = getFormConfigApiMap[props.formType as FormDesignKeyEnum];
-      const res = await api();
+      const res = await getDatasourceFieldConfig(props.formType);
       // 仅使用顶层字段；子表格保留父字段名，不展开 subFields 明细。
       formFields.value = res.fields;
       normalizeFieldPermissions(formFields.value);

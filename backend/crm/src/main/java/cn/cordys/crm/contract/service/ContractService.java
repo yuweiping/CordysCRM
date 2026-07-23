@@ -31,6 +31,7 @@ import cn.cordys.common.util.Translator;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.approval.annotation.HitApproval;
 import cn.cordys.crm.approval.constants.ApprovalFormTypeEnum;
+import cn.cordys.crm.approval.constants.ApprovalResourceUpdateType;
 import cn.cordys.crm.approval.constants.ApprovalStatus;
 import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
 import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
@@ -54,9 +55,6 @@ import cn.cordys.crm.contract.mapper.ExtContractInvoiceMapper;
 import cn.cordys.crm.contract.mapper.ExtContractMapper;
 import cn.cordys.crm.contract.mapper.ExtContractStageConfigMapper;
 import cn.cordys.crm.customer.domain.Customer;
-import cn.cordys.crm.order.domain.Order;
-import cn.cordys.crm.order.domain.OrderSnapshot;
-import cn.cordys.crm.order.dto.response.OrderGetResponse;
 import cn.cordys.crm.system.constants.CirculationFieldValueTypeEnum;
 import cn.cordys.crm.system.constants.CirculationTypeEnum;
 import cn.cordys.crm.system.constants.DictModule;
@@ -125,8 +123,8 @@ public class ContractService implements ApprovalResourceHandler {
     private ExtContractStageConfigMapper extContractStageConfigMapper;
     @Resource
     private ApprovalFlowService approvalFlowService;
-	@Resource
-	private LogService logService;
+    @Resource
+    private LogService logService;
     @Resource
     private StageAdvancedConfigService stageAdvancedConfigService;
     @Resource
@@ -145,11 +143,8 @@ public class ContractService implements ApprovalResourceHandler {
     @OperationLog(module = LogModule.CONTRACT_INDEX, type = LogType.ADD, resourceName = "{#request.name}")
     @HitApproval(formKey = FormKey.CONTRACT, executeType = ExecuteTimingEnum.CREATE, operatorId = "{#operatorId}")
     public Contract add(ContractAddRequest request, String operatorId, String orgId) {
-        List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
-        if (CollectionUtils.isEmpty(moduleFields)) {
-            throw new GenericException(Translator.get("contract.field.required"));
-        }
+        List<BaseModuleFieldValue> moduleFields = request.getModuleFields() == null ? new ArrayList<>() : request.getModuleFields();
         if (moduleFormConfigDTO == null) {
             throw new GenericException(Translator.get("contract.form.config.required"));
         }
@@ -173,6 +168,7 @@ public class ContractService implements ApprovalResourceHandler {
         contract.setCreateUser(operatorId);
         contract.setUpdateTime(System.currentTimeMillis());
         contract.setUpdateUser(operatorId);
+        contract.setApproved(false);
 
         if (!dictService.isDictConfigEnable(DictModule.CONTRACT_APPROVAL.name(), orgId)) {
             contract.setApprovalStatus(ContractApprovalStatus.NONE.name());
@@ -307,6 +303,7 @@ public class ContractService implements ApprovalResourceHandler {
 
     /**
      * 获取字段详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     *
      * @param id 合同ID
      * @return 合同详情
      */
@@ -367,11 +364,8 @@ public class ContractService implements ApprovalResourceHandler {
     @HitApproval(formKey = FormKey.CONTRACT, executeType = ExecuteTimingEnum.UPDATE, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}", comment = "{#request.comment}")
     public Contract update(ContractUpdateRequest request, String userId, String orgId) {
         Contract oldContract = contractMapper.selectByPrimaryKey(request.getId());
-        List<BaseModuleFieldValue> moduleFields = request.getModuleFields();
+        List<BaseModuleFieldValue> moduleFields = request.getModuleFields() == null ? new ArrayList<>() : request.getModuleFields();
         ModuleFormConfigDTO moduleFormConfigDTO = request.getModuleFormConfigDTO();
-        if (CollectionUtils.isEmpty(moduleFields)) {
-            throw new GenericException(Translator.get("contract.field.required"));
-        }
         if (moduleFormConfigDTO == null) {
             throw new GenericException(Translator.get("contract.form.config.required"));
         }
@@ -663,7 +657,7 @@ public class ContractService implements ApprovalResourceHandler {
         }
         contractMapper.update(contract);
 
-        updateFieldAndSnapshot(contract, request.getFields(),userId);
+        updateFieldAndSnapshot(contract, request.getFields(), userId);
 
         if (Strings.CI.equals(request.getStage(), ContractStage.VOID.name()) || Strings.CI.equals(request.getStage(), ContractStage.ARCHIVED.name())) {
             String event = Strings.CI.equals(request.getStage(), ContractStage.VOID.name()) ?
@@ -776,6 +770,36 @@ public class ContractService implements ApprovalResourceHandler {
         }
     }
 
+    @Override
+    public String getPreUpdateSnapshotData(String resourceId, String userId, String orgId) {
+        Contract contract = contractMapper.selectByPrimaryKey(resourceId);
+        if (contract == null) {
+            return null;
+        }
+        List<BaseModuleFieldValue> contractFields = contractFieldService.getModuleFieldValuesByResourceId(resourceId);
+        ContractUpdateRequest snapshotReq = BeanUtils.copyBean(new ContractUpdateRequest(), contract);
+        snapshotReq.setAmount(contract.getAmount() != null ? contract.getAmount().toString() : null);
+        snapshotReq.setUpdateType(ApprovalResourceUpdateType.APPROVAL.getValue());
+        ModuleFormConfigDTO contractFormConfig = getFormConfig(contract.getOrganizationId());
+        snapshotReq.setModuleFormConfigDTO(contractFormConfig);
+        // 获取模块字段
+        moduleFormService.processBusinessFieldValues(snapshotReq, contractFields, contractFormConfig);
+        return JSON.toJSONString(snapshotReq);
+    }
+
+    @Override
+    public void revertToSnapshot(String resourceId, String userId, String orgId, String snapshotData) {
+        try {
+            ContractUpdateRequest request = JSON.parseObject(snapshotData, ContractUpdateRequest.class);
+            if (request == null) {
+                return;
+            }
+            CommonBeanFactory.getBean(ContractService.class).update(request, userId, orgId);
+        } catch (Exception e) {
+            log.error("审批回退还原业务数据失败, resourceId:{}", resourceId, e);
+        }
+    }
+
     /**
      * ⚠️反射调用: 由审批执行后置操作统一调用, 勿修改
      *
@@ -800,16 +824,17 @@ public class ContractService implements ApprovalResourceHandler {
             response = JSON.parseObject(snapshot.getContractValue(), ContractGetResponse.class);
         }
 
-        ResourceApprovalFieldUpdateParam stageField = postFieldParam.getFields().stream().filter(param -> Strings.CS.equals(param.getFieldId(), "stage") && param.getFieldValue() != null).findFirst().orElse(null);
-        handleStageSetting(stageField, contract, postFieldParam);
+        List<ResourceApprovalFieldUpdateParam> postParams = postFieldParam.getFields();
+        ResourceApprovalFieldUpdateParam stageField = postParams.stream().filter(param -> Strings.CS.equals(param.getFieldId(), "stage") && param.getFieldValue() != null).findFirst().orElse(null);
+        boolean stageFlag = handleStageSetting(stageField, contract, postFieldParam);
 
-        for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postFieldParam.getFields()) {
-            if (Strings.CS.equals(fieldUpdateParam.getFieldId(), "stage") && fieldUpdateParam.getFieldValue() != null) {
+        for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postParams) {
+            if (Strings.CS.equals(fieldUpdateParam.getFieldId(), "stage") && fieldUpdateParam.getFieldValue() != null && stageFlag) {
                 contractFieldService.setResourceFieldValue(contract, "stage", fieldUpdateParam.getFieldValue());
                 continue;
             }
             if (!fieldConfigMap.containsKey(fieldUpdateParam.getFieldId()) || fieldUpdateParam.getFieldValue() == null) {
-                return;
+                continue;
             }
             BaseField fieldConfig = fieldConfigMap.get(fieldUpdateParam.getFieldId());
             AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
@@ -881,22 +906,27 @@ public class ContractService implements ApprovalResourceHandler {
 
     /**
      * 审批后置操作更新阶段配置
+     *
      * @param stageField
      * @param originContract
      * @param postFieldParam
      */
-    private void handleStageSetting(ResourceApprovalFieldUpdateParam stageField, Contract originContract, ResourceApprovalPostUpdateParam postFieldParam) {
+    private boolean handleStageSetting(ResourceApprovalFieldUpdateParam stageField, Contract originContract, ResourceApprovalPostUpdateParam postFieldParam) {
         if (stageField == null) {
-            return;
+            return true;
         }
-        if (!stageAdvancedConfigService.checkStage(originContract.getStage(), stageField.getFieldValue().toString(), FormKey.CONTRACT.getKey())) {
-            return;
+        try {
+            if (!stageAdvancedConfigService.checkStage(originContract.getStage(), stageField.getFieldValue().toString(), FormKey.CONTRACT.getKey())) {
+                return true;
+            }
+        } catch (Exception e) {
+            return false;
         }
         StageConfigResponse first = extContractStageConfigMapper.getStageConfigList(originContract.getOrganizationId()).getFirst();
         if (Strings.CI.equals(first.getCirculationType(), CirculationTypeEnum.ADVANCED.name())) {
             StageAdvancedConfig config = extStageAdvancedConfigMapper.getConfigByOriginAndTarget(originContract.getStage(), stageField.getFieldValue().toString(), FormKey.CONTRACT.name());
             if (config == null || config.getFieldConfig() == null) {
-                return;
+                return true;
             }
             List<CirculationFieldValue> circulationFieldValues = JSON.parseObject(config.getFieldConfig(), new TypeReference<List<CirculationFieldValue>>() {
             });
@@ -919,6 +949,7 @@ public class ContractService implements ApprovalResourceHandler {
             newFields.addAll(fields);
             postFieldParam.setFields(newFields);
         }
+        return true;
     }
 
 
@@ -1133,7 +1164,7 @@ public class ContractService implements ApprovalResourceHandler {
         contract.setPos(pos);
         contract.setStage(request.getStage());
         contractMapper.updateById(contract);
-        updateFieldAndSnapshot(contract,request.getFields(),userId);
+        updateFieldAndSnapshot(contract, request.getFields(), userId);
 
     }
 

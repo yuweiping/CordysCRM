@@ -13,7 +13,10 @@ import cn.cordys.common.pager.Pager;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.uid.utils.EnumUtils;
-import cn.cordys.common.util.*;
+import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.CodingUtils;
+import cn.cordys.common.util.JSON;
+import cn.cordys.common.util.Translator;
 import cn.cordys.common.utils.BeanCopyUtils;
 import cn.cordys.crm.approval.constants.ApprovalState;
 import cn.cordys.crm.contract.constants.BusinessTitleType;
@@ -21,9 +24,11 @@ import cn.cordys.crm.contract.constants.ContractApprovalStatus;
 import cn.cordys.crm.contract.domain.BusinessTitle;
 import cn.cordys.crm.contract.domain.BusinessTitleConfig;
 import cn.cordys.crm.contract.domain.ContractInvoice;
-import cn.cordys.crm.contract.dto.request.*;
+import cn.cordys.crm.contract.dto.request.BusinessTitleAddRequest;
+import cn.cordys.crm.contract.dto.request.BusinessTitleApprovalRequest;
+import cn.cordys.crm.contract.dto.request.BusinessTitlePageRequest;
+import cn.cordys.crm.contract.dto.request.BusinessTitleUpdateRequest;
 import cn.cordys.crm.contract.dto.response.BusinessTitleListResponse;
-import cn.cordys.crm.contract.excel.constants.BusinessTitleImportType;
 import cn.cordys.crm.contract.excel.domain.BusinessTitleExcelDataFactory;
 import cn.cordys.crm.contract.excel.handler.BusinessTitleTemplateWriteHandler;
 import cn.cordys.crm.contract.excel.listener.BusinessTitleCheckEventListener;
@@ -34,8 +39,10 @@ import cn.cordys.crm.integration.common.request.QccThirdConfigRequest;
 import cn.cordys.crm.integration.common.utils.HttpClientUtils;
 import cn.cordys.crm.integration.qcc.constant.QccApiPaths;
 import cn.cordys.crm.integration.qcc.dto.*;
+import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.constants.SheetKey;
 import cn.cordys.crm.system.dto.field.base.BaseField;
+import cn.cordys.crm.system.dto.request.ImportRequest;
 import cn.cordys.crm.system.dto.response.ImportResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.excel.domain.UserExcelDataFactory;
@@ -60,6 +67,7 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -379,7 +387,7 @@ public class BusinessTitleService {
      * @param orgId
      * @return
      */
-    public ImportResponse importPreCheck(MultipartFile file, String orgId, BusinessTitleImportRequest request) {
+    public ImportResponse importPreCheck(MultipartFile file, String orgId, ImportRequest request) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
@@ -394,7 +402,7 @@ public class BusinessTitleService {
      * @param orgId
      * @return
      */
-    private ImportResponse checkImportExcel(MultipartFile file, String orgId, BusinessTitleImportRequest request) {
+    private ImportResponse checkImportExcel(MultipartFile file, String orgId, ImportRequest request) {
         try {
             Class<?> clazz = new UserExcelDataFactory().getExcelDataByLocal();
             BusinessTitleCheckEventListener eventListener = new BusinessTitleCheckEventListener(clazz, getBusinessTitleConfig(orgId), orgId, getTemplateHead(), request);
@@ -416,17 +424,18 @@ public class BusinessTitleService {
      * @param orgId
      * @return
      */
-    public ImportResponse realImport(MultipartFile file, String userId, String orgId, BusinessTitleImportRequest request) {
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ImportResponse realImport(MultipartFile file, String userId, String orgId, ImportRequest request) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
         try {
             Class<?> clazz = new UserExcelDataFactory().getExcelDataByLocal();
 
-            BusinessTitleImportType businessTitleImportType = EnumUtils.valueOf(BusinessTitleImportType.class, request.getImportType());
+            ImportType businessTitleImportType = EnumUtils.valueOf(ImportType.class, request.getImportType());
             Consumer<List<BusinessTitle>> afterDto = null;
             switch (businessTitleImportType) {
-                case BusinessTitleImportType.ADD -> {
+                case ADD -> {
                     afterDto = (businessTitles) -> {
                         List<LogDTO> logs = new ArrayList<>();
                         businessTitles.forEach(title -> {
@@ -438,22 +447,19 @@ public class BusinessTitleService {
                         logService.batchAdd(logs);
                     };
                 }
-                case BusinessTitleImportType.UPDATE -> {
+                case UPDATE -> {
                     SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
                     ExtBusinessTitleMapper mapper = sqlSession.getMapper(ExtBusinessTitleMapper.class);
                     afterDto = (businessTitles) -> {
-                        List<BusinessTitle> titleList = extBusinessTitleMapper.selectByNames(businessTitles.stream().map(BusinessTitle::getName).toList());
-                        Map<String, BusinessTitle> nameNap = titleList.stream().collect(Collectors.toMap(BusinessTitle::getName, Function.identity()));
+                        List<BusinessTitle> titleList = businessTitleMapper.selectByIds(businessTitles.stream().map(BusinessTitle::getId).toList());
+                        Map<String, BusinessTitle> idMap = titleList.stream().collect(Collectors.toMap(BusinessTitle::getId, Function.identity()));
                         List<LogDTO> logs = new ArrayList<>();
                         Set<String> titleSet = new HashSet<>();
                         businessTitles.removeIf(user -> !titleSet.add(user.getName()));
                         businessTitles.forEach(title -> {
-                            //1.通过name查询id
-                            //2.setId 并更新
-                            if (nameNap.containsKey(title.getName())) {
-                                BusinessTitle originTitle = nameNap.get(title.getName());
+                            if (idMap.containsKey(title.getId())) {
+                                BusinessTitle originTitle = idMap.get(title.getId());
                                 BeanCopyUtils.fillEmptyFields(title, originTitle);
-                                title.setId(originTitle.getId());
                                 title.setUpdateTime(System.currentTimeMillis());
                                 title.setUpdateUser(userId);
                                 mapper.updateById(title);

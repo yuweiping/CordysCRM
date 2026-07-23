@@ -65,6 +65,16 @@ export interface TableExportSelectedParams {
   ids: string[];
 }
 
+export interface ImportUploadParams {
+  fileList: File[];
+  request?: {
+    importType?: string;
+    poolId?: string;
+    customFormId?: string;
+    [key: string]: any;
+  };
+}
+
 export interface TableDraggedParams {
   moveId: string;
   moveMode: 'BEFORE' | 'AFTER';

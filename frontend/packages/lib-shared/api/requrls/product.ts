@@ -12,6 +12,9 @@ export const GetProductOptionsUrl = '/product/list/option'; // 获取当前组�
 export const PreCheckProductImportUrl = '/product/import/pre-check';
 export const DownloadProductTemplateUrl = '/product/template/download';
 export const ImportProductUrl = '/product/import';
+// 导出
+export const ExportProductUrl = '/product/export-select'; // 导出选择的产品
+export const ExportAllProductUrl = '/product/export-all'; // 导出所有产品
 
 export const UpdateProductPriceUrl = '/price/update'; // 更新价格表
 export const BatchUpdateProductPriceUrl = '/price/batch/update'; // 批量更新价格表

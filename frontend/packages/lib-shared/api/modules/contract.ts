@@ -64,6 +64,9 @@ import {
   EnablePaymentRecordViewUrl,
   DeletePaymentRecordViewUrl,
   DragPaymentRecordViewUrl,
+  PreCheckPaymentPlanImportUrl,
+  DownloadPaymentPlanTemplateUrl,
+  ImportPaymentPlanUrl,
   PreCheckPaymentRecordImportUrl,
   DownloadPaymentRecordTemplateUrl,
   ImportPaymentRecordUrl,
@@ -91,6 +94,9 @@ import {
   ContractInvoicedDetailUrl,
   ContractInvoicedExportAllUrl,
   ContractInvoicedExportSelectedUrl,
+  PreCheckContractInvoicedImportUrl,
+  DownloadContractInvoicedTemplateUrl,
+  ImportContractInvoicedUrl,
   ContractInvoicedFormConfigSnapshotUrl,
   ContractInvoicedFormConfigUrl,
   ContractInvoicedPageUrl,
@@ -126,6 +132,7 @@ import type {
   ChartResponseDataItem,
   CommonList,
   GenerateChartParams,
+  ImportUploadParams,
   TableDraggedParams,
   TableExportParams,
   TableExportSelectedParams,
@@ -482,12 +489,26 @@ export default function useContractApi(CDR: CordysAxios) {
     return CDR.post({ url: DragPaymentRecordViewUrl, data });
   }
 
-  function preCheckImportContractPaymentRecord(file: File) {
-    return CDR.uploadFile<{ data: ValidateInfo }>(
-      { url: PreCheckPaymentRecordImportUrl },
-      { fileList: [file] },
-      'file'
+  function preCheckImportContractPaymentPlan(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckPaymentPlanImportUrl }, params, 'file');
+  }
+
+  function downloadContractPaymentPlanTemplate() {
+    return CDR.get(
+      {
+        url: DownloadPaymentPlanTemplateUrl,
+        responseType: 'blob',
+      },
+      { isTransformResponse: false, isReturnNativeResponse: true }
     );
+  }
+
+  function importContractPaymentPlan(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportPaymentPlanUrl }, params, 'file');
+  }
+
+  function preCheckImportContractPaymentRecord(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckPaymentRecordImportUrl }, params, 'file');
   }
 
   function downloadContractPaymentRecordTemplate() {
@@ -500,15 +521,15 @@ export default function useContractApi(CDR: CordysAxios) {
     );
   }
 
-  function importContractPaymentRecord(file: File) {
-    return CDR.uploadFile({ url: ImportPaymentRecordUrl }, { fileList: [file] }, 'file');
+  function importContractPaymentRecord(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportPaymentRecordUrl }, params, 'file');
   }
 
   // 合同-工商抬头导入
-  function preCheckImportBusinessTitle(file: File, importType?: string) {
+  function preCheckImportBusinessTitle(params: ImportUploadParams) {
     return CDR.uploadFile<{ data: ValidateInfo }>(
       { url: PreCheckBusinessTitleImportUrl },
-      { fileList: [file], request: { importType } },
+      params,
       'file'
     );
   }
@@ -523,8 +544,8 @@ export default function useContractApi(CDR: CordysAxios) {
     );
   }
 
-  function importBusinessTitle(file: File, importType?: string) {
-    return CDR.uploadFile({ url: ImportBusinessTitleUrl }, { fileList: [file], request: { importType } }, 'file');
+  function importBusinessTitle(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportBusinessTitleUrl }, params, 'file');
   }
 
   // 工商抬头列表
@@ -673,6 +694,24 @@ export default function useContractApi(CDR: CordysAxios) {
   // 导出选中发票
   function exportInvoicedSelected(data: TableExportSelectedParams) {
     return CDR.post({ url: ContractInvoicedExportSelectedUrl, data });
+  }
+
+  function preCheckImportContractInvoiced(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckContractInvoicedImportUrl }, params, 'file');
+  }
+
+  function downloadContractInvoicedTemplate() {
+    return CDR.get(
+      {
+        url: DownloadContractInvoicedTemplateUrl,
+        responseType: 'blob',
+      },
+      { isTransformResponse: false, isReturnNativeResponse: true }
+    );
+  }
+
+  function importContractInvoiced(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportContractInvoicedUrl }, params, 'file');
   }
 
   // 获取发票 tab 显隐
@@ -841,6 +880,9 @@ export default function useContractApi(CDR: CordysAxios) {
     enablePaymentRecordView,
     deletePaymentRecordView,
     dragPaymentRecordView,
+    preCheckImportContractPaymentPlan,
+    importContractPaymentPlan,
+    downloadContractPaymentPlanTemplate,
     preCheckImportContractPaymentRecord,
     importContractPaymentRecord,
     downloadContractPaymentRecordTemplate,
@@ -897,5 +939,9 @@ export default function useContractApi(CDR: CordysAxios) {
     updateContractStage,
     saveContractAdvanceConfig,
     switchContractCirculationType,
+    // 发票导入
+    preCheckImportContractInvoiced,
+    downloadContractInvoicedTemplate,
+    importContractInvoiced,
   };
 }

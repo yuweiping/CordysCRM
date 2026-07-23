@@ -12,7 +12,7 @@
       <template #1>
         <div class="flex h-full w-full p-[24px_8px_24px_24px]">
           <n-scrollbar :content-style="{ paddingRight: '8px' }" x-scrollable>
-            <slot name="left" :fieldPermissions="filedPermission"></slot>
+            <slot name="left" :fieldPermissions="filedPermission" :taskNode="currentTaskNode"></slot>
           </n-scrollbar>
         </div>
       </template>
@@ -101,7 +101,7 @@
     </CrmSplitPanel>
     <div v-else class="flex h-full w-full p-[24px_16px_24px_24px]">
       <n-scrollbar x-scrollable>
-        <slot name="left" :fieldPermissions="[]"></slot>
+        <slot name="left" :fieldPermissions="[]" :taskNode="currentTaskNode"></slot>
       </n-scrollbar>
     </div>
   </CrmCard>
@@ -329,7 +329,10 @@
   // 是否可以撤销审批申请
   const canCancelApply = computed(() => {
     // 未配置撤销申请
-    if (!approvalConfig.value?.submitterCanRevoke) {
+    if (
+      !approvalConfig.value?.submitterCanRevoke &&
+      approvalInfo.value?.nodes[0].approvalStatus !== ProcessStatusEnum.APPROVING
+    ) {
       return false;
     }
     // 流程结束不允许撤销

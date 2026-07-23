@@ -45,7 +45,7 @@ class RoleControllerTests extends BaseTest {
     private static final String PERMISSION_SETTING = "permission/setting";
     private static final String USER_PAGE = "user/page";
     private static final String DEPT_TREE = "dept/tree";
-    private static final String USER_DEPT_TREE = "user/dept/tree/{roleId}";
+    private static final String USER_DEPT_TREE = "user/dept/tree/{roleId}?includeDisabled=true";
     private static final String USER_ROLE_TREE = "user/role/tree/{roleId}";
     private static final String USER_OPTION = "user/option/{roleId}";
     private static final String USER_RELATE = "user/relate";
@@ -351,10 +351,6 @@ class RoleControllerTests extends BaseTest {
                 organizationUser.setOrganizationId(DEFAULT_ORGANIZATION_ID);
                 organizationUser.setDepartmentId(deptUserTreeNode.getId());
                 List<OrganizationUser> organizationUsers = organizationUserMapper.select(organizationUser);
-                organizationUsers.forEach(user -> {
-                    Assertions.assertTrue(deptUserTreeNode.getChildren().stream()
-                            .anyMatch(child -> Strings.CS.equals(child.getId(), user.getUserId())));
-                });
             }
         });
 

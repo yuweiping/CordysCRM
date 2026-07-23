@@ -1,7 +1,12 @@
 <template>
-  <n-button type="primary" ghost class="n-btn-outline-primary" @click="handleImport">
-    {{ `${t('common.import')}${props.title ?? ''}` }}
-  </n-button>
+  <n-tooltip :delay="300" :disabled="!disabledTooltip">
+    <template #trigger>
+      <n-button type="primary" ghost class="n-btn-outline-primary" :disabled="props.readonly" @click="handleImport">
+        {{ `${t('common.import')}${props.title ?? ''}` }}
+      </n-button>
+    </template>
+    {{ props.disabledTooltip }}
+  </n-tooltip>
 
   <ImportModal
     v-model:show="importModal"
@@ -9,7 +14,7 @@
     :description-tip="props.descriptionTip"
     :confirm-loading="validateLoading"
     :download-template-api="downloadTemplateApi"
-    :show-import-radio="props.showImportRadio"
+    :show-import-radio="showImportRadio"
     @validate="validateTemplate"
   />
 
@@ -32,9 +37,11 @@
 
 <script setup lang="ts">
   import { ref } from 'vue';
-  import { NButton, useMessage } from 'naive-ui';
+  import { NButton, NTooltip, useMessage } from 'naive-ui';
 
+  import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import type { ImportUploadParams } from '@lib/shared/models/common';
   import type { ValidateInfo } from '@lib/shared/models/system/org';
 
   import type { CrmFileItem } from '@/components/pure/crm-upload/types';
@@ -44,7 +51,7 @@
 
   import useProgressBar from '@/hooks/useProgressBar';
 
-  import { importApiMap, ImportApiType } from './utils';
+  import { importApiMap, ImportApiType, type ImportRequestParams } from './utils';
 
   const { t } = useI18n();
   const { progress, start, finish } = useProgressBar();
@@ -55,8 +62,10 @@
     title?: string;
     buttonText?: string;
     descriptionTip?: string; // 描述提示
-    showImportRadio?: boolean; // 导入新建和导入更新
     customFormId?: string;
+    poolId?: string | number;
+    readonly?: boolean;
+    disabledTooltip?: string;
   }>();
 
   const emit = defineEmits<{
@@ -65,6 +74,8 @@
 
   const importModal = ref<boolean>(false);
   const validateLoading = ref<boolean>(false);
+
+  const showImportRadio = computed(() => !([FormDesignKeyEnum.PRICE] as ImportApiType[]).includes(props.apiType));
 
   function handleImport() {
     importModal.value = true;
@@ -104,10 +115,29 @@
     return download ? () => download(props.customFormId) : undefined;
   });
 
+  function getImportRequestParams(file: File, type?: string): ImportRequestParams {
+    const request: ImportUploadParams['request'] = showImportRadio.value
+      ? {
+          importType: type,
+          ...(props.poolId ? { poolId: props.poolId as string } : {}),
+          ...(props.customFormId ? { customFormId: props.customFormId as string } : {}),
+        }
+      : undefined;
+
+    return {
+      uploadParams: {
+        fileList: [file],
+        request,
+      },
+      customFormId: props.customFormId,
+    };
+  }
+
   async function importHandler() {
     try {
       importLoading.value = true;
-      await importApiMap[props.apiType].save(fileList.value[0].file as File, importType.value, props.customFormId);
+      const params = getImportRequestParams(fileList.value[0].file as File, importType.value);
+      await importApiMap[props.apiType].save(params);
       Message.success(t('common.importSuccess'));
 
       emit('importSuccess');
@@ -146,7 +176,7 @@
       validateModal.value = true;
       start();
 
-      const result = await importApiMap[props.apiType].preCheck(file, type, props.customFormId);
+      const result = await importApiMap[props.apiType].preCheck(getImportRequestParams(file, type));
       validateInfo.value = result.data;
       finish();
     } catch (error) {

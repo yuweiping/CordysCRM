@@ -15,6 +15,11 @@ import java.util.Locale;
 @Setter
 public class BusinessTitleExcelData {
     /**
+     * id
+     */
+    @ExcelIgnore
+    private String id;
+    /**
      * 公司名称
      */
     @ExcelIgnore
@@ -94,7 +99,9 @@ public class BusinessTitleExcelData {
         List<List<String>> heads = new ArrayList<>();
         BusinessTitleImportFiled[] fields = BusinessTitleImportFiled.values();
         for (BusinessTitleImportFiled field : fields) {
-            heads.add(Collections.singletonList(field.getFiledLangMap().get(lang)));
+            if (!field.equals(BusinessTitleImportFiled.ID)) {
+                heads.add(Collections.singletonList(field.getFiledLangMap().get(lang)));
+            }
         }
         return heads;
     }

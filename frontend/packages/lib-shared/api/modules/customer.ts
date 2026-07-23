@@ -37,6 +37,7 @@ import {
   DisableCustomerContactUrl,
   DownloadAccountTemplateUrl,
   DownloadContactTemplateUrl,
+  DownloadPoolAccountTemplateUrl,
   DragAccountPoolViewUrl,
   DragContactViewUrl,
   DragCustomerViewUrl,
@@ -95,6 +96,7 @@ import {
   GetOpenSeaOptionsUrl,
   ImportAccountUrl,
   ImportContactUrl,
+  ImportPoolAccountUrl,
   IsCustomerOpenSeaNoPickUrl,
   MergeAccountPageUrl,
   MergeAccountUrl,
@@ -103,6 +105,7 @@ import {
   PoolAccountBatchUpdateUrl,
   PreCheckAccountImportUrl,
   PreCheckContactImportUrl,
+  PreCheckPoolAccountImportUrl,
   SaveCustomerRelationUrl,
   SwitchCustomerOpenSeaUrl,
   UpdateAccountPoolViewUrl,
@@ -130,6 +133,7 @@ import type {
   ChartResponseDataItem,
   CommonList,
   GenerateChartParams,
+  ImportUploadParams,
   TableDraggedParams,
   TableExportParams,
   TableExportSelectedParams,
@@ -700,8 +704,8 @@ export default function useProductApi(CDR: CordysAxios) {
   }
 
   // 客户导入
-  function preCheckImportAccount(file: File) {
-    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckAccountImportUrl }, { fileList: [file] }, 'file');
+  function preCheckImportAccount(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckAccountImportUrl }, params, 'file');
   }
 
   function downloadAccountTemplate() {
@@ -714,13 +718,39 @@ export default function useProductApi(CDR: CordysAxios) {
     );
   }
 
-  function importAccount(file: File) {
-    return CDR.uploadFile({ url: ImportAccountUrl }, { fileList: [file] }, 'file');
+  function importAccount(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportAccountUrl }, params, 'file');
+  }
+
+  function preCheckImportPoolAccount(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>(
+      { url: PreCheckPoolAccountImportUrl },
+      params,
+      'file'
+    );
+  }
+
+  function downloadPoolAccountTemplate() {
+    return CDR.get(
+      {
+        url: DownloadPoolAccountTemplateUrl,
+        responseType: 'blob',
+      },
+      { isTransformResponse: false, isReturnNativeResponse: true }
+    );
+  }
+
+  function importPoolAccount(params: ImportUploadParams) {
+    return CDR.uploadFile(
+      { url: ImportPoolAccountUrl },
+      params,
+      'file'
+    );
   }
 
   // 联系人导入
-  function preCheckImportContact(file: File) {
-    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckContactImportUrl }, { fileList: [file] }, 'file');
+  function preCheckImportContact(params: ImportUploadParams) {
+    return CDR.uploadFile<{ data: ValidateInfo }>({ url: PreCheckContactImportUrl }, params, 'file');
   }
 
   function downloadContactTemplate() {
@@ -733,8 +763,8 @@ export default function useProductApi(CDR: CordysAxios) {
     );
   }
 
-  function importContact(file: File) {
-    return CDR.uploadFile({ url: ImportContactUrl }, { fileList: [file] }, 'file');
+  function importContact(params: ImportUploadParams) {
+    return CDR.uploadFile({ url: ImportContactUrl }, params, 'file');
   }
 
   // 公海视图
@@ -900,6 +930,9 @@ export default function useProductApi(CDR: CordysAxios) {
     preCheckImportAccount,
     downloadAccountTemplate,
     importAccount,
+    preCheckImportPoolAccount,
+    downloadPoolAccountTemplate,
+    importPoolAccount,
     preCheckImportContact,
     downloadContactTemplate,
     importContact,

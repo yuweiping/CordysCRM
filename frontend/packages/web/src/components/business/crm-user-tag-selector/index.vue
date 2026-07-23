@@ -30,6 +30,7 @@
       :fetch-role-params="props.fetchRoleParams"
       :fetch-member-params="props.fetchMemberParams"
       :max-count="props.maxCount"
+      :show-include-disabled="props.showIncludeDisabled"
       @confirm="handleSelectConfirm"
     />
   </div>
@@ -66,6 +67,7 @@
     maxTagCount?: 'responsive' | number | false;
     maxCount?: number;
     placeholder?: string;
+    showIncludeDisabled?: boolean;
   };
   const props = withDefaults(defineProps<UserTagSelectorProps>(), {
     multiple: true,
@@ -118,7 +120,11 @@
         },
       },
       {
-        default: () => selectedList.value?.find((item) => item.id === option.value)?.name,
+        default: () => {
+          const current = selectedList.value?.find((item) => item.id === option.value);
+          return h('span', { class: 'one-line-text' }, { default: () => current?.name });
+        },
+        tooltipContent: () => selectedList.value?.find((item) => item.id === option.value)?.name,
       }
     );
   };

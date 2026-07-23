@@ -72,6 +72,7 @@ public class PermissionConstants {
     public static final String CUSTOMER_MANAGEMENT_POOL_PICK = "CUSTOMER_MANAGEMENT_POOL:PICK";
     public static final String CUSTOMER_MANAGEMENT_POOL_ASSIGN = "CUSTOMER_MANAGEMENT_POOL:ASSIGN";
     public static final String CUSTOMER_MANAGEMENT_POOL_EXPORT = "CUSTOMER_MANAGEMENT_POOL:EXPORT";
+    public static final String CUSTOMER_MANAGEMENT_POOL_IMPORT = "CUSTOMER_MANAGEMENT_POOL:IMPORT";
     /*------ end: CUSTOMER_MANAGEMENT_POOL ------*/
 
 
@@ -90,6 +91,7 @@ public class PermissionConstants {
     public static final String PRODUCT_MANAGEMENT_UPDATE = "PRODUCT_MANAGEMENT:UPDATE";
     public static final String PRODUCT_MANAGEMENT_DELETE = "PRODUCT_MANAGEMENT:DELETE";
     public static final String PRODUCT_MANAGEMENT_IMPORT = "PRODUCT_MANAGEMENT:IMPORT";
+    public static final String PRODUCT_MANAGEMENT_EXPORT = "PRODUCT_MANAGEMENT:EXPORT";
     /*------ end: PRODUCT_MANAGEMENT ------*/
 
     /*------ start: OPPORTUNITY_MANAGEMENT ------*/
@@ -125,6 +127,7 @@ public class PermissionConstants {
     public static final String CLUE_MANAGEMENT_POOL_PICK = "CLUE_MANAGEMENT_POOL:PICK";
     public static final String CLUE_MANAGEMENT_POOL_ASSIGN = "CLUE_MANAGEMENT_POOL:ASSIGN";
     public static final String CLUE_MANAGEMENT_POOL_UPDATE = "CLUE_MANAGEMENT_POOL:UPDATE";
+    public static final String CLUE_MANAGEMENT_POOL_IMPORT = "CLUE_MANAGEMENT_POOL:IMPORT";
     public static final String CLUE_MANAGEMENT_POOL_EXPORT = "CLUE_MANAGEMENT_POOL:EXPORT";
     /*------ end: CLUE_MANAGEMENT_POOL ------*/
 
@@ -197,6 +200,8 @@ public class PermissionConstants {
     public static final String CONTRACT_PAYMENT_PLAN_ADD = "CONTRACT_PAYMENT_PLAN:ADD";
     public static final String CONTRACT_PAYMENT_PLAN_UPDATE = "CONTRACT_PAYMENT_PLAN:UPDATE";
     public static final String CONTRACT_PAYMENT_PLAN_DELETE = "CONTRACT_PAYMENT_PLAN:DELETE";
+    public static final String CONTRACT_PAYMENT_PLAN_IMPORT = "CONTRACT_PAYMENT_PLAN:IMPORT";
+    public static final String CONTRACT_PAYMENT_PLAN_EXPORT = "CONTRACT_PAYMENT_PLAN:EXPORT";
     /*------ end: CONTRACT_CONTRACT_PAYMENT_PLAN_ROLE ------*/
 
 
@@ -209,6 +214,7 @@ public class PermissionConstants {
     public static final String CONTRACT_INVOICE_READ = "CONTRACT_INVOICE:READ";
     public static final String CONTRACT_INVOICE_ADD = "CONTRACT_INVOICE:ADD";
     public static final String CONTRACT_INVOICE_UPDATE = "CONTRACT_INVOICE:UPDATE";
+    public static final String CONTRACT_INVOICE_IMPORT = "CONTRACT_INVOICE:IMPORT";
     public static final String CONTRACT_INVOICE_EXPORT = "CONTRACT_INVOICE:EXPORT";
     public static final String CONTRACT_INVOICE_APPROVAL = "CONTRACT_INVOICE:APPROVAL";
     public static final String CONTRACT_INVOICE_DELETE = "CONTRACT_INVOICE:DELETE";

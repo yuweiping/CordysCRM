@@ -372,12 +372,12 @@
         limit 1
     </select>
 
-    <select id="getCheckValList" resultType="java.lang.String">
-        select `${fieldName}`
+    <select id="getCheckValList" resultType="cn.cordys.common.domain.BaseResourceSubField">
+        select `${fieldName}` as fieldValue, id as resourceId
         from `${tableName}` t
         where organization_id = #{orgId}
         <if test="tableName == 'clue'">
-            and (t.transition_type != 'CUSTOMER' or t.transition_type is null) and t.in_shared_pool = false
+            and (t.transition_type != 'CUSTOMER' or t.transition_type is null)
         </if>
     </select>
 
@@ -390,8 +390,8 @@
         limit 1
     </select>
 
-    <select id="getCheckFieldValList" resultType="java.lang.String">
-        select f.field_value from `${fieldTable}` f join `${dataTable}` d on f.resource_id = d.id
+    <select id="getCheckFieldValList" resultType="cn.cordys.common.domain.BaseResourceSubField">
+        select f.field_value, f.resource_id from `${fieldTable}` f join `${dataTable}` d on f.resource_id = d.id
         where f.field_id = #{fieldId} and d.organization_id = #{orgId}
         <if test="dataTable == 'clue'">
             and (d.transition_type != 'CUSTOMER' or d.transition_type is null)
@@ -595,4 +595,44 @@
             </if>
         </if>
     </sql>
+
+
+    <select id="getResourceField" resultType="cn.cordys.common.domain.BaseResourceSubField">
+        select t.*
+        from `${tableName}` t
+        where t.resource_id = #{resourceId} and t.field_id = #{fieldId}
+    </select>
+
+    <update id="updateCustomerField">
+        update `${tableName}` t
+        <set>
+            <if test="field.resourceId != null and field.resourceId != ''">
+                t.resource_id = #{field.resourceId},
+            </if>
+            <if test="field.fieldId != null and field.fieldId != ''">
+                t.field_id = #{field.fieldId},
+            </if>
+            <if test="field.fieldValue != null and field.fieldValue != ''">
+                t.field_value = #{field.fieldValue},
+            </if>
+            <if test="field.refSubId != null and field.refSubId != ''">
+                t.ref_sub_id = #{field.refSubId},
+            </if>
+            <if test="field.rowId != null and field.rowId != ''">
+                t.row_id = #{field.rowId},
+            </if>
+            <if test="field.bizId != null and field.bizId != ''">
+                t.biz_id = #{field.bizId},
+            </if>
+        </set>
+        <where>
+            id = #{field.id}
+        </where>
+
+    </update>
+
+
+    <select id="checkIdCount" resultType="java.lang.Integer">
+        select count(id) from `${tableName}` t where t.id = #{id}
+    </select>
 </mapper>

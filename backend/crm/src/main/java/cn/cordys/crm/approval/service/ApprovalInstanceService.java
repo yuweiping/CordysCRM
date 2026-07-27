@@ -255,7 +255,7 @@ public class ApprovalInstanceService {
 			if (approverNode != null) {
 				node.setMultiApproverMode(MultiApproverModeEnum.valueOf(approverNode.getMultiApproverMode()));
 				if (CollectionUtils.isNotEmpty(node.getTaskNodes()) && node.getTaskNodes().size() > 1 && StringUtils.isBlank(node.getApprovalStatus())) {
-					ApprovalStatus approvalStatusOfMultiNode = getNodeApprovalStatusOfMultiTask(node.getTaskNodes());
+					ApprovalStatus approvalStatusOfMultiNode = getNodeApprovalStatusOfMultiTask(node.getTaskNodes(), node.getMultiApproverMode());
 					node.setApprovalStatus(approvalStatusOfMultiNode == null ? null : approvalStatusOfMultiNode.name());
 				} else if (node.getTaskNodes().size() == 1 && StringUtils.isBlank(node.getApprovalStatus())){
 					node.setApprovalStatus(node.getTaskNodes().getFirst().getApprovalStatus());
@@ -494,36 +494,20 @@ public class ApprovalInstanceService {
 	 * @param taskNodes 任务节点
 	 * @return 审批状态
 	 */
-	private ApprovalStatus getNodeApprovalStatusOfMultiTask(List<ApprovalTaskNode> taskNodes) {
-		boolean anyReject = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.UNAPPROVED);
-		boolean anyAutoReject = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.AUTO_UNAPPROVED);
-		boolean anyApproving = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.APPROVING);
-		boolean anyRevoked = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.REVOKED);
-		boolean anyApproved = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.APPROVED);
-		boolean anyAutoApproved = taskNodes.stream().anyMatch(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()) == ApprovalStatus.AUTO_APPROVED);
+    private ApprovalStatus getNodeApprovalStatusOfMultiTask(List<ApprovalTaskNode> taskNodes, MultiApproverModeEnum approverMode) {
+        // 分组设置优先级
+        Map<ApprovalStatus, Long> counts = taskNodes.stream()
+                .collect(Collectors.groupingBy(tn -> ApprovalStatus.valueOf(tn.getApprovalStatus()), Collectors.counting()));
+        List<ApprovalStatus> priority = approverMode == MultiApproverModeEnum.ANY
+                ? List.of(ApprovalStatus.UNAPPROVED, ApprovalStatus.AUTO_UNAPPROVED, ApprovalStatus.APPROVED,
+                ApprovalStatus.AUTO_APPROVED, ApprovalStatus.APPROVING, ApprovalStatus.REVOKED)
+                : List.of(ApprovalStatus.UNAPPROVED, ApprovalStatus.AUTO_UNAPPROVED, ApprovalStatus.APPROVING,
+                ApprovalStatus.REVOKED, ApprovalStatus.APPROVED, ApprovalStatus.AUTO_APPROVED);
 
-		// 所有多人审批模式统一: 任一驳回即驳回 (状态优先级: 驳回 > 自动驳回 -> 审批中 -> 已通过 -> 自动通过)
-		if (anyReject) {
-			return ApprovalStatus.UNAPPROVED;
-		}
-		if (anyAutoReject) {
-			return ApprovalStatus.AUTO_UNAPPROVED;
-		}
-		if (anyApproving) {
-			return ApprovalStatus.APPROVING;
-		}
-		if (anyRevoked) {
-			return ApprovalStatus.NONE;
-		}
-		if (anyApproved) {
-			return ApprovalStatus.APPROVED;
-		}
-		if (anyAutoApproved) {
-			return ApprovalStatus.AUTO_APPROVED;
-		}
-
-		return null;
-	}
+        return priority.stream()
+                .filter(s -> counts.getOrDefault(s, 0L) > 0)
+                .findFirst().filter(s -> s != ApprovalStatus.REVOKED).orElse(null);
+    }
 
 	/**
 	 * 获取所有审批节点集合
@@ -558,30 +542,35 @@ public class ApprovalInstanceService {
 	 * @param signTaskMap 加签任务集合
 	 * @return 加签任务集合
 	 */
-	private List<ApprovalTask> flatSignTask(ApprovalTask currentTask, Map<String, List<ApprovalAddSignTask>> rootAddSignMap, Map<String, ApprovalTask> signTaskMap) {
-		if (!rootAddSignMap.containsKey(currentTask.getId())) {
-			// 不存在加签链
-			return List.of(currentTask);
-		}
-		List<ApprovalAddSignTask> signTasks = rootAddSignMap.get(currentTask.getId());
-		Optional<ApprovalAddSignTask> rootNext = signTasks.stream().filter(signTask -> Strings.CS.equals(signTask.getSignTaskId(), currentTask.getId())).findFirst();
-		if (rootNext.isEmpty()) {
-			// 不存在加签链
-			return List.of(currentTask);
-		}
-		signTasks.sort(Comparator.comparing(ApprovalAddSignTask::getSort));
-		List<ApprovalTask> signChain = new ArrayList<>();
-		if (ApprovalAddSignType.valueOf(rootNext.get().getType()) == ApprovalAddSignType.BEFORE) {
-			// 下一个节点在基础节点之前
-			signChain.addAll(signTasks.stream().map(signTask -> signTaskMap.get(signTask.getTaskId())).toList());
-			signChain.addLast(currentTask);
-		} else {
-			// 下一个节点在基础节点之后
-			signChain.addFirst(currentTask);
-			signChain.addAll(signTasks.stream().map(signTask -> signTaskMap.get(signTask.getTaskId())).toList());
-		}
-		return signChain;
-	}
+    private List<ApprovalTask> flatSignTask(ApprovalTask currentTask, Map<String, List<ApprovalAddSignTask>> rootAddSignMap, Map<String, ApprovalTask> signTaskMap) {
+        List<ApprovalAddSignTask> signTasks = rootAddSignMap.get(currentTask.getId());
+        if (signTasks == null || signTasks.isEmpty()) {
+            return List.of(currentTask);
+        }
+        signTasks.sort(Comparator.comparing(ApprovalAddSignTask::getSort));
+
+        // 是否存在根节点之前的加签
+        ApprovalAddSignTask lastBeforeOnRoot = signTasks.stream()
+                .filter(s -> s.getSignTaskId().equals(currentTask.getId()) && ApprovalAddSignType.valueOf(s.getType()) == ApprovalAddSignType.BEFORE)
+                .reduce((first, second) -> second)
+                .orElse(null);
+
+        List<ApprovalTask> result = new ArrayList<>();
+        if (lastBeforeOnRoot != null) {
+            // 需要在中间插入根节点
+            for (ApprovalAddSignTask sign : signTasks) {
+                result.add(signTaskMap.get(sign.getTaskId()));
+                if (sign == lastBeforeOnRoot) {
+                    result.add(currentTask);
+                }
+            }
+        } else {
+            // （都是根节点之后加签）根节点就是第一个节点
+            result.add(currentTask);
+            signTasks.forEach(s -> result.add(signTaskMap.get(s.getTaskId())));
+        }
+        return result;
+    }
 
 	/**
 	 * 获取最终的节点顺序 (同一节点可能执行多轮)

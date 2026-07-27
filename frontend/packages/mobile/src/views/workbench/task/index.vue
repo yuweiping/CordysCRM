@@ -48,6 +48,7 @@
         :item-gap="16"
         :keyword="keyword"
         :load-list-api="lisApiMap[activeName as ApprovalListTypeEnum]"
+        @refresh="initStatistic()"
       >
         <template #item="{ item }">
           <div
@@ -83,7 +84,10 @@
                     <div class="one-line-text flex-1">{{ item.applicant }}</div>
                     <div class="flex items-center gap-[8px]">
                       <van-button
-                        v-if="activeName === ApprovalListTypeEnum.PENDING || getResourcePermission(item)"
+                        v-if="
+                          !item.resourceNotFound &&
+                          (activeName === ApprovalListTypeEnum.PENDING || getResourcePermission(item))
+                        "
                         type="primary"
                         size="mini"
                         class="h-[20px]"
@@ -167,7 +171,7 @@
     ApprovalTaskExecuteTimeEnum,
     ProcessStatusEnum,
   } from '@lib/shared/enums/process';
-  import { useRoute, useRouter } from 'vue-router';
+  import { useRouter } from 'vue-router';
   import dayjs from 'dayjs';
   import { WorkbenchRouteEnum } from '@/enums/routeEnum';
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum.js';
@@ -175,7 +179,6 @@
   import { hasAnyPermission } from '@/utils/permission.js';
 
   const { t } = useI18n();
-  const route = useRoute();
   const router = useRouter();
 
   const activeName = ref();
@@ -324,6 +327,9 @@
 
   function handleItemClick(item: ApprovalTodoItem) {
     if (activeName.value !== ApprovalListTypeEnum.PENDING || !approvalConfig.value?.allowBatchProcess) {
+      if (getResourcePermission(item)) {
+        goDetail(item);
+      }
       return;
     }
     const index = selectedKeys.value.indexOf(item.approvalTaskId);
@@ -362,6 +368,9 @@
     [ApprovalResourceTypeEnum.INVOICE]: FormDesignKeyEnum.INVOICE_SNAPSHOT,
   };
   function goDetail(item: ApprovalTodoItem) {
+    if (item.resourceNotFound) {
+      return;
+    }
     router.push({
       name: WorkbenchRouteEnum.WORKBENCH_APPROVAL,
       query: {

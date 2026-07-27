@@ -40,6 +40,9 @@
     closeInitLoad?: boolean; // 关闭首次加载
     notShowLoadingToast?: boolean;
   }>();
+  const emit = defineEmits<{
+    (e: 'refresh'): void;
+  }>();
 
   const { t } = useI18n();
 
@@ -60,6 +63,7 @@
   async function loadList(refresh = false) {
     if (props.closeInitLoad) return;
     try {
+      list.value = [];
       if (!props.loadListApi) {
         list.value = props.transform ? list.value.map((e: any) => props.transform!(e)) : list.value;
         originData.value = list.value;
@@ -133,6 +137,7 @@
     refreshing.value = true;
     await loadList(true);
     showSuccessToast(t('common.refreshSuccess'));
+    emit('refresh');
   }
 
   defineExpose({

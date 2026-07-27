@@ -521,11 +521,13 @@
                       line[currentKey] = subData[key];
                     }
                     break;
-                  case currentChildField.type === FieldTypeEnum.INPUT_NUMBER:
+                  case [FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.DATE_TIME, FieldTypeEnum.PHONE].includes(
+                    currentChildField.type
+                  ):
                     line[currentKey] = subData[`${childLinkField.id}_original`];
                     break;
                   default:
-                    line[currentKey] = subData[key];
+                    line[currentKey] = subData[key] === '-' ? '' : subData[key];
                     break;
                 }
               }
@@ -666,6 +668,10 @@
       if (item.type === FieldTypeEnum.PHONE) {
         // 去空格
         result[index][item.businessKey || item.id] = fieldValue?.replace(/[\s\uFEFF\xA0]+/g, '');
+      }
+      if (item.type === FieldTypeEnum.DATE_TIME && typeof fieldValue === 'string') {
+        // 去空格
+        result[index][item.businessKey || item.id] = dayjs(fieldValue).valueOf();
       }
     });
   }

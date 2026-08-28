@@ -118,7 +118,7 @@
       {
         "id": "SYSTEM_LICENSE",
         "name": "permission.system.license",
-        "license": true,
+        "license": false,
         "permissions": [
           {
             "id": "LICENSE:READ",
@@ -555,6 +555,10 @@
             "license": false
           },
           {
+            "id": "CONTRACT:IMPORT",
+            "license": false
+          },
+          {
             "id": "CONTRACT:EXPORT",
             "license": false
           },
@@ -694,6 +698,12 @@
           },
           {
             "id": "ORDER:DOWNLOAD"
+          },
+          {
+            "id": "ORDER:IMPORT"
+          },
+          {
+            "id": "ORDER:EXPORT"
           }
         ]
       }

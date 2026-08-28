@@ -24,7 +24,19 @@ export const pathMap: PathMapItem[] = [
   {
     key: 'WORKBENCH',
     locale: 'menu.workbench',
-    route: AppRouteEnum.WORKBENCH_INDEX,
+    route: AppRouteEnum.WORKBENCH_SMART,
+    children: [
+      {
+        key: 'WORKBENCH_SMART',
+        locale: 'menu.workbench.smart',
+        route: AppRouteEnum.WORKBENCH_SMART,
+      },
+      {
+        key: 'WORKBENCH_BOARD',
+        locale: 'menu.workbench.board',
+        route: AppRouteEnum.WORKBENCH_BOARD,
+      },
+    ],
   },
   {
     key: 'PRODUCT_MANAGEMENT',
@@ -262,6 +274,30 @@ export const pathMap: PathMapItem[] = [
             locale: 'system.business.tab.mailSettings',
             routeQuery: {
               tab: 'mailSettings',
+            },
+          },
+          {
+            key: 'SYSTEM_BUSINESS_AGENT_MODEL',
+            route: AppRouteEnum.SYSTEM_BUSINESS,
+            locale: 'system.business.tab.modelSettings',
+            routeQuery: {
+              tab: 'modelSettings',
+            },
+          },
+          {
+            key: 'SYSTEM_BUSINESS_AGENT_TERM',
+            route: AppRouteEnum.SYSTEM_BUSINESS,
+            locale: 'system.business.tab.termSettings',
+            routeQuery: {
+              tab: 'termSettings',
+            },
+          },
+          {
+            key: 'SYSTEM_BUSINESS_AGENT_TASK',
+            route: AppRouteEnum.SYSTEM_BUSINESS,
+            locale: 'system.business.tab.globalTask',
+            routeQuery: {
+              tab: 'globalTask',
             },
           },
         ],

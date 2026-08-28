@@ -96,6 +96,8 @@ export interface CustomerFollowRecordListItem {
   departmentId: string;
   departmentName: string;
   poolId: string;
+  resourceType: string;
+  commentCount?: number; // 评论数量
   moduleFields: ModuleField[];
 }
 

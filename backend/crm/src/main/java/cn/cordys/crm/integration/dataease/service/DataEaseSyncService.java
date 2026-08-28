@@ -572,10 +572,14 @@ public class DataEaseSyncService {
         Map<String, Map<String, String>> variableValueMap = deTempResourceDTO.getVariableValueMap();
 
         DataEaseClient dataEaseClient = deTempResourceDTO.getDataEaseClient();
+        // 切组织
+        dataEaseClient.switchOrg(deTempResourceDTO.getDeOrgId());
         List<SysVariableDTO> sysVariables = dataEaseClient.listSysVariable();
 
         Map<String, SysVariableDTO> sysVariableMap = sysVariables.stream()
                 .collect(Collectors.toMap(SysVariableDTO::getName, Function.identity()));
+        log.info("DE同步读变量 orgId={} deOrgId={} 变量数={}", deTempResourceDTO.getCrmOrgId(),
+                deTempResourceDTO.getDeOrgId(), sysVariableMap.size());
         // 记录变量名和变量的映射
         deTempResourceDTO.setSysVariableMap(sysVariableMap);
 
@@ -587,8 +591,9 @@ public class DataEaseSyncService {
             } else {
                 // 同步数据权限系统变量值
                 SysVariableDTO sysVariable = sysVariableMap.get(value.name());
-                Map<String, SysVariableValueDTO> valueMap = dataEaseClient.listSysVariableValue(sysVariable.getId())
-                        .stream().collect(Collectors.toMap(SysVariableValueDTO::getValue, Function.identity()));
+                Map<String, SysVariableValueDTO> valueMap = new HashMap<>();
+                dataEaseClient.listSysVariableValue(sysVariable.getId())
+                        .forEach(sysVariableValue -> valueMap.put(sysVariableValue.getValue(), sysVariableValue));
 
                 variableValueMap.putIfAbsent(sysVariable.getId(), new HashMap<>());
                 Map<String, String> variableValueIdNameMap = variableValueMap.get(sysVariable.getId());
@@ -631,18 +636,27 @@ public class DataEaseSyncService {
             } else {
                 // 同步部门
                 SysVariableDTO sysVariable = sysVariableMap.get(value.name());
-                Map<String, SysVariableValueDTO> valueMap = dataEaseClient.listSysVariableValue(sysVariable.getId())
-                        .stream().collect(Collectors.toMap(SysVariableValueDTO::getValue, Function.identity()));
+                // 切组织
+                dataEaseClient.switchOrg(deTempResourceDTO.getDeOrgId());
+                List<SysVariableValueDTO> deValues = dataEaseClient.listSysVariableValue(sysVariable.getId());
+                Map<String, SysVariableValueDTO> valueMap = new HashMap<>();
+                deValues.forEach(sysVariableValue -> valueMap.put(sysVariableValue.getValue(), sysVariableValue));
+                log.info("DE同步部门变量 orgId={} deOrgId={} variable={} DE现有{}条 应同步{}条",
+                        deTempResourceDTO.getCrmOrgId(), deTempResourceDTO.getDeOrgId(), value.name(),
+                        valueMap.size(), deptIds.size());
 
                 variableValueMap.putIfAbsent(sysVariable.getId(), new HashMap<>());
                 Map<String, String> variableValueIdNameMap = variableValueMap.get(sysVariable.getId());
                 valueMap.forEach((variableValueId, sysVariableValue) ->
                         variableValueIdNameMap.put(sysVariableValue.getValue(), sysVariableValue.getId()));
 
-                // 取 deptIds 和 valueMap.key() 的差集
+                // 取 deptIds 和 valueMap.key() 的差集（DE 缺失的部门，需要创建）
                 List<String> addValues = deptIds.stream()
                         .filter(deptId -> !valueMap.containsKey(deptId))
                         .toList();
+                if (CollectionUtils.isNotEmpty(addValues)) {
+                    log.info("DE同步部门变量创建 variable={} 待建{}条={}", value.name(), addValues.size(), addValues);
+                }
 
                 SysVariableValueCreateRequest variableValueCreateRequest = new SysVariableValueCreateRequest();
                 variableValueCreateRequest.setSysVariableId(sysVariable.getId());
@@ -662,6 +676,7 @@ public class DataEaseSyncService {
                         .map(key -> valueMap.get(key).getId())
                         .collect(Collectors.toList());
                 if (CollectionUtils.isNotEmpty(deleteValueIds)) {
+                    log.info("DE同步部门变量删除 variable={} 待删{}条={}", value.name(), deleteValueIds.size(), deleteValueIds);
                     dataEaseClient.batchDelSysVariableValue(deleteValueIds);
                 }
             }

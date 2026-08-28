@@ -84,18 +84,28 @@
       {{ props.emptyText || t('common.noData') }}
     </div>
   </n-spin>
+  <DetailDrawer
+    v-model:show="showFollowDetailDrawer"
+    :form-key="followDetailFormKey"
+    :source-id="followDetailSourceId"
+    :source-name="followDetailSourceName"
+    :refresh-key="followDetailRefreshKey"
+    readonly
+  />
 </template>
 
 <script lang="ts" setup>
   import { NBadge, NButton, NSpin, NTooltip } from 'naive-ui';
   import dayjs from 'dayjs';
 
+  import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { SystemMessageStatusEnum, SystemMessageTypeEnum } from '@lib/shared/enums/systemEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import type { MessageCenterItem, MessageCenterSubsetParams } from '@lib/shared/models/system/message';
 
   import CrmList from '@/components/pure/crm-list/index.vue';
   import CrmTag from '@/components/pure/crm-tag/index.vue';
+  import DetailDrawer from '@/components/business/crm-follow-drawer/components/detailDrawer.vue';
 
   import { getNotificationList, setNotificationRead } from '@/api/modules';
   import useOpenNewPage from '@/hooks/useOpenNewPage';
@@ -111,7 +121,7 @@
 
   interface MessageDetailAction {
     permission: string[];
-    action: (id: string) => void;
+    action: (item: MessageCenterItem) => void;
   }
 
   const props = defineProps<{
@@ -126,29 +136,69 @@
     (e: 'refreshCount'): void;
   }>();
 
-  function openNewPageQuotation(id: string) {
+  function openNewPageQuotation(item: MessageCenterItem) {
     openNewPage(AppRouteEnum.OPPORTUNITY_QUOTATION, {
-      id,
+      id: item.resourceId,
     });
   }
 
-  function openNewPageContract(id: string) {
+  function openNewPageContract(item: MessageCenterItem) {
     openNewPage(AppRouteEnum.CONTRACT_INDEX, {
-      id,
+      id: item.resourceId,
     });
   }
 
-  function openNewPageContractPaymentPlan(id: string) {
+  function openNewPageContractPaymentPlan(item: MessageCenterItem) {
     openNewPage(AppRouteEnum.CONTRACT_PAYMENT, {
-      id,
+      id: item.resourceId,
     });
   }
+
+  const showFollowDetailDrawer = ref(false);
+  const followDetailSourceId = ref('');
+  const followDetailSourceName = ref('');
+  const followDetailRefreshKey = ref(0);
+  const followDetailFormKey = ref(FormDesignKeyEnum.FOLLOW_RECORD);
+
+  function openFollowDetail(
+    item: MessageCenterItem,
+    formKey: FormDesignKeyEnum.FOLLOW_RECORD | FormDesignKeyEnum.FOLLOW_PLAN
+  ) {
+    followDetailSourceId.value = item.resourceId;
+    followDetailSourceName.value = item.resourceName || '';
+    followDetailFormKey.value = formKey;
+    followDetailRefreshKey.value += 1;
+    showFollowDetailDrawer.value = true;
+  }
+
+  function openFollowRecordDetail(item: MessageCenterItem) {
+    openFollowDetail(item, FormDesignKeyEnum.FOLLOW_RECORD);
+  }
+
+  function openFollowPlanDetail(item: MessageCenterItem) {
+    openFollowDetail(item, FormDesignKeyEnum.FOLLOW_PLAN);
+  }
+
+  const followPermission = ['CLUE_MANAGEMENT:READ', 'CUSTOMER_MANAGEMENT:READ', 'OPPORTUNITY_MANAGEMENT:READ'];
 
   const permissionConfig = {
     OPPORTUNITY_QUOTATION_READ: ['OPPORTUNITY_QUOTATION:READ'],
     CONTRACT_READ: ['CONTRACT:READ'],
     CONTRACT_PAYMENT_PLAN_READ: ['CONTRACT_PAYMENT_PLAN:READ'],
   };
+
+  const followCommentDetailConfig = [
+    {
+      operation: 'FOLLOW_UP_RECORD_COMMENT',
+      permission: followPermission,
+      action: openFollowRecordDetail,
+    },
+    {
+      operation: 'FOLLOW_UP_PLAN_COMMENT',
+      permission: followPermission,
+      action: openFollowPlanDetail,
+    },
+  ];
 
   const messageDetailConfig: Record<string, MessageDetailAction> = {
     BUSINESS_QUOTATION_EXPIRED: {
@@ -177,8 +227,15 @@
     },
   };
 
+  function getMessageDetailAction(operation: string) {
+    return (
+      followCommentDetailConfig.find((item) => operation.includes(item.operation)) || messageDetailConfig[operation]
+    );
+  }
+
   function getMessageContentClass(item: MessageCenterItem) {
-    if (messageDetailConfig[item.operation] && hasAnyPermission(messageDetailConfig[item.operation].permission)) {
+    const detailAction = getMessageDetailAction(item.operation);
+    if (detailAction && hasAnyPermission(detailAction.permission)) {
       return 'cursor-pointer text-[var(--primary-8)]';
     }
 
@@ -262,8 +319,9 @@
   }
 
   function goDetail(item: MessageCenterItem) {
-    if (!hasAnyPermission(messageDetailConfig[item.operation]?.permission ?? [])) return;
-    messageDetailConfig[item.operation]?.action?.(item.resourceId);
+    const detailAction = getMessageDetailAction(item.operation);
+    if (!detailAction || !hasAnyPermission(detailAction.permission)) return;
+    detailAction.action(item);
   }
 
   onBeforeMount(() => {

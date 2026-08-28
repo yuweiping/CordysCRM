@@ -28,6 +28,9 @@
           v-model:value="item.status"
           :item="item"
           type="plan"
+          :form-key="props.type"
+          :source-id="props.sourceId"
+          :source-name="props.initialSourceName"
           :readonly="props.readonly"
           @click="goDetail(item)"
           @delete="handleDelete(item)"
@@ -103,6 +106,8 @@
       crmListRef.value?.loadList(true);
     });
   }
+
+  onActivated(loadList);
 
   defineExpose({
     loadList,

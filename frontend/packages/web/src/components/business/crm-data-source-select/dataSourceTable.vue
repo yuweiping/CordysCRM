@@ -21,6 +21,15 @@
       @refresh="searchData"
     >
       <template #tableTop>
+        <n-button v-if="hasCreatePermission" type="primary" @click="handleNewCreate">
+          {{
+            `${t('common.newCreate')}${
+              fullFormSettingList.find((e) => e.dataSource === props.sourceType)?.label || props.dataSourceTitle
+            }`
+          }}
+        </n-button>
+      </template>
+      <template #actionRight>
         <CrmSearchInput
           v-model:value="keyword"
           class="crm-data-source-search-input !w-[240px]"
@@ -30,10 +39,19 @@
       </template>
     </CrmTable>
   </div>
+  <CrmFormCreateDrawer
+    v-if="realFormKey"
+    v-model:visible="formCreateVisible"
+    :form-key="realFormKey"
+    :need-init-detail="false"
+    :custom-form-id="props.sourceType"
+    @saved="handleFormCreateSave"
+  />
+  <businessTitleDrawer v-model:visible="businessNameDrawerVisible" sourceId="" @load="() => searchData()" />
 </template>
 
 <script setup lang="ts">
-  import { DataTableRowKey, NImage, NImageGroup, NSwitch } from 'naive-ui';
+  import { DataTableRowKey, NButton, NImage, NImageGroup, NSwitch } from 'naive-ui';
 
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { ContractPaymentPlanEnum } from '@lib/shared/enums/contractEnum';
@@ -58,15 +76,25 @@
   } from '@/components/business/crm-approval/components/crm-approval-popover.vue';
   import CrmBusinessNamePrefix from '@/components/business/crm-business-name-prefix/index.vue';
   import StatusTagSelect from '@/components/business/crm-follow-detail/statusTagSelect.vue';
+  import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
+  import { formatFormulaResultValue } from '@/components/business/crm-formula/utils';
+  import businessTitleDrawer from '@/views/contract/businessTitle/components/businessTitleDrawer.vue';
   import ContractStatus from '@/views/contract/contractPaymentPlan/components/contractPaymentStatus.vue';
 
-  import { getFieldCustomFormList, getOpportunityStageConfig, getOrderStatusConfig } from '@/api/modules';
+  import {
+    getCustomFormCreatePermission,
+    getFieldCustomFormList,
+    getOpportunityStageConfig,
+    getOrderStatusConfig,
+  } from '@/api/modules';
   import { contractPaymentPlanStatusOptions } from '@/config/contract';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useFormCreateSystemColumns from '@/hooks/useFormCreateSystemColumns';
   import { FormKey } from '@/hooks/useFormCreateTable';
   import useUserStore from '@/store/modules/user';
+  import { hasAnyPermission } from '@/utils/permission';
 
+  import { fullFormSettingList } from '../crm-form-create/config';
   import type { DataSourceType, FormCreateField } from '../crm-form-create/types';
   import { formKeyMap, sourceApi } from './config';
   import { getDataSourceFormKey, isCustomDataSourceType } from './utils';
@@ -81,6 +109,7 @@
       fullscreenTargetRef?: HTMLElement | null;
       fieldConfig?: FormCreateField;
       isSubTableRender?: boolean;
+      dataSourceTitle?: string;
     }>(),
     {
       multiple: true,
@@ -106,6 +135,15 @@
   const formKey = computed<FormDesignKeyEnum>(
     () => getDataSourceFormKey(props.sourceType, formKeyMap) as FormDesignKeyEnum
   );
+  const hasCustomFormCreatePermission = ref(false);
+  const hasCreatePermission = computed(() => {
+    if (isCustomForm.value) {
+      return hasAnyPermission(['CUSTOM_FORM:ADD']);
+    }
+    return hasAnyPermission([
+      fullFormSettingList.find((e) => e.dataSource === props.sourceType)?.permission.CREATE || '',
+    ]);
+  });
 
   const searchPlaceholder = computed(() => {
     if (isCustomForm.value) {
@@ -116,6 +154,17 @@
       : t('common.searchByName');
   });
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
+
+  async function checkCustomFormCreatePermission() {
+    try {
+      if (isCustomForm.value) {
+        hasCustomFormCreatePermission.value = await getCustomFormCreatePermission(props.sourceType);
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
+  }
 
   const isDatasourceFormConfig = computed(() => props.sourceType !== FieldDataSourceTypeEnum.BUSINESS_TITLE);
   const { fieldList, initFormConfig } = useFormCreateApi({
@@ -432,6 +481,13 @@
       };
     }
 
+    if (field.type === FieldTypeEnum.FORMULA) {
+      return {
+        ...baseColumn,
+        render: (row: any) => formatFormulaResultValue(row[columnKey], field, '-'),
+      };
+    }
+
     return baseColumn;
   }
 
@@ -445,33 +501,37 @@
         tooltip: true,
       },
       resizable: true,
-      render:
-        field.type === FieldTypeEnum.PICTURE
-          ? (row: any) =>
+      render: (row: any) => {
+        if (field.type === FieldTypeEnum.FORMULA) {
+          return formatFormulaResultValue(row[columnKey], field, '-');
+        }
+        if (field.type === FieldTypeEnum.PICTURE) {
+          return h(
+            'div',
+            {
+              class: 'flex items-center',
+            },
+            [
               h(
-                'div',
+                NImageGroup,
+                {},
                 {
-                  class: 'flex items-center',
-                },
-                [
-                  h(
-                    NImageGroup,
-                    {},
-                    {
-                      default: () =>
-                        row[columnKey]?.length
-                          ? (Array.isArray(row[columnKey]) ? row[columnKey] : []).map((_key: string) =>
-                              h(NImage, {
-                                class: 'h-[40px] w-[40px] mr-[4px]',
-                                src: `${PreviewPictureUrl}/${_key}?userId=${userStore.userInfo.id}`,
-                              })
-                            )
-                          : '-',
-                    }
-                  ),
-                ]
-              )
-          : undefined,
+                  default: () =>
+                    row[columnKey]?.length
+                      ? (Array.isArray(row[columnKey]) ? row[columnKey] : []).map((_key: string) =>
+                          h(NImage, {
+                            class: 'h-[40px] w-[40px] mr-[4px]',
+                            src: `${PreviewPictureUrl}/${_key}?userId=${userStore.userInfo.id}`,
+                          })
+                        )
+                      : '-',
+                }
+              ),
+            ]
+          );
+        }
+        return row[columnKey];
+      },
     };
   }
 
@@ -606,12 +666,32 @@
     }
   }
 
+  const formCreateVisible = ref(false);
+  const businessNameDrawerVisible = ref(false);
+  const realFormKey = computed(() =>
+    isCustomForm.value
+      ? FormDesignKeyEnum.CUSTOM_FORM
+      : fullFormSettingList.find((e) => e.dataSource === props.sourceType)?.formKey
+  );
+  function handleNewCreate() {
+    if (props.sourceType === FieldDataSourceTypeEnum.BUSINESS_TITLE) {
+      businessNameDrawerVisible.value = true;
+      return;
+    }
+    formCreateVisible.value = true;
+  }
+
+  function handleFormCreateSave() {
+    searchData();
+  }
+
   const isFullScreen = computed(() => crmTableRef.value?.isFullScreen);
 
   onBeforeMount(async () => {
     await initFormConfig();
     emit('initForm', fieldList.value);
     searchData();
+    checkCustomFormCreatePermission();
   });
 
   watch(

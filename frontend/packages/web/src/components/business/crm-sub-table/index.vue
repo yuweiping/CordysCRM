@@ -20,16 +20,19 @@
 
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { FieldDataSourceTypeEnum, FieldRuleEnum, FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
+  import type { ProcessStatusEnum } from '@lib/shared/enums/process';
   import { SpecialColumnEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { formatTimeValue, getCityPath, getGenerateId, getIndustryPath } from '@lib/shared/method';
   import {
     formatNumberValue,
     formatNumberValueToString,
+    getDisplayFieldText,
     getFieldItemId,
     mergeUniqueOptions,
     normalizeNumber,
     specialBusinessKeyMap,
+    systemFieldKeyMap,
   } from '@lib/shared/method/formCreate';
   import { isNotEmpty } from '@lib/shared/method/is';
 
@@ -43,7 +46,9 @@
   import memberSelect from '@/components/business/crm-form-create/components/basic/memberSelect.vue';
   import select from '@/components/business/crm-form-create/components/basic/select.vue';
   import singleText from '@/components/business/crm-form-create/components/basic/singleText.vue';
+  import { formatFormulaResultValue } from '@/components/business/crm-formula/utils';
 
+  import { processStatusMap } from '@/config/process';
   import useUserStore from '@/store/modules/user';
 
   import { FormCreateField } from '../crm-form-create/types';
@@ -149,6 +154,12 @@
     switch (field.type) {
       case FieldTypeEnum.INPUT_NUMBER:
         return formatNumberValueToString(value, field);
+      case FieldTypeEnum.FORMULA:
+        if (field.formulaResultFormat === 'number') {
+          const numberValue = typeof value === 'number' ? value : Number(value);
+          return Number.isFinite(numberValue) ? formatNumberValueToString(numberValue, field) : value.toString();
+        }
+        return value || '-';
       case FieldTypeEnum.DATE_TIME:
         return formatTimeValue(value, field.dateType);
       case FieldTypeEnum.LOCATION:
@@ -227,14 +238,18 @@
         newRow[key] = field.resourceFieldId ? null : field.defaultValue ?? null;
       } else if ([FieldTypeEnum.MEMBER, FieldTypeEnum.MEMBER_MULTIPLE].includes(field.type)) {
         if (field.hasCurrentUser) {
-          newRow[key] = field.resourceFieldId ? userStore.userInfo.name : userStore.userInfo.id;
           field.initialOptions = [
             ...(field.initialOptions || []),
-            {
-              id: userStore.userInfo.id,
-              name: userStore.userInfo.name,
-            },
-          ].filter((option, index, self) => self.findIndex((o) => o.id === option.id) === index);
+            { id: userStore.userInfo.id, name: userStore.userInfo.name },
+          ].reduce((acc: any[], cur) => {
+            if (!acc.some((item) => item && item.id === cur.id)) acc.push(cur);
+            return acc;
+          }, []);
+          if (field.type === FieldTypeEnum.MEMBER_MULTIPLE) {
+            newRow[key] = [...field.defaultValue];
+          } else {
+            newRow[key] = field.resourceFieldId ? userStore.userInfo.name : userStore.userInfo.id;
+          }
         } else {
           newRow[key] = field.defaultValue;
         }
@@ -244,14 +259,18 @@
         }
       } else if ([FieldTypeEnum.DEPARTMENT, FieldTypeEnum.DEPARTMENT_MULTIPLE].includes(field.type)) {
         if (field.hasCurrentUserDept) {
-          newRow[key] = field.resourceFieldId ? userStore.userInfo.departmentName : userStore.userInfo.departmentId;
           field.initialOptions = [
             ...(field.initialOptions || []),
-            {
-              id: userStore.userInfo.departmentId,
-              name: userStore.userInfo.departmentName,
-            },
-          ].filter((option, index, self) => self.findIndex((o) => o.id === option.id) === index);
+            { id: userStore.userInfo.departmentId, name: userStore.userInfo.departmentName },
+          ].reduce((acc: any[], cur) => {
+            if (!acc.some((item) => item && item.id === cur.id)) acc.push(cur);
+            return acc;
+          }, []);
+          if (field.type === FieldTypeEnum.DEPARTMENT_MULTIPLE) {
+            newRow[key] = [...field.defaultValue];
+          } else {
+            newRow[key] = field.resourceFieldId ? userStore.userInfo.departmentName : userStore.userInfo.departmentId;
+          }
         } else {
           newRow[key] = field.defaultValue;
         }
@@ -293,10 +312,19 @@
       showFields.forEach((sf) => {
         let fieldVal: string | string[] = '';
         if (targetSource) {
-          const sourceFieldVal =
-            sf.businessKey && specialBusinessKeyMap[sf.businessKey]
-              ? targetSource[specialBusinessKeyMap[sf.businessKey]]
-              : targetSource[sf.businessKey || getFieldItemId(sf)];
+          let sourceFieldVal = '';
+          if (getFieldItemId(sf) === 'approvalStatus') {
+            sourceFieldVal = processStatusMap[targetSource[getFieldItemId(sf)] as ProcessStatusEnum].label;
+          } else if (getFieldItemId(sf) === 'invalid') {
+            sourceFieldVal = getDisplayFieldText(sf, targetSource.invalid);
+          } else if (systemFieldKeyMap[getFieldItemId(sf)]) {
+            sourceFieldVal = targetSource[systemFieldKeyMap[getFieldItemId(sf)]];
+          } else {
+            sourceFieldVal =
+              sf.businessKey && specialBusinessKeyMap[sf.businessKey]
+                ? targetSource[specialBusinessKeyMap[sf.businessKey]]
+                : targetSource[sf.businessKey || getFieldItemId(sf)];
+          }
           if (sf.subTableFieldId) {
             // 如果数据源显示字段是数据源的子表格字段，则需要 rowId 定位数据源子表格的行
             const subTableData = targetSource[sf.subTableFieldId];
@@ -312,6 +340,8 @@
         }
         if (Array.isArray(fieldVal)) {
           row[sf.id] = fieldVal.join(',');
+        } else if (sf.type === FieldTypeEnum.FORMULA) {
+          row[sf.id] = formatFormulaResultValue(fieldVal, sf);
         } else if (sf.type === FieldTypeEnum.INPUT_NUMBER && typeof fieldVal === 'number') {
           row[sf.id] = formatNumberValueToString(fieldVal, sf) ?? null;
         } else {
@@ -401,6 +431,8 @@
       );
       if (children.length === 0 && val.length > 0) {
         Message.warning(t('crm.subTable.repeatAdd'));
+        row[key] = [];
+        row.price_sub = '';
         isProcessingDataSourceChange.value = false;
         isProcessingDataSourceChangeMap.value[cellId] = false;
         return;

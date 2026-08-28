@@ -601,6 +601,9 @@
         select t.*
         from `${tableName}` t
         where t.resource_id = #{resourceId} and t.field_id = #{fieldId}
+         <if test="subRowId != null and subRowId != ''">
+          and t.row_id = #{subRowId}
+        </if>
     </select>
 
     <update id="updateCustomerField">

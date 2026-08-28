@@ -26,6 +26,7 @@
     </div>
     <n-spin :show="loading" class="h-full">
       <FollowRecord
+        :key="props.activeType"
         v-model:data="data"
         :virtual-scroll-height="`${props.virtualScrollHeight || '1000px'}`"
         :get-description-fun="getDescriptionFun"
@@ -100,6 +101,8 @@
       @delete="handleDelete(activeItem as FollowDetailItem)"
       @edit="handleEdit(activeItem as FollowDetailItem)"
       @convert="(activeItem)=>handleConvert(activeItem as FollowDetailItem)"
+      @detail-init="handleDetailInit"
+      @count-change="handleCommentCountChange"
     />
     />
   </div>
@@ -194,6 +197,31 @@
       }
     },
   });
+
+  function handleDetailInit(detail?: Record<string, any>) {
+    const commentCount = detail?.commentCount;
+    if (!activeItem.value || typeof commentCount !== 'number') {
+      return;
+    }
+
+    activeItem.value.commentCount = commentCount;
+    const currentItem = data.value.find((item) => item.id === activeItem.value?.id);
+    if (currentItem) {
+      currentItem.commentCount = commentCount;
+    }
+  }
+
+  function handleCommentCountChange(commentCount: number) {
+    if (!activeItem.value) {
+      return;
+    }
+
+    activeItem.value.commentCount = commentCount;
+    const currentItem = data.value.find((item) => item.id === activeItem.value?.id);
+    if (currentItem) {
+      currentItem.commentCount = commentCount;
+    }
+  }
 
   const needInitDetail = ref(false);
   const activePlan = ref();

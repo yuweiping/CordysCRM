@@ -22,13 +22,15 @@
                 "
               >
                 {{ child.title }}
-                <div v-if="item.name === 'pending'" class="task-count">{{ child.count }}</div>
+                <div v-if="['pending'].includes(item.name)" class="task-count">{{ child.count }}</div>
               </div>
               <template #arrow>
                 <CrmIcon type="iconicon_right" :size="12" color="var(--text-n2)" class="mr-[4px]" />
               </template>
               <template #header-extra>
-                <div v-if="item.name === 'pending'" class="task-count mr-[16px]">{{ item.count }}</div>
+                <div v-if="['pending'].includes(item.name)" class="task-count mr-[16px]">
+                  {{ item.count }}
+                </div>
               </template>
             </n-collapse-item>
           </n-collapse>

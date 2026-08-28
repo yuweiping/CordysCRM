@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue';
 
-import type { NavigationGuard, RouteRecordName } from 'vue-router';
+import type { NavigationGuard, RouteRecordName, RouteRecordRedirectOption } from 'vue-router';
 
 export type Component<T = any> =
   | ReturnType<typeof defineComponent>
@@ -29,13 +29,15 @@ export interface RouteMeta {
   noAffix?: boolean; // tab展示设置，设置为true则不在tab列表展示激活页面的tab
   isCache?: boolean; // 缓存设置，true则不缓存
   isTopMenu?: boolean; // 是否为顶部菜单
+  licenseRequired?: boolean; // 是否需要企业版授权
+  licenseFallbackRoute?: RouteRecordName; // 无企业版授权时跳转的路由
   breadcrumbs?: BreadcrumbItem[]; // 面包屑
 }
 export interface AppRouteRecordRaw {
   path: string;
   name?: string | symbol;
   meta?: RouteMeta;
-  redirect?: string;
+  redirect?: RouteRecordRedirectOption;
   component: Component | string;
   children?: AppRouteRecordRaw[];
   alias?: string | string[];

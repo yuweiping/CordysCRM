@@ -8,6 +8,7 @@ import { getCityPath, safeFractionConvert, sleep } from '@lib/shared/method';
 import {
   dataSourceTypes,
   departmentTypes,
+  formatFormulaResultValue,
   getNormalFieldValue,
   linkAllAcceptTypes,
   memberTypes,
@@ -426,7 +427,10 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           descriptions.value.push({
             label: item.name,
             isTag: [FieldTypeEnum.INPUT_MULTIPLE, FieldTypeEnum.DATA_SOURCE_MULTIPLE].includes(item.type),
-            value: parseFormDetailValue(item, form),
+            value:
+              item.type === FieldTypeEnum.FORMULA
+                ? formatFormulaResultValue(parseFormDetailValue(item, form), item, '-')
+                : parseFormDetailValue(item, form),
             fieldInfo: item,
           });
         }
@@ -463,6 +467,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
 
   async function initFormDetail() {
     try {
+      loading.value = true;
       const asyncApi = getFormDetailApiMap[props.formKey];
       if (!asyncApi || !props.sourceId?.value) return;
       const res = await asyncApi(props.sourceId?.value);

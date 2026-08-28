@@ -197,7 +197,10 @@ public class BaseFollowUpService {
      */
     public void checkRecordPermission(FollowUpRecord record, String orgId, String userId, boolean isRead) {
         if (record == null) {
-            throw new GenericException("plan_not_found");
+            throw new GenericException(Translator.get("plan_not_found"));
+        }
+        if (Strings.CS.equals(record.getOwner(), userId)) {
+            return;
         }
         String permission;
         if (Strings.CS.equals(record.getType(), ModuleKey.CLUE.name())) {

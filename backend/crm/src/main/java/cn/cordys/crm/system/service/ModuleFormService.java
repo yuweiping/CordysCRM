@@ -138,6 +138,7 @@ public class ModuleFormService {
     private FieldSourceServiceProvider fieldSourceServiceProvider;
     @Resource
     private ModuleFieldService moduleFieldService;
+    private static final String REF_SYMBOL = "🔗";
 
     /**
      * 获取模块表单配置
@@ -189,6 +190,20 @@ public class ModuleFormService {
         ModuleFormConfigDTO config = getConfig(formKey, organizationId);
         ModuleFormConfigDTO businessModuleFormConfig = new ModuleFormConfigDTO();
         businessModuleFormConfig.setFormProp(config.getFormProp());
+
+        List<BaseField> fields = config.getFields().stream()
+                .filter(f -> {
+                    if (f instanceof ProductSubField || f instanceof PriceSubField) {
+                        if (StringUtils.isBlank(f.getBusinessKey())) {
+                            // 过滤掉非业务字段的子表格字段
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+        config.setFields(fields);
 
         List<BaseField> flattenFields = flattenFormAllFieldsWithSubId(config);
         // 设置业务字段参数
@@ -445,9 +460,8 @@ public class ModuleFormService {
                 baseField.setType(field.getType());
                 baseField.setMobile(field.getMobile());
                 baseField.setInternalKey(field.getInternalKey());
-                if (baseField.needInitialOptions()) {
-                    handleInitialOption(baseField);
-                }
+                // 刷新默认值选项
+                freshInitialOptions(baseField);
                 // 文本字段默认值格式 || 流水号前缀固定字符格式
                 if (baseField instanceof SerialNumberField serialField && StringUtils.isEmpty(serialField.getPrefixType())) {
                     serialField.setPrefixType(OPTION_DEFAULT_SOURCE);
@@ -459,6 +473,23 @@ public class ModuleFormService {
             });
         }
         return fieldDTOList;
+    }
+
+    /**
+     * 刷新默认值选项
+     * @param baseField
+     */
+    public void freshInitialOptions(BaseField baseField) {
+        if (baseField.needInitialOptions()) {
+            handleInitialOption(baseField);
+        }
+        if (baseField instanceof SubField subField) {
+            for (BaseField subFieldSubField : subField.getSubFields()) {
+                if (subFieldSubField.needInitialOptions()) {
+                    handleInitialOption(subFieldSubField);
+                }
+            }
+        }
     }
 
     /**
@@ -529,12 +560,21 @@ public class ModuleFormService {
 
     private OptionMetadata collectOptionMetadata(ModuleFormConfigDTO formConfig) {
         var allFields = flattenFormAllFields(formConfig);
+        var showFields = allFields.stream()
+                .filter(f -> f instanceof DatasourceField sourceField && CollectionUtils.isNotEmpty(sourceField.getShowFields()))
+                .flatMap(f -> ((DatasourceField) f).getShowFields().stream().map(sf -> f.getId() + REF_UNDERLINE + sf))
+                .distinct()
+                .toList();
         var staticOptions = new HashMap<String, List<OptionDTO>>(4);
         var idTypeMap = new HashMap<String, String>(8);
         for (var field : allFields) {
-            putOptionMap(staticOptions, idTypeMap, field, field.getId());
-            if (StringUtils.isNotBlank(field.getBusinessKey())) {
-                putOptionMap(staticOptions, idTypeMap, field, field.getBusinessKey());
+            if (showFields.contains(field.getId())) {
+                putOptionMap(staticOptions, idTypeMap, field, field.getId());
+            } else {
+                putOptionMap(staticOptions, idTypeMap, field, field.getId());
+                if (StringUtils.isNotBlank(field.getBusinessKey())) {
+                    putOptionMap(staticOptions, idTypeMap, field, field.getBusinessKey());
+                }
             }
         }
         return new OptionMetadata(staticOptions, idTypeMap);
@@ -1423,6 +1463,7 @@ public class ModuleFormService {
         exportHeads.forEach(exportHead -> {
             if (Strings.CS.equals(exportHead.getColumnType(), EXPORT_SYSTEM_TYPE)) {
                 heads.add(new ArrayList<>(Collections.singletonList(exportHead.getTitle())));
+                return;
             }
             if (!fieldConfigMap.containsKey(exportHead.getTitle())) {
                 return;
@@ -1440,7 +1481,7 @@ public class ModuleFormService {
                         .forEach(f -> {
                             List<String> head = new ArrayList<>();
                             head.add(field.getName());
-                            head.add(f.getName());
+                            head.add(StringUtils.isNotEmpty(f.getResourceFieldId()) ? f.getName() + REF_SYMBOL : f.getName());
                             heads.add(head);
                         });
 
@@ -1453,7 +1494,7 @@ public class ModuleFormService {
                     });
                 }
             } else {
-                heads.add(new ArrayList<>(Collections.singletonList(field.getName())));
+                heads.add(new ArrayList<>(Collections.singletonList(StringUtils.isNotEmpty(field.getResourceFieldId()) ? field.getName() + REF_SYMBOL : field.getName())));
             }
         });
         return heads;
@@ -1473,6 +1514,7 @@ public class ModuleFormService {
         exportHeads.forEach(exportHead -> {
             if (Strings.CS.equals(exportHead.getColumnType(), EXPORT_SYSTEM_TYPE)) {
                 heads.add(exportHead.getKey());
+                return;
             }
             if (!fieldConfigMap.containsKey(exportHead.getTitle())) {
                 return;
@@ -1529,12 +1571,12 @@ public class ModuleFormService {
         fields.forEach(field -> {
             if (field instanceof SubField subField && CollectionUtils.isNotEmpty(subField.getSubFields())) {
                 subField.getSubFields().forEach(f -> {
-                    if (StringUtils.isNotEmpty(f.getResourceFieldId()) || !f.canImport(f)) {
+                    if (!f.canImport(f)) {
                         return;
                     }
                     List<String> head = new ArrayList<>();
                     head.add(field.getName());
-                    head.add(f.getName());
+                    head.add(StringUtils.isNotEmpty(f.getResourceFieldId()) ? f.getName() + REF_SYMBOL : f.getName());
                     heads.add(head);
                 });
             } else {
@@ -2128,9 +2170,9 @@ public class ModuleFormService {
      */
     public <T extends BaseResourceField, V extends BaseResourceField> List<BaseModuleFieldValue> resolveSnapshotFields(List<BaseModuleFieldValue> fieldValues,
                                                                                                                        ModuleFormConfigDTO formConfig, BaseResourceFieldService<T, V> baseResourceFieldService, String resourceId) {
-       if (CollectionUtils.isEmpty(fieldValues)) {
-           return new ArrayList<>();
-       }
+        if (CollectionUtils.isEmpty(fieldValues)) {
+            return new ArrayList<>();
+        }
 
         // 1. 扁平化所有字段
         final List<BaseField> flattenFields = flattenFormAllFields(formConfig);

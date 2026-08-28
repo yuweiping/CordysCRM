@@ -296,4 +296,57 @@
             #{id}
         </foreach>
     </select>
+
+
+    <update id="updateProductPrice">
+        update product_price
+        <set>
+            <if test="productPrice.name != null and productPrice.name != ''">
+                name = #{productPrice.name},
+            </if>
+            <if test="productPrice.status != null and productPrice.status != ''">
+                status = #{productPrice.status},
+            </if>
+            <if test="productPrice.updateTime != null">
+                update_time = #{productPrice.updateTime},
+            </if>
+            <if test="productPrice.updateUser != null and productPrice.updateUser != ''">
+                update_user = #{productPrice.updateUser},
+            </if>
+        </set>
+        <where>
+            id = #{productPrice.id}
+        </where>
+    </update>
+
+
+    <select id="getBizIdsByResource" resultType="java.lang.String">
+        SELECT
+            ppf.biz_id
+        FROM
+            `product_price_field` ppf
+                INNER JOIN product t ON t.id = ppf.field_value
+        WHERE
+            ppf.resource_id = #{resourceId}
+          AND t.NAME = #{productName}
+          AND field_id = 'product'
+    </select>
+
+
+    <select id="getPriceData" resultType="cn.cordys.crm.product.domain.ProductPriceField">
+        SELECT DISTINCT biz_id
+        FROM product_price_field
+        WHERE resource_id = #{resourceId}
+          AND field_id = #{fieldId}
+          AND field_value COLLATE utf8mb4_bin = #{fieldValue}
+    </select>
+
+
+    <select id="getPriceBlobData" resultType="cn.cordys.crm.product.domain.ProductPriceField">
+        SELECT DISTINCT biz_id
+        FROM product_price_field_blob
+        WHERE resource_id = #{resourceId}
+          AND field_id = #{fieldId}
+          AND  field_value COLLATE utf8mb4_bin = #{fieldValue}
+    </select>
 </mapper>

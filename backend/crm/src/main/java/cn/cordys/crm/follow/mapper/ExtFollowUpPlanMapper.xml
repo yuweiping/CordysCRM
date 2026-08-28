@@ -3,6 +3,13 @@
 
 <mapper namespace="cn.cordys.crm.follow.mapper.ExtFollowUpPlanMapper">
 
+    <update id="updateCommentCount">
+        UPDATE follow_up_plan
+        SET comment_count = #{commentCount}
+        WHERE id = #{id}
+          AND organization_id = #{orgId}
+    </update>
+
     <select id="selectList" resultType="cn.cordys.crm.follow.dto.response.FollowUpPlanListResponse">
         SELECT
         fup.id,
@@ -21,6 +28,7 @@
         fup.method,
         fup.converted,
         fup.status,
+        fup.comment_count,
         if (fup.type = 'CLUE', c.pool_id, cu.pool_id) as poolId
         FROM
         follow_up_plan fup
@@ -162,6 +170,7 @@
         fup.method,
         fup.converted,
         fup.status,
+        fup.comment_count,
         fup.organization_id,
         if (fup.type = 'CLUE', c.pool_id, cu.pool_id) as poolId
         FROM follow_up_plan fup
@@ -198,6 +207,9 @@
                 <if test="clueDataPermission != null and clueDataPermission.self">
                     AND fup.owner = #{userId}
                 </if>
+                <if test="clueDataPermission != null and clueDataPermission.invisible">
+                    AND 0
+                </if>
                 <if test="clueDataPermission.deptIds != null and clueDataPermission.deptIds.size() > 0">
                     AND (
                         souu.department_id IN
@@ -220,7 +232,9 @@
                 <if test="customerDataPermission != null and customerDataPermission.self">
                     AND fup.owner = #{userId}
                 </if>
-
+                <if test="customerDataPermission != null and customerDataPermission.invisible">
+                    AND 0
+                </if>
                 <if test="customerDataPermission.deptIds != null and customerDataPermission.deptIds.size() > 0">
                     AND (
                         souu.department_id IN

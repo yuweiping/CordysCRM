@@ -79,4 +79,18 @@ export default {
   'workbench.dataOverview.approvedByMe': 'Approved by Me',
   'workbench.dataOverview.initiatedByMe': 'Initiated by Me',
   'workbench.dataOverview.copiedToMe': 'Copied to Me',
+  'workbench.smart.composerPlaceholder':
+    'Enter an instruction or question, for example "Help me follow up on today’s high-intent leads"',
+  'workbench.smart.noModelTip': 'Please add and enable a model in enterprise settings first',
+  'workbench.smart.dataOverviewGenerating': 'Generating data overview...',
+  'workbench.smart.AIRead': 'AI Read',
+  'workbench.smart.reBuild': 'Rebuild',
+  'workbench.smart.reInterpret': 'Re-interpret',
+  'workbench.smart.AIAction': 'AI Follow-up Suggestions',
+  'workbench.smart.AIActionApproval': 'AI Plan Approval',
+  'workbench.smart.urgent': 'Urgent',
+  'workbench.smart.important': 'Important',
+  'workbench.smart.suggestion': 'Suggestion',
+  'workbench.smart.ignore': 'Ignore',
+  'workbench.smart.reject': 'Reject',
 };

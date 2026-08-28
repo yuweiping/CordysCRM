@@ -38,6 +38,9 @@ export const specialBusinessKeyMap: Record<string, string> = {
   paymentPlanId: 'paymentPlanName',
   businessTitleId: 'businessTitleName',
 };
+export const systemFieldKeyMap: Record<string, string> = {
+  stage: 'stageName',
+};
 
 export function getRuleType(item: FormCreateField) {
   if (
@@ -56,8 +59,11 @@ export function getRuleType(item: FormCreateField) {
   if (item.type === FieldTypeEnum.DATE_TIME) {
     return 'date';
   }
-  if ([FieldTypeEnum.INPUT_NUMBER, FieldTypeEnum.FORMULA].includes(item.type)) {
+  if (item.type === FieldTypeEnum.INPUT_NUMBER) {
     return 'number';
+  }
+  if (item.type === FieldTypeEnum.FORMULA) {
+    return item.formulaResultFormat === 'number' ? 'number' : 'string';
   }
   return 'string';
 }
@@ -167,6 +173,10 @@ export function getDisplayFieldText(field: FormCreateField, fieldValue: any) {
     if (fieldValue === false || fieldValue === 'false') {
       return t('common.normal');
     }
+  }
+
+  if (Array.isArray(fieldValue)) {
+    return fieldValue.join(',');
   }
 
   const currentOption = field.options?.find((option: any) => {
@@ -346,11 +356,16 @@ export function transformData({
             fieldOptionMap[subField.id] = originalData?.optionMap?.[subField.id] || [];
           } else {
             subItem[`${subField.id}_original`] = subItem[subField.businessKey || subField.id]; // 备份原始值以供编辑时填充数据源
-            subItem[subField.id] = parseModuleFieldValue(
+            // 优先使用业务 key 去取值，若没有业务 key 则使用字段 id
+            const parseValue = parseModuleFieldValue(
               subField,
               subItem[subField.businessKey || subField.id],
               originalData?.optionMap?.[subField.businessKey || subField.id]
             );
+            if (subField.businessKey) {
+              subItem[subField.businessKey] = parseValue;
+            }
+            subItem[subField.id] = parseValue;
             fieldOptionMap[subField.businessKey || subField.id] =
               originalData?.optionMap?.[subField.businessKey || subField.id] || [];
           }
@@ -588,12 +603,10 @@ export function transformFieldValue(item: FormCreateField, result: Record<string
   ) {
     // 处理数据源字段，单选传单个值
     result[key] = result[key]?.[0];
-  }
-  if (item.type === FieldTypeEnum.PHONE) {
+  } else if (item.type === FieldTypeEnum.PHONE) {
     // 去空格
     result[key] = result[key]?.replace(/[\s\uFEFF\xA0]+/g, '');
-  }
-  if ([FieldTypeEnum.SELECT, FieldTypeEnum.RADIO].includes(item.type)) {
+  } else if ([FieldTypeEnum.SELECT, FieldTypeEnum.RADIO].includes(item.type)) {
     // 处理单选/下拉选择字段，传value值
     const currentOption = item.options?.find((e) => e.value === result[key]);
     if (currentOption) {
@@ -601,8 +614,7 @@ export function transformFieldValue(item: FormCreateField, result: Record<string
     } else {
       result[key] = '';
     }
-  }
-  if ([FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.CHECKBOX].includes(item.type)) {
+  } else if ([FieldTypeEnum.SELECT_MULTIPLE, FieldTypeEnum.CHECKBOX].includes(item.type)) {
     // 处理多选/复选字段，传value数组
     const currentOptions = item.options?.filter((e) => result[key]?.includes(e.value));
     if (currentOptions) {
@@ -610,5 +622,45 @@ export function transformFieldValue(item: FormCreateField, result: Record<string
     } else {
       result[key] = [];
     }
+  } else if (item.type === FieldTypeEnum.INPUT_NUMBER) {
+    // 数字字段需要重置一下小数位，确保每次保存按照最新配置的小数位保存
+    result[key] = Number(Number(result[key]).toFixed(item.precision));
   }
+}
+
+/**
+ * 按公式结果类型格式化展示值。
+ * 数值模式支持小数位和千分位，文本结果不强制转换为数字；
+ * emptyText 用于列表、详情等展示场景的空值占位。
+ */
+export function formatFormulaResultValue(result: any, fieldConfig: FormCreateField, emptyText = '') {
+  if (result === undefined || result === null || result === '') {
+    return emptyText;
+  }
+
+  if (fieldConfig.formulaResultFormat !== 'number') {
+    return String(result);
+  }
+
+  if (typeof result === 'string') {
+    const plainNumberPattern = /^-?(?:\d+|\d*\.\d+)$/;
+    const thousandsNumberPattern = /^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+    if (!plainNumberPattern.test(result) && !thousandsNumberPattern.test(result)) {
+      return result;
+    }
+  }
+
+  const num = Number(typeof result === 'string' ? result.replace(/,/g, '') : result);
+  if (Number.isNaN(num)) return String(result);
+
+  const precision = fieldConfig.decimalPlaces ? fieldConfig.precision ?? 0 : 0;
+  if (fieldConfig.showThousandsSeparator) {
+    if (precision > 0) {
+      const [integerPart, decimalPart] = num.toFixed(precision).split('.');
+      return `${integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimalPart}`;
+    }
+    return num.toLocaleString('en-US');
+  }
+
+  return precision > 0 ? num.toFixed(precision) : num.toString();
 }

@@ -48,3 +48,43 @@ export const GetPageConfigImagePreviewUrl = '/ui/display/preview'; // 图片预�
 export const GetTitleImgUrl = `${
   import.meta.env.VITE_API_BASE_URL
 }${GetPageConfigImagePreviewUrl}?paramKey=ui.logoPlatform`;
+
+// 模型设置
+export const GetAiModelListUrl = '/agent-model/page'; // 模型设置-列表查询
+export const GetAiModelDetailUrl = '/agent-model/get'; // 模型设置-获取模型详情
+export const GetAiModelOptionsUrl = '/agent-model/options'; // 模型设置-查询可用模型选项
+export const AddAiModelUrl = '/agent-model/add'; // 模型设置-添加模型
+export const UpdateAiModelUrl = '/agent-model/update'; // 模型设置-更新模型
+export const DeleteAiModelUrl = '/agent-model/delete'; // 模型设置-删除模型
+export const UpdateAiModelStatusUrl = '/agent-model/switch'; // 模型设置-更新模型状态
+export const GetAiModelRouteStrategyUrl = '/agent-model-strategy/get'; // 模型设置-获取路由策略
+export const UpdateAiModelRouteStrategyUrl = '/agent-model-strategy/config'; // 模型设置-更新路由策略
+
+// 全局任务
+export const AddAgentTaskUrl = '/agent-task/add'; // 全局任务-添加任务
+export const UpdateAgentTaskUrl = '/agent-task/update'; // 全局任务-修改任务
+export const GetAgentTaskListUrl = '/agent-task/page'; // 全局任务-分页查询任务列表
+export const SwitchAgentTaskUrl = '/agent-task/switch'; // 全局任务-启用/禁用任务
+export const GetAgentTaskDetailUrl = '/agent-task/get'; // 全局任务-获取任务详情
+export const DeleteAgentTaskUrl = '/agent-task/delete'; // 全局任务-删除任务
+export const GetAgentTaskExecutionRecordListUrl = '/agent-task/execution-record/page'; // 全局任务-分页查询执行记录
+export const StopAgentTaskExecutionRecordUrl = '/agent-task/execution-record/stop'; // 全局任务-停止执行记录
+export const DeleteAgentTaskExecutionRecordUrl = '/agent-task/execution-record/delete'; // 全局任务-删除执行记录
+
+// 术语设置
+export const GetTermCategoryListUrl = '/agent-term-catalog/list'; // 术语设置-分类列表
+export const AddTermCategoryUrl = '/agent-term-catalog/add'; // 术语设置-新增分类
+export const UpdateTermCategoryUrl = '/agent-term-catalog/update'; // 术语设置-更新分类
+export const DeleteTermCategoryUrl = '/agent-term-catalog/delete'; // 术语设置-删除分类
+export const GetTermListUrl = '/agent-term/page'; // 术语设置-分页查询术语列表
+export const AddTermUrl = '/agent-term/add'; // 术语设置-新增术语
+export const UpdateTermUrl = '/agent-term/update'; // 术语设置-更新术语
+export const GetTermDetailUrl = '/agent-term/get'; // 术语设置-术语详情
+export const DeleteTermUrl = '/agent-term/delete'; // 术语设置-删除术语
+export const SwitchTermUrl = '/agent-term/switch'; // 术语设置-启用/禁用术语
+export const DownloadTermTemplateUrl = '/agent-term/template/download'; // 术语设置-下载导入模板
+export const ImportTermUrl = '/agent-term/import'; // 术语设置-批量导入术语
+export const PreCheckImportTermUrl = '/agent-term/import/pre-check'; // 术语设置-导入预检查
+export const GetTermDiscoveryListUrl = '/agent-term-discovery/page'; // 术语设置-分页查询术语发现
+export const IgnoreTermDiscoveryUrl = '/agent-term-discovery/ignore'; // 术语设置-忽略术语发现
+export const AdoptTermDiscoveryUrl = '/agent-term-discovery/adopt'; // 术语设置-采纳术语发现

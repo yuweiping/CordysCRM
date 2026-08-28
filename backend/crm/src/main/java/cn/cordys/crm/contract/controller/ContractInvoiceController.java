@@ -137,7 +137,7 @@ public class ContractInvoiceController {
                 .selectRequest(request)
                 .formKey(FormKey.INVOICE.getKey())
                 .build();
-        return contractInvoiceExportService.exportSelect(exportDTO);
+        return contractInvoiceExportService.exportSelectWithMergeStrategy(exportDTO);
     }
 
     @PostMapping("/export-all")
@@ -146,7 +146,7 @@ public class ContractInvoiceController {
     public String exportAll(@Validated @RequestBody ContractInvoiceExportRequest request) {
         ConditionFilterUtils.parseCondition(request, FormKey.INVOICE.getKey());
         DeptDataPermissionDTO deptDataPermission = dataScopeService.getDeptDataPermission(SessionUtils.getUserId(),
-                OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_INVOICE_EXPORT);
+                OrganizationContext.getOrganizationId(), request.getViewId(), PermissionConstants.CONTRACT_INVOICE_READ);
         ExportDTO exportDTO = ExportDTO.builder()
                 .exportType(ExportConstants.ExportType.CONTRACT_INVOICE.name())
                 .fileName(request.getFileName())
@@ -159,7 +159,7 @@ public class ContractInvoiceController {
                 .pageRequest(request)
                 .formKey(FormKey.INVOICE.getKey())
                 .build();
-        return contractInvoiceExportService.export(exportDTO);
+        return contractInvoiceExportService.exportAllWithMergeStrategy(exportDTO);
     }
 
     @PostMapping("/batch/delete")

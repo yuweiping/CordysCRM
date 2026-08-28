@@ -19,6 +19,7 @@ const workbench: AppRouteRecordRaw = {
       meta: {
         locale: 'menu.workbench',
         permissions: [],
+        isCache: true,
         depth: 1,
       },
     },
@@ -34,7 +35,7 @@ const workbench: AppRouteRecordRaw = {
           'CLUE_MANAGEMENT:READ',
           'CLUE_MANAGEMENT_POOL:READ',
         ],
-        depth: 1,
+        depth: 2,
         isCache: true,
       },
     },
@@ -45,8 +46,18 @@ const workbench: AppRouteRecordRaw = {
       meta: {
         locale: '',
         permissions: [],
-        depth: 1,
+        depth: 2,
         isCache: true,
+      },
+    },
+    {
+      path: 'ai-chat',
+      name: WorkbenchRouteEnum.WORKBENCH_AI_CHAT,
+      component: () => import('@/views/workbench/ai-chat/index.vue'),
+      meta: {
+        locale: '',
+        permissions: [],
+        depth: 2,
       },
     },
     {

@@ -2,6 +2,7 @@ import { showFailToast } from 'vant';
 
 import createAxios from '@lib/shared/api/http';
 import useAgentApi from '@lib/shared/api/modules/agent';
+import useAiApi from '@lib/shared/api/modules/ai';
 import useClueApi from '@lib/shared/api/modules/clue';
 import useContractApi from '@lib/shared/api/modules/contract';
 import useCustomerApi from '@lib/shared/api/modules/customer';
@@ -39,6 +40,7 @@ const followApi = useFollowApi(CDR);
 const contractApi = useContractApi(CDR);
 const orderApi = useOrderApi(CDR);
 const agentApi = useAgentApi(CDR);
+const aiApi = useAiApi(CDR);
 const processApi = useProcess(CDR);
 
 export const {
@@ -55,6 +57,14 @@ export const {
   updateFollowRecord,
   addFollowRecord,
   addFollowPlan,
+  getFollowRecordCommentList,
+  addFollowRecordComment,
+  updateFollowRecordComment,
+  deleteFollowRecordComment,
+  getFollowPlanCommentList,
+  addFollowPlanComment,
+  updateFollowPlanComment,
+  deleteFollowPlanComment,
 } = followApi;
 
 export const {
@@ -416,6 +426,7 @@ export const {
   cancelCenterExport,
   getConfigSynchronization,
   getApiKeyList,
+  getAiModelList,
 } = businessApi;
 
 export const { isLogin, signout, getKey, login, getThirdOauthCallback, getThirdCallback, getOauthState } = loginApi;
@@ -423,6 +434,29 @@ export const { isLogin, signout, getKey, login, getThirdOauthCallback, getThirdC
 export const { getLicense, addLicense } = licenseApi;
 
 export const { getAgentOptions } = agentApi;
+
+export const {
+  streamAgentChat,
+  cancelAgentChat,
+  confirmAgentChat,
+  likeAgentChat,
+  dislikeAgentChat,
+  getSmartDataOverview,
+  regenerateSmartDataOverview,
+  getSmartAiSummary,
+  regenerateSmartAiSummary,
+  getAgentActionSuggestionPage,
+  ignoreAgentActionSuggestion,
+  submitAgentActionSuggestion,
+  getAgentActionApprovePage,
+  ignoreAgentActionApprove,
+  confirmAgentActionApprove,
+  getAgentConversationPage,
+  getAgentConversationDetail,
+  deleteAgentConversation,
+  renameAgentConversation,
+  uploadAgentChatFile,
+} = aiApi;
 
 export const {
   getCustomFormAdmins,
@@ -460,4 +494,5 @@ export const {
   revokeApproval,
   revokeResource,
   reviewResource,
+  getCCStatistic,
 } = processApi;

@@ -8,17 +8,28 @@
       <n-form
         ref="formRef"
         label-placement="left"
-        label-width="auto"
+        :label-width="72"
         :model="form"
         class="grid grid-cols-3 gap-x-[24px]"
       >
-        <n-form-item :label="t('common.operator')" path="operator">
+        <n-form-item v-if="activeTab !== 'aiExecution'" :label="t('common.operator')" path="operator">
           <CrmUserSelect
             v-model:value="form.operator"
             value-field="id"
             label-field="name"
             mode="remote"
             :fetch-api="getUserOptions"
+            filterable
+            clearable
+          />
+        </n-form-item>
+        <n-form-item v-else :label="t('common.operator')" path="operator">
+          <CrmUserSelect
+            v-model:value="form.operator"
+            value-field="id"
+            label-field="name"
+            mode="remote"
+            :fetch-api="getAiOperatorOptions"
             filterable
             clearable
           />
@@ -53,6 +64,19 @@
             <n-input v-model:value="form.keyword" :placeholder="t('common.pleaseInput')" clearable />
           </n-form-item>
         </template>
+        <template v-if="activeTab === 'aiExecution'">
+          <n-form-item :label="t('log.aiExecutionLogStatus')" path="status">
+            <n-select
+              v-model:value="form.status"
+              :options="aiStatusOptions"
+              :placeholder="t('common.pleaseSelect')"
+              clearable
+            />
+          </n-form-item>
+          <n-form-item :label="t('system.business.globalTask.taskName')" path="keyword">
+            <n-input v-model:value="form.keyword" :placeholder="t('common.pleaseInput')" clearable />
+          </n-form-item>
+        </template>
         <n-form-item>
           <n-button ghost class="mr-[12px]" type="primary" @click="searchData">
             {{ t('advanceFilter.filter') }}
@@ -80,12 +104,29 @@
         @filter-change="propsEvent.filterChange"
       />
     </CrmCard>
+    <CrmCard
+      v-if="activeTab === 'aiExecution'"
+      no-content-bottom-padding
+      hide-footer
+      :special-height="licenseStore.expiredDuring ? 272 : 0"
+    >
+      <CrmTable
+        ref="aiExecutionTableRef"
+        v-bind="aiExecutionTablePropsRes"
+        class="crm-ai-execution-log-table"
+        @page-change="aiExecutionTablePropsEvent.pageChange"
+        @page-size-change="aiExecutionTablePropsEvent.pageSizeChange"
+        @sorter-change="aiExecutionTablePropsEvent.sorterChange"
+        @filter-change="aiExecutionTablePropsEvent.filterChange"
+      />
+    </CrmCard>
     <LoginLog v-if="activeTab === 'login'" ref="loginLogRef" />
   </n-scrollbar>
 
   <CrmDrawer v-model:show="showDetailDrawer" :footer="false" :show-mask="false" :title="t('log.detail')" :width="680">
     <LogDetailItem :detail="activeLogDetail" />
   </CrmDrawer>
+  <AiExecutionLogDetailDrawer v-model:show="showAiExecutionLogDetailDrawer" :detail="activeAiExecutionLogDetail" />
 </template>
 
 <script setup lang="ts">
@@ -107,21 +148,34 @@
   import { TableKeyEnum } from '@lib/shared/enums/tableEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { getCityPath, getIndustryPath } from '@lib/shared/method';
-  import type { OperationLogDetail, OperationLogItem, OperationLogParams } from '@lib/shared/models/system/log';
+  import type {
+    AiExecutionLogItem,
+    AiExecutionLogParams,
+    OperationLogDetail,
+    OperationLogItem,
+    OperationLogParams,
+  } from '@lib/shared/models/system/log';
 
   import CrmCard from '@/components/pure/crm-card/index.vue';
   import CrmDrawer from '@/components/pure/crm-drawer/index.vue';
+  import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import CrmTab from '@/components/pure/crm-tab/index.vue';
   import CrmTable from '@/components/pure/crm-table/index.vue';
   import { CrmDataTableColumn } from '@/components/pure/crm-table/type';
   import useTable from '@/components/pure/crm-table/useTable';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmUserSelect from '@/components/business/crm-user-select/index.vue';
+  import AiExecutionLogDetailDrawer from './components/aiExecutionLogDetailDrawer.vue';
   import LogDetailItem from './components/logDetailItem.vue';
   import LoginLog from './components/loginLog.vue';
 
   import { getUserOptions } from '@/api/modules';
-  import { operationLogDetail, operationLogList } from '@/api/modules/system/log';
+  import {
+    aiExecutionLogDetail,
+    aiExecutionLogList,
+    operationLogDetail,
+    operationLogList,
+  } from '@/api/modules/system/log';
   import { logTypeOption } from '@/config/system';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import usePathMap from '@/hooks/usePathMap';
@@ -139,6 +193,10 @@
     {
       name: 'login',
       tab: t('log.loginLog'),
+    },
+    {
+      name: 'aiExecution',
+      tab: t('log.aiExecutionLog'),
     },
   ];
 
@@ -189,6 +247,8 @@
     type: null,
     module: null,
     operator: null,
+    status: null,
+    keyword: '',
     time: [dayjs().subtract(1, 'M').valueOf(), dayjs().valueOf()],
   };
   const form = ref<OperationLogParams>({
@@ -198,6 +258,43 @@
   // 详情
   const activeLogDetail = ref<OperationLogDetail>();
   const showDetailDrawer = ref(false);
+
+  const activeAiExecutionLogDetail = ref<AiExecutionLogItem>();
+  const showAiExecutionLogDetailDrawer = ref(false);
+
+  async function getAiOperatorOptions(params: Record<string, any>) {
+    try {
+      const users = await getUserOptions(params);
+      const keyword = params.keyword?.trim();
+      const autoOption = { id: 'auto', name: t('log.autoExecution') };
+      return !keyword || autoOption.name.includes(keyword) ? [autoOption, ...users] : users;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+      return [];
+    }
+  }
+
+  const aiStatusList = computed(() => [
+    {
+      label: t('common.success'),
+      value: 'success',
+      icon: 'iconicon_check_circle_filled',
+      color: 'text-[var(--success-green)]',
+    },
+    {
+      label: t('common.fail'),
+      value: 'failed',
+      icon: 'iconicon_close_circle_filled',
+      color: 'text-[var(--error-red)]',
+    },
+  ]);
+
+  const aiStatusOptions = computed(() => aiStatusList.value.map(({ label, value }) => ({ label, value })));
+
+  const aiStatusTagMap = computed(() =>
+    Object.fromEntries(aiStatusList.value.map(({ label, icon, color, value }) => [value, { label, icon, color }]))
+  );
 
   function cityFormat(val: string) {
     const address = val?.split('-');
@@ -317,8 +414,93 @@
     containerClass: '.crm-operation-log-table',
   });
 
+  async function openAiExecutionLogDetail(row: AiExecutionLogItem) {
+    try {
+      activeAiExecutionLogDetail.value = await aiExecutionLogDetail(row.id);
+      showAiExecutionLogDetailDrawer.value = true;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(error);
+    }
+  }
+
+  const aiExecutionColumns: CrmDataTableColumn<AiExecutionLogItem>[] = [
+    {
+      title: t('common.operator'),
+      key: 'operatorName',
+      width: 120,
+      ellipsis: {
+        tooltip: true,
+      },
+      render: (row) => row.operatorName || '-',
+    },
+    {
+      title: t('system.business.globalTask.taskName'),
+      key: 'name',
+      width: 150,
+      ellipsis: {
+        tooltip: true,
+      },
+      render: (row) =>
+        h(
+          CrmTableButton,
+          {
+            onClick: () => openAiExecutionLogDetail(row),
+          },
+          { default: () => row.name, trigger: () => row.name }
+        ),
+    },
+    {
+      title: t('log.aiExecutionLogStatus'),
+      key: 'status',
+      width: 120,
+      render: (row) => {
+        const status = aiStatusTagMap.value[row.status];
+        return status
+          ? h('div', { class: 'flex items-center gap-[8px]' }, [
+              h(CrmIcon, {
+                type: status.icon,
+                size: 16,
+                class: status.color,
+              }),
+              h('span', { class: 'text-[var(--text-n1)]' }, status.label),
+            ])
+          : '-';
+      },
+    },
+    {
+      title: t('log.tokenCost'),
+      key: 'tokenCost',
+      width: 140,
+      render: (row) => row.totalTokens?.toLocaleString() || '-',
+    },
+    {
+      title: t('log.operationTime'),
+      key: 'callTime',
+      width: 120,
+      sortOrder: false,
+      sorter: true,
+      resizable: false,
+      render: (row) => (row.callTime ? dayjs(row.callTime).format('YYYY-MM-DD HH:mm:ss') : '-'),
+    },
+  ];
+
+  const {
+    propsRes: aiExecutionTablePropsRes,
+    propsEvent: aiExecutionTablePropsEvent,
+    loadList: loadAiExecutionList,
+    setLoadListParams: setAiExecutionLoadListParams,
+  } = useTable<AiExecutionLogItem>(aiExecutionLogList, {
+    showSetting: false,
+    columns: aiExecutionColumns,
+    tableKey: TableKeyEnum.AI_EXECUTION_LOG,
+    hiddenRefresh: true,
+    containerClass: '.crm-ai-execution-log-table',
+  });
+
   const loginLogRef = ref<InstanceType<typeof LoginLog>>();
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
+  const aiExecutionTableRef = ref<InstanceType<typeof CrmTable>>();
 
   async function searchData() {
     const { time, ...otherForm } = form.value;
@@ -326,6 +508,17 @@
       setLoadListParams({ ...otherForm, startTime: time[0], endTime: time[1] });
       await loadList();
       crmTableRef.value?.scrollTo({ top: 0 });
+    } else if (activeTab.value === 'aiExecution') {
+      const params: AiExecutionLogParams = {
+        operator: otherForm.operator,
+        status: otherForm.status,
+        keyword: otherForm.keyword,
+        startTime: time[0],
+        endTime: time[1],
+      };
+      setAiExecutionLoadListParams(params);
+      await loadAiExecutionList();
+      aiExecutionTableRef.value?.scrollTo({ top: 0 });
     } else {
       nextTick(() => {
         loginLogRef.value?.searchData({ operator: otherForm.operator, startTime: time[0], endTime: time[1] });

@@ -1,6 +1,6 @@
 <template>
   <n-menu
-    v-model:value="activeMenu"
+    :value="activeMenu"
     class="crm-top-menu"
     mode="horizontal"
     :options="topMenuList"

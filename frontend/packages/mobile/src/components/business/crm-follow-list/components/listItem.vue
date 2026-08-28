@@ -34,31 +34,45 @@
           </van-dropdown-menu>
         </div>
       </div>
-      <div class="flex flex-1 flex-col gap-[12px] rounded-[var(--border-radius-large)] bg-[var(--text-n10)] p-[16px]">
+      <div class="follow-item-content rounded-[var(--border-radius-large)]">
         <div class="flex items-center justify-between gap-[16px]">
           <CrmAvatar :is-word="item.owner !== userStore.userInfo.id" :text="item.ownerName" />
           <div class="flex flex-1 flex-wrap items-center overflow-hidden">
             <div class="one-line-text flex-1 text-[16px] font-semibold">{{ item.ownerName }}</div>
-            <div v-if="!props.readonly && isOwner(item)" class="flex items-center gap-[16px]">
-              <CrmTextButton icon="iconicon_delete" color="var(--error-red)" icon-size="16px" @click="emit('delete')" />
-              <CrmTextButton
-                icon="iconicon_handwritten_signature"
-                color="var(--primary-8)"
-                icon-size="16px"
-                @click="emit('edit')"
-              />
-              <!-- TODO先不上 -->
-              <!-- <CrmTextButton
+          </div>
+        </div>
+        <div class="one-line-text rounded-[var(--border-radius-mini)] bg-[var(--text-n9)] p-[12px] text-[12px]">
+          {{ item.content }}
+        </div>
+        <div :class="`flex items-center ${isShowAction ? 'justify-between' : 'justify-end'}`">
+          <div v-if="isShowAction" class="flex items-center gap-[16px]">
+            <CrmTextButton icon="iconicon_delete" color="var(--error-red)" icon-size="16px" @click="emit('delete')" />
+            <CrmTextButton
+              icon="iconicon_handwritten_signature"
+              color="var(--primary-8)"
+              icon-size="16px"
+              @click="emit('edit')"
+            />
+            <!-- TODO先不上 -->
+            <!-- <CrmTextButton
                 icon="iconicon_login"
                 color="var(--primary-8)"
                 icon-size="16px"
                 @click="emit('convertToRecord')"
               /> -->
-            </div>
           </div>
-        </div>
-        <div class="one-line-text rounded-[var(--border-radius-mini)] bg-[var(--text-n9)] p-[12px] text-[12px]">
-          {{ item.content }}
+          <!-- 评论入口 -->
+          <div class="mx-[4px] flex items-center text-[12px] text-[var(--text-n4)]">
+            <CrmIcon
+              name="iconicon_chat"
+              width="14px"
+              height="14px"
+              color="var(--text-n4)"
+              class="mr-[4px]"
+              @click.stop="openComment(item)"
+            />
+            <div>{{ displayCommentCount }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -66,22 +80,31 @@
 </template>
 
 <script setup lang="ts">
+  import { useRouter } from 'vue-router';
   import dayjs from 'dayjs';
 
   import { CustomerFollowPlanStatusEnum } from '@lib/shared/enums/customerEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import { formatBadgeCount } from '@lib/shared/method';
   import type { FollowDetailItem, StatusTagKey } from '@lib/shared/models/customer';
 
+  import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import CrmTag from '@/components/pure/crm-tag/index.vue';
   import CrmTextButton from '@/components/pure/crm-text-button/index.vue';
   import CrmAvatar from '@/components/business/crm-avatar/index.vue';
 
   import { statusMap } from '@/config/follow';
   import useUserStore from '@/store/modules/user';
+  import { hasAnyPermission } from '@/utils/permission';
+
+  import { CommonRouteEnum } from '@/enums/routeEnum';
 
   const props = defineProps<{
     item: any;
     type: 'plan' | 'record';
+    formKey?: string;
+    sourceId?: string;
+    sourceName?: string;
     readonly?: boolean;
   }>();
 
@@ -93,6 +116,7 @@
 
   const { t } = useI18n();
   const userStore = useUserStore();
+  const router = useRouter();
 
   const status = defineModel<StatusTagKey>('value', {
     default: CustomerFollowPlanStatusEnum.PREPARED,
@@ -116,8 +140,27 @@
 
   const isOwner = (item: FollowDetailItem) => item.owner === userStore.userInfo?.id;
 
+  const isShowAction = computed(() => !props.readonly && isOwner(props.item));
+
+  const displayCommentCount = computed(() => formatBadgeCount(props.item.commentCount));
+
   function changeStatus() {
     emit('change');
+  }
+
+  function openComment(item: FollowDetailItem) {
+    router.push({
+      name: CommonRouteEnum.FOLLOW_COMMENT,
+      query: {
+        id: item.id,
+        type: props.type,
+        formKey: props.formKey,
+        sourceId: props.sourceId,
+        sourceName: props.sourceName,
+        commentCount: item.commentCount || 0,
+        readonly: String(props.readonly || !isOwner(item)),
+      },
+    });
   }
 </script>
 
@@ -134,5 +177,14 @@
         }
       }
     }
+  }
+</style>
+
+<style scoped lang="less">
+  .follow-item-content {
+    gap: 12px;
+    padding: 16px;
+    background: var(--text-n10);
+    @apply flex flex-1 flex-col;
   }
 </style>

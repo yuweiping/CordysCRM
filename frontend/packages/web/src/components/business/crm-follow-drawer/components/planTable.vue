@@ -138,6 +138,8 @@
       @delete="handleDelete(sourceId)"
       @edit="handleEdit(activeItem)"
       @convert="(detail) => handleConvert(detail)"
+      @detail-init="handleDetailInit"
+      @count-change="handleCommentCountChange"
     />
   </CrmCard>
 </template>
@@ -498,6 +500,21 @@
     });
     loadList();
     crmTableRef.value?.scrollTo({ top: 0 });
+  }
+
+  function handleDetailInit(detail?: Record<string, any>) {
+    const commentCount = detail?.commentCount;
+    if (!activeItem.value || typeof commentCount !== 'number') {
+      return;
+    }
+
+    activeItem.value.commentCount = commentCount;
+  }
+
+  function handleCommentCountChange(commentCount: number) {
+    if (activeItem.value) {
+      activeItem.value.commentCount = commentCount;
+    }
   }
 
   const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();

@@ -36,6 +36,7 @@ import cn.cordys.crm.system.excel.handler.CustomHeadColWidthStyleStrategy;
 import cn.cordys.crm.system.excel.handler.CustomTemplateWriteHandler;
 import cn.cordys.crm.system.excel.listener.CustomFieldCheckEventListener;
 import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
+import cn.cordys.crm.system.excel.listener.CustomFieldMergeCellEventListener;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
@@ -43,6 +44,7 @@ import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import cn.idev.excel.FastExcelFactory;
+import cn.idev.excel.enums.CellExtraTypeEnum;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import jakarta.annotation.Resource;
@@ -101,16 +103,23 @@ public class CustomFormDataService {
     @Resource
     private SqlSessionFactory sqlSessionFactory;
 
-    public PagerWithOption<List<CustomFormDataListResponse>> page(CustomFormDataPageRequest request, String userId, String orgId, boolean checkDataPermission) {
+    public PagerWithOption<List<CustomFormDataListResponse>> page(CustomFormDataPageRequest request, String userId, String orgId, boolean catchPermissionException) {
         String formId = request.getCustomFormId();
-        boolean manageOwn = false;
         CustomFormRoleKey dataScope;
-        if (checkDataPermission) {
-            dataScope = getDataScope(formId, userId);
-            manageOwn = dataScope == CustomFormRoleKey.MANAGE_OWN;
+        if (catchPermissionException) {
+            try {
+                dataScope = getDataScope(formId, userId);
+            } catch (Exception e) {
+                // 数据源分页，没有权限返回空列表
+                log.error(e.getMessage(), e);
+                Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
+                return PageUtils.setPageInfoWithOption(page, List.of(), Map.of());
+            }
         } else {
-            dataScope = CustomFormRoleKey.VIEW_ALL;
+            dataScope = getDataScope(formId, userId);
         }
+        boolean manageOwn = dataScope == CustomFormRoleKey.MANAGE_OWN;
+
 
         Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
         List<CustomFormDataListResponse> list = extCustomFormDataMapper.list(request, orgId, userId, manageOwn);
@@ -250,6 +259,8 @@ public class CustomFormDataService {
 
     @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.ADD)
     public CustomFormData add(CustomFormDataAddRequest request, String userId, String orgId) {
+        checkCreatePermission(getManageDataScope(request.getCustomFormId(), userId));
+
         CustomFormData data = new CustomFormData();
         data.setId(IDGenerator.nextStr());
         data.setCustomFormId(request.getCustomFormId());
@@ -275,6 +286,15 @@ public class CustomFormDataService {
         return data;
     }
 
+    public boolean hasCreatePermission(String formId, String userId) {
+        try {
+            checkCreatePermission(getManageDataScope(formId, userId));
+            return true;
+        } catch (GenericException e) {
+            return false;
+        }
+    }
+
     @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.UPDATE, resourceId = "{#request.id}")
     public void update(CustomFormDataUpdateRequest request, String userId, String orgId) {
         CustomFormData originData = customFormDataMapper.selectByPrimaryKey(request.getId());
@@ -282,7 +302,7 @@ public class CustomFormDataService {
             throw new GenericException(CrmHttpResultCode.NOT_FOUND);
         }
 
-        CustomFormRoleKey dataScope = getDataScope(originData.getCustomFormId(), userId);
+        CustomFormRoleKey dataScope = getManageDataScope(originData.getCustomFormId(), userId);
         checkWritePermission(dataScope, originData.getCreateUser(), userId);
 
         CustomFormData updateData = new CustomFormData();
@@ -322,7 +342,7 @@ public class CustomFormDataService {
             throw new GenericException(CrmHttpResultCode.NOT_FOUND);
         }
 
-        CustomFormRoleKey dataScope = getDataScope(data.getCustomFormId(), userId);
+        CustomFormRoleKey dataScope = getManageDataScope(data.getCustomFormId(), userId);
         checkWritePermission(dataScope, data.getCreateUser(), userId);
 
         customFormDataFieldService.deleteByResourceId(id);
@@ -348,7 +368,7 @@ public class CustomFormDataService {
     }
 
     private void checkBatchPermission(String userId, List<CustomFormData> dataList, String formId) {
-        CustomFormRoleKey dataScope = getDataScope(formId, userId);
+        CustomFormRoleKey dataScope = getManageDataScope(formId, userId);
         if (dataScope == CustomFormRoleKey.VIEW_ALL) {
             throw new GenericException(CrmHttpResultCode.FORBIDDEN);
         }
@@ -397,12 +417,25 @@ public class CustomFormDataService {
         }
     }
 
-    CustomFormRoleKey getDataScope(String formId, String userId) {
-        return getDataScope(formId, userId, true);
+    private void checkCreatePermission(CustomFormRoleKey dataScope) {
+        if (dataScope == CustomFormRoleKey.VIEW_ALL) {
+            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+        }
     }
 
-    CustomFormRoleKey getDataScope(String formId, String userId, boolean checkEnable) {
+    CustomFormRoleKey getDataScope(String formId, String userId) {
+        return getDataScope(formId, userId, true, false);
+    }
+
+    CustomFormRoleKey getManageDataScope(String formId, String userId) {
+        return getDataScope(formId, userId, true, true);
+    }
+
+    CustomFormRoleKey getDataScope(String formId, String userId, boolean checkEnable, boolean checkManage) {
         CustomForm customForm = customFormMapper.selectByPrimaryKey(formId);
+        if (customForm == null) {
+            throw new GenericException(CrmHttpResultCode.NOT_FOUND);
+        }
         if (customFormService.isFormAdminUser(formId, userId)) {
             // 管理员管理所有数据
             return CustomFormRoleKey.MANAGE_ALL;
@@ -448,11 +481,21 @@ public class CustomFormDataService {
         if (userRoleKeys.contains(CustomFormRoleKey.MANAGE_ALL)) {
             return CustomFormRoleKey.MANAGE_ALL;
         }
-        if (userRoleKeys.contains(CustomFormRoleKey.VIEW_ALL)) {
-            return CustomFormRoleKey.VIEW_ALL;
-        }
-        if (userRoleKeys.contains(CustomFormRoleKey.MANAGE_OWN)) {
-            return CustomFormRoleKey.MANAGE_OWN;
+
+        if (checkManage) {
+            if (userRoleKeys.contains(CustomFormRoleKey.MANAGE_OWN)) {
+                return CustomFormRoleKey.MANAGE_OWN;
+            }
+            if (userRoleKeys.contains(CustomFormRoleKey.VIEW_ALL)) {
+                return CustomFormRoleKey.VIEW_ALL;
+            }
+        } else {
+            if (userRoleKeys.contains(CustomFormRoleKey.VIEW_ALL)) {
+                return CustomFormRoleKey.VIEW_ALL;
+            }
+            if (userRoleKeys.contains(CustomFormRoleKey.MANAGE_OWN)) {
+                return CustomFormRoleKey.MANAGE_OWN;
+            }
         }
 
         throw new GenericException(CrmHttpResultCode.FORBIDDEN);
@@ -527,6 +570,15 @@ public class CustomFormDataService {
         try {
             CustomFormDataFieldService.setFormKey(request.getCustomFormId());
             List<BaseField> fields = moduleFormService.getAllFields(request.getCustomFormId(), orgId);
+            boolean supportSubHead = moduleFormService.supportSubHead(fields);
+            int headRowNumber = supportSubHead ? 2 : 1;
+            CustomFieldMergeCellEventListener mergeCellEventListener = new CustomFieldMergeCellEventListener();
+            FastExcelFactory.read(file.getInputStream(), mergeCellEventListener)
+                    .extraRead(CellExtraTypeEnum.MERGE)
+                    .headRowNumber(headRowNumber)
+                    .ignoreEmptyRow(true)
+                    .sheet()
+                    .doRead();
             CustomImportAfterDoConsumer<CustomFormData, BaseResourceSubField> afterDo = (dataList, fieldList, fieldBlobList) -> {
                 var logs = new ArrayList<LogDTO>();
                 ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
@@ -637,10 +689,10 @@ public class CustomFormDataService {
                     }
                 }
             };
-            CustomFieldImportEventListener<CustomFormData> eventListener = new CustomFieldImportEventListener<>(
-                    fields, CustomFormData.class, orgId, userId, "custom_form_data_field","custom_form_data_field_blob", afterDo, 2000, null, null, request.getImportType());
+            CustomFieldImportEventListener<CustomFormData> eventListener = new CustomFieldImportEventListener<>(fields, CustomFormData.class, orgId, userId,
+                    "custom_form_data_field", "custom_form_data_field_blob", afterDo, 2000, mergeCellEventListener.getMergeCellMap(), mergeCellEventListener.getMergeRowDataMap(), request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener)
-                    .headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
+                    .headRowNumber(headRowNumber).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccessCount()).failCount(eventListener.getErrList().size()).build();
         } catch (Exception e) {
@@ -663,9 +715,20 @@ public class CustomFormDataService {
         try {
             CustomFormDataFieldService.setFormKey(request.getCustomFormId());
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(request.getCustomFormId(), orgId);
-            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "custom_form_data", "custom_form_data_field", orgId, request.getImportType());
+            boolean supportSubHead = moduleFormService.supportSubHead(fields);
+            int headRowNumber = supportSubHead ? 2 : 1;
+            CustomFieldMergeCellEventListener mergeCellEventListener = new CustomFieldMergeCellEventListener();
+            FastExcelFactory.read(file.getInputStream(), mergeCellEventListener)
+                    .extraRead(CellExtraTypeEnum.MERGE)
+                    .headRowNumber(headRowNumber)
+                    .ignoreEmptyRow(true)
+                    .sheet()
+                    .doRead();
+
+            CustomFieldCheckEventListener eventListener = new CustomFieldCheckEventListener(fields, "custom_form_data", "custom_form_data_field", orgId,
+                    mergeCellEventListener.getMergeCellMap(), mergeCellEventListener.getMergeRowDataMap(), request.getImportType());
             FastExcelFactory.read(file.getInputStream(), eventListener)
-                    .headRowNumber(1).ignoreEmptyRow(true).sheet().doRead();
+                    .headRowNumber(headRowNumber).ignoreEmptyRow(true).sheet().doRead();
             return ImportResponse.builder().errorMessages(eventListener.getErrList())
                     .successCount(eventListener.getSuccess()).failCount(eventListener.getErrList().size()).build();
         } catch (Exception e) {

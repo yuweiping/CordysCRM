@@ -6,6 +6,62 @@
   "description": "",
   "glyphs": [
     {
+      "icon_id": "48290813",
+      "name": "icon_bad",
+      "font_class": "icon_bad",
+      "unicode": "e806",
+      "unicode_decimal": 59398
+    },
+    {
+      "icon_id": "48290812",
+      "name": "icon_good",
+      "font_class": "icon_good",
+      "unicode": "e807",
+      "unicode_decimal": 59399
+    },
+    {
+      "icon_id": "48290729",
+      "name": "icon_crmbot",
+      "font_class": "icon_crmbot",
+      "unicode": "e805",
+      "unicode_decimal": 59397
+    },
+    {
+      "icon_id": "48173564",
+      "name": "icon_comment",
+      "font_class": "icon_comment",
+      "unicode": "e804",
+      "unicode_decimal": 59396
+    },
+    {
+      "icon_id": "32849902",
+      "name": "icon_undo_outlined",
+      "font_class": "icon_undo_outlined",
+      "unicode": "e803",
+      "unicode_decimal": 59395
+    },
+    {
+      "icon_id": "47967311",
+      "name": "icon_mcp",
+      "font_class": "icon_mcp",
+      "unicode": "e802",
+      "unicode_decimal": 59394
+    },
+    {
+      "icon_id": "45502222",
+      "name": "icon_star",
+      "font_class": "icon_star1",
+      "unicode": "e81c",
+      "unicode_decimal": 59420
+    },
+    {
+      "icon_id": "32849862",
+      "name": "icon_effects_outlined",
+      "font_class": "icon_effects_outlined",
+      "unicode": "e6d8",
+      "unicode_decimal": 59096
+    },
+    {
       "icon_id": "47677467",
       "name": "icon_form",
       "font_class": "icon_form",

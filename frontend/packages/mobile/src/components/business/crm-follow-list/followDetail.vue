@@ -1,17 +1,26 @@
 <template>
   <CrmPageWrapper :title="t('common.detail')">
-    <div class="h-full bg-[var(--text-n9)] py-[16px]">
+    <div class="bg-[var(--text-n9)] py-[16px]">
       <CrmDescription :description="descriptions" />
-      <div class="mt-[16px]">
-        <van-cell-group inset class="p-[16px]">
-          <div class="font-[600]">{{ t('common.communicationContent') }}</div>
-          <div class="mt-[16px] rounded-[var(--border-radius-large)] bg-[var(--text-n9)] p-[16px]">
-            {{ detail.content }}
-          </div>
-        </van-cell-group>
+    </div>
+    <div class="bg-[var(--text-n9)] px-[16px] pt-0">
+      <div class="bg-[var(--text-n10)] p-[16px]">
+        <div class="font-[600]">{{ t('common.communicationContent') }}</div>
+        <div class="mt-[16px] rounded-[var(--border-radius-large)] bg-[var(--text-n9)] p-[16px]">
+          {{ detail.content }}
+        </div>
       </div>
     </div>
-    <template v-if="route.query.readonly?.toString() !== 'true'" #footer>
+    <div class="crm-follow-detail-comment bg-[var(--text-n9)] p-[16px]">
+      <CrmComment
+        v-model:count="commentCount"
+        class="crm-comment--detail"
+        :type="commentType"
+        :source-id="sourceId"
+        @change-editor="commentEditing = Boolean($event)"
+      />
+    </div>
+    <template v-if="canEditDetail && !commentEditing" #footer>
       <div class="flex items-center justify-center gap-[16px]">
         <div class="flex w-[100px] items-center">
           <CrmTextButton
@@ -41,12 +50,13 @@
   import { useRoute, useRouter } from 'vue-router';
   import { showSuccessToast } from 'vant';
 
-  import { CustomerFollowPlanStatusEnum } from '@lib/shared/enums/customerEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
 
   import CrmDescription from '@/components/pure/crm-description/index.vue';
   import CrmPageWrapper from '@/components/pure/crm-page-wrapper/index.vue';
   import CrmTextButton from '@/components/pure/crm-text-button/index.vue';
+  import CrmComment from '@/components/business/crm-comment/index.vue';
+  import type { MobileCommentResourceType } from '@/components/business/crm-comment/useCommentResource';
 
   import { followPlanApiMap, followRecordApiMap, PlanEnumType, RecordEnumType } from '@/config/follow';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
@@ -57,14 +67,24 @@
   const router = useRouter();
   const { t } = useI18n();
 
-  const isPlan = computed(() => route.query.formKey?.includes('plan'));
   const formKey = computed(() => (route.query.formKey?.toString() as RecordEnumType | PlanEnumType) || '');
+  const isPlan = computed(() => formKey.value.toLowerCase().includes('plan'));
   const sourceId = computed(() => route.query.id?.toString() || '');
+  const commentType = computed<MobileCommentResourceType>(() => (isPlan.value ? 'plan' : 'record'));
+  const canEditDetail = computed(() => route.query.readonly?.toString() !== 'true');
+  const commentEditing = ref(false);
 
   const { descriptions, initFormConfig, initFormDescription, detail } = useFormCreateApi({
     formKey: formKey.value,
     sourceId,
     needInitDetail: route.query.needInitDetail === 'Y',
+  });
+
+  const commentCount = computed({
+    get: () => detail.value.commentCount || 0,
+    set: (value: number) => {
+      detail.value.commentCount = value;
+    },
   });
 
   onBeforeMount(async () => {
@@ -106,8 +126,11 @@
   }
 </script>
 
-<style lang="less" scoped>
+<style scoped lang="less">
+  .crm-follow-detail-comment {
+    @apply box-border flex h-full flex-none basis-full flex-col overflow-hidden;
+  }
   :deep(.crm-page-content) {
-    @apply !overflow-hidden;
+    @apply !overflow-auto;
   }
 </style>

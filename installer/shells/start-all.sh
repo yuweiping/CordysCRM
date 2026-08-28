@@ -56,6 +56,22 @@ start_mcp_after_cordys() {
       fi
 }
 
+start_cockpit_after_cordys() {
+      cockpitEmbeddedEnabled=$(get_property "cockpit.embedded.enabled")
+      if [[ "${cockpitEmbeddedEnabled}" == "true" ]]; then
+          log_info "启动内置 Cockpit 服务 ..."
+          /shells/wait-for-it.sh 127.0.0.1:8082 --timeout=150 --strict
+
+          log_info "Cordys CRM 已就绪，启动 Cockpit..."
+          sh /shells/start-cockpit.sh &
+          /shells/wait-for-it.sh 127.0.0.1:8088 --timeout=150 --strict
+          log_info "Cockpit 已就绪"
+      else
+          log_info "使用外部 Cockpit 服务"
+      fi
+}
+
+
 # ------------------------------
 # 获取配置函数
 # ------------------------------
@@ -96,6 +112,7 @@ main() {
     fi
 
     start_mcp_after_cordys &
+    start_cockpit_after_cordys &
     sh /shells/start-cordys.sh
 
     log_info "Cordys CRM 环境启动完成！"

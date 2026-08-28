@@ -37,20 +37,28 @@
           <CrmFormDescription
             :form-key="props.formKey"
             :source-id="props.sourceId"
-            :refresh-key="props.refreshKey"
+            :refresh-key="detailRefreshKey"
             :column="3"
             label-width="auto"
             value-align="start"
             readonly
+            @init="handleDescriptionInit"
           />
         </div>
+        <n-divider class="!mb-[12px] !mt-[16px] bg-[var(--text-n8)]" />
+        <CrmComment
+          v-model:expanded="commentExpanded"
+          v-model:count="commentInitialCount"
+          :type="commentResourceType"
+          :source-id="props.sourceId"
+        />
       </CrmCard>
     </div>
   </CrmDrawer>
 </template>
 
 <script setup lang="ts">
-  import { NButton } from 'naive-ui';
+  import { NButton, NDivider } from 'naive-ui';
 
   import { CustomerFollowPlanStatusEnum } from '@lib/shared/enums/customerEnum';
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
@@ -58,6 +66,7 @@
 
   import CrmCard from '@/components/pure/crm-card/index.vue';
   import CrmDrawer from '@/components/pure/crm-drawer/index.vue';
+  import CrmComment from '@/components/business/crm-comment/index.vue';
   import CrmFormDescription from '@/components/business/crm-form-description/index.vue';
 
   const props = defineProps<{
@@ -77,9 +86,43 @@
     (e: 'delete'): void;
     (e: 'edit'): void;
     (e: 'convert', detail?: any): void;
+    (e: 'detailInit', detail?: Record<string, any>): void;
+    (e: 'countChange', count: number): void;
   }>();
 
   const { t } = useI18n();
+
+  const commentExpanded = ref(false);
+  const commentResourceType = computed(() =>
+    props.formKey === FormDesignKeyEnum.FOLLOW_RECORD ? 'followRecord' : 'followPlan'
+  );
+  const commentInitialCount = ref<number>();
+  const detailRefreshKey = ref(0);
+
+  watch(
+    () => [showDrawer.value, props.sourceId, props.formKey, props.refreshKey],
+    ([visible]) => {
+      if (visible) {
+        commentExpanded.value = false;
+        commentInitialCount.value = props.detail?.commentCount;
+        detailRefreshKey.value += 1;
+      }
+    },
+    {
+      immediate: true,
+    }
+  );
+
+  function handleDescriptionInit(_collaborationType?: unknown, _sourceName?: string, detail?: Record<string, any>) {
+    if (typeof detail?.commentCount === 'number') {
+      commentInitialCount.value = detail.commentCount;
+    }
+    emit('detailInit', detail);
+  }
+
+  watch(commentInitialCount, (count) => {
+    emit('countChange', count || 0);
+  });
 
   function handleDelete() {
     emit('delete');

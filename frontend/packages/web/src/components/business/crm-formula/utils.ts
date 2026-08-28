@@ -1,8 +1,10 @@
 import { IRNodeType } from '@lib/shared/enums/formula';
 
 import { resolveFieldId } from '../crm-formula-editor/utils';
-import { FieldTypeMap, FormulaDataSourceMap, IRNode } from './formula-runtime/types';
+import { FieldTypeMap, FormulaDataSourceMap, IRNode, ValueType } from './formula-runtime/types';
 import { FormCreateField } from '@cordys/web/src/components/business/crm-form-create/types';
+
+export { formatFormulaResultValue } from '@lib/shared/method/formCreate';
 
 export function hydrateIRNumberType(node: IRNode | any, fieldTypeMap: FieldTypeMap): IRNode {
   // ---------- 历史数据兼容 as 旧数据，需要转换成新版本----------
@@ -155,4 +157,24 @@ export function keepDecimal(value: number, digits = 2) {
   const dotIdx = str.indexOf('.');
   if (dotIdx === -1) return normalized;
   return Number(str.substring(0, dotIdx + 1 + digits));
+}
+
+/**
+ * 获取公式执行结果的归一化配置。
+ * 数值模式只约束数字结果的精度，文本结果保持原始字符串；
+ * 文本模式统一按字符串结果处理，兼容历史空值配置。
+ */
+export function getFormulaResultFormatOptions(fieldConfig: FormCreateField): {
+  decimalPlaces?: number;
+  expectedType?: ValueType;
+} {
+  if (fieldConfig.formulaResultFormat === 'number') {
+    return {
+      decimalPlaces: fieldConfig.decimalPlaces ? fieldConfig.precision ?? 0 : 0,
+    };
+  }
+
+  return {
+    expectedType: 'string',
+  };
 }

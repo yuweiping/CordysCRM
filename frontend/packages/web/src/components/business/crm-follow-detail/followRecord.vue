@@ -14,7 +14,7 @@
           <div :class="`crm-follow-time-dot ${getFutureClass(item)}`"></div>
           <div class="crm-follow-time-line"></div>
         </div>
-        <div class="mb-[24px] flex w-full flex-col gap-[16px]">
+        <div class="mb-[24px] flex w-full flex-col gap-[12px]">
           <div class="crm-follow-record-title h-[32px]">
             <div class="flex items-center gap-[16px]">
               <slot name="titleLeft" :item="item"></slot>
@@ -29,6 +29,16 @@
               <div class="crm-follow-record-method">
                 {{ (props.type === 'followRecord' ? item.followMethod : item.method) ?? '-' }}
               </div>
+              <n-tooltip
+                v-if="item.opportunityName && props.type === 'followRecord' && item.resourceType === 'CUSTOMER'"
+                trigger="hover"
+                :disabled="!item.opportunityName"
+              >
+                <template #trigger>
+                  <div class="one-line-text max-w-[300px]">{{ item.opportunityName ?? '-' }}</div>
+                </template>
+                {{ item.opportunityName ?? '-' }}
+              </n-tooltip>
             </div>
 
             <slot name="headerAction" :item="item"></slot>
@@ -63,6 +73,13 @@
             </CrmDetailCard>
           </div>
           <div class="crm-follow-record-content" v-html="item.content.replace(/\n/g, '<br />')"></div>
+          <CrmComment
+            v-model:expanded="commentExpandedMap[item.id]"
+            v-model:count="item.commentCount"
+            class="crm-follow-record-comment-input"
+            :type="props.type"
+            :source-id="item.id"
+          />
         </div>
       </div>
     </template>
@@ -73,6 +90,7 @@
 </template>
 
 <script setup lang="ts">
+  import { NTooltip } from 'naive-ui';
   import dayjs from 'dayjs';
 
   import { CustomerFollowPlanStatusEnum } from '@lib/shared/enums/customerEnum';
@@ -84,6 +102,7 @@
   import CrmList from '@/components/pure/crm-list/index.vue';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmTag from '@/components/pure/crm-tag/index.vue';
+  import CrmComment from '@/components/business/crm-comment/index.vue';
   import StatusTagSelect from './statusTagSelect.vue';
 
   import useOpenNewPage from '@/hooks/useOpenNewPage';
@@ -129,6 +148,8 @@
     const time = 'estimatedTime' in item ? item.estimatedTime : item.followTime;
     return time ? dayjs(time).format('YYYY-MM-DD') : '-';
   }
+
+  const commentExpandedMap = ref<Record<string, boolean>>({});
 
   const { openNewPage } = useOpenNewPage();
   function goDetail(key: string, item: FollowDetailItem) {

@@ -18,9 +18,9 @@ CREATE TABLE approval_resource_snapshot
     PRIMARY KEY (id),
     INDEX idx_resource_id (resource_id)
 ) COMMENT = '审批编辑快照表'
-  ENGINE = InnoDB
-  DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_general_ci;
+    ENGINE = InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_general_ci;
 
 -- set innodb lock wait timeout to default
 SET SESSION innodb_lock_wait_timeout = DEFAULT;

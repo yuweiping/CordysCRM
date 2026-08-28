@@ -34,7 +34,7 @@
                 :refresh-key="refreshKey"
                 class="mt-[16px]"
                 active-type="followPlan"
-                wrapper-class="h-[calc(100%-38px)] !p-[0px] !pr-[1px]"
+                wrapper-class="h-[calc(100%-38px)] !p-[0px] !pr-[8px]"
                 :virtual-scroll-height="`${
                   hasAnyPermission(quickAccessPermissionList)
                     ? `calc(100vh - ${!showAlert ? 402 : 464}px)`
@@ -78,7 +78,9 @@
                     <div class="task-icon bg-[var(--warning-yellow)]">
                       <CrmIcon type="iconicon_send" :size="16" color="var(--text-n10)" />
                     </div>
-                    {{ t('workbench.dataOverview.copiedToMe') }}
+                    <div class="flex flex-1 items-center justify-between">
+                      {{ t('workbench.dataOverview.copiedToMe') }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -116,7 +118,7 @@
   import { NAlert, NButton, NScrollbar } from 'naive-ui';
 
   import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
-  import { ApprovalListTypeEnum, ApprovalResourceTypeEnum } from '@lib/shared/enums/process';
+  import { ApprovalListTypeEnum } from '@lib/shared/enums/process';
   import { PersonalEnum } from '@lib/shared/enums/systemEnum';
   import { useI18n } from '@lib/shared/hooks/useI18n';
 

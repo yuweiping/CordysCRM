@@ -16,6 +16,7 @@ import cn.cordys.common.util.SubListUtils;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.approval.service.ApprovalFlowService;
 import cn.cordys.crm.system.constants.ExportConstants;
+import cn.cordys.crm.system.constants.FieldType;
 import cn.cordys.crm.system.domain.ExportTask;
 import cn.cordys.crm.system.dto.field.DatasourceField;
 import cn.cordys.crm.system.dto.field.DepartmentField;
@@ -246,7 +247,7 @@ public abstract class BaseExportService {
         List<List<String>> exportHeads = getExportMergeHeadList(exportParam.getHeadList(), exportParam.getOrgId(), exportParam.getFormKey());
         List<Integer> mergeColumns = getMergeColumns(exportHeads);
         exportParam.setMergeHeads(getMergeHeads(exportParam.getHeadList(), exportParam.getFormKey(), exportParam.getOrgId()));
-        return exportWithMergeStrategy(exportParam, (task) -> batchHandleDataWithMergeStrategy(exportHeads, task, exportParam.getFileName(),
+        return exportWithMergeStrategy(exportParam, (task) -> batchHandleDataWithMergeStrategy(processDuplicateLastLevelHeads(exportHeads), task, exportParam.getFileName(),
                 mergeColumns, exportParam.getPageRequest(),
                 t -> getExportMergeData(task.getId(), exportParam)));
     }
@@ -263,7 +264,7 @@ public abstract class BaseExportService {
         exportParam.setMergeHeads(getMergeHeads(exportParam.getHeadList(), exportParam.getFormKey(), exportParam.getOrgId()));
         return exportWithMergeStrategy(exportParam, (task) -> {
             File file = prepareExportFile(task.getFileId(), exportParam.getFileName(), task.getOrganizationId());
-            try (ExcelWriter writer = EasyExcel.write(file).head(exportHeads).excelType(ExcelTypeEnum.XLSX)
+            try (ExcelWriter writer = EasyExcel.write(file).head(processDuplicateLastLevelHeads(exportHeads)).excelType(ExcelTypeEnum.XLSX)
                     .registerWriteHandler(new CustomHeadColWidthStyleStrategy()).build()) {
                 WriteSheet sheet = EasyExcel.writerSheet("导出数据").build();
                 setRowAccessWindowSize(writer);
@@ -288,6 +289,26 @@ public abstract class BaseExportService {
                 });
             }
         });
+    }
+
+    public List<List<String>> processDuplicateLastLevelHeads(List<List<String>> exportHeads) {
+        Map<String, Integer> countMap = new HashMap<>();
+        List<List<String>> result = new ArrayList<>(exportHeads.size());
+        for (List<String> head : exportHeads) {
+            List<String> newHead = new ArrayList<>(head);
+            int lastIndex = newHead.size() - 1;
+            String lastHead = newHead.get(lastIndex);
+            int count = countMap.getOrDefault(lastHead, 0);
+            if (count > 0) {
+                newHead.set(
+                        lastIndex,
+                        lastHead + "\u00A0".repeat(count)
+                );
+            }
+            countMap.put(lastHead, count + 1);
+            result.add(newHead);
+        }
+        return result;
     }
 
     /**
@@ -358,6 +379,10 @@ public abstract class BaseExportService {
             }
             if (value == null) {
                 value = subRowMap.get(fieldId);
+            }
+
+            if (Strings.CI.equals(field.getType(), FieldType.INPUT_NUMBER.name()) && value == null && meta.isSummary()) {
+                value = 0;
             }
 
             String internalKey = field.getInternalKey();
@@ -605,9 +630,7 @@ public abstract class BaseExportService {
             int offset = 0;
             for (Pair<Integer, List<List<Object>>> r : results) {
                 List<List<Object>> buildData = r.getRight();
-                if (buildData.size() > 1) {
-                    mergeRegions.add(new int[]{offset, offset + buildData.size() - 1});
-                }
+                mergeRegions.add(new int[]{offset, offset + buildData.size() - 1});
                 offset += buildData.size();
                 mergeRowData.addAll(buildData);
             }
@@ -735,6 +758,7 @@ public abstract class BaseExportService {
             String realHead = head;
             // 子表格汇总字段截取
             if (head.contains(SUM_PREFIX)) {
+                meta.setSummary(true);
                 realHead = head.substring(head.indexOf(SUM_PREFIX) + SUM_PREFIX.length());
             }
             // 表头Key包含下划线, 含有子表格字段, 截取下划线前部分作为前缀ID, 用于取值区分不同子表格 (如果存在同名字段), 后半部分作为实际字段ID
@@ -829,9 +853,14 @@ public abstract class BaseExportService {
         LocaleContextHolder.setLocale(exportDTO.getLocale());
         ExportThreadRegistry.register(exportTask.getId(), Thread.currentThread());
         //表头信息
-        List<List<String>> headList = exportDTO.getHeadList().stream()
-                .map(head -> Collections.singletonList(head.getTitle()))
-                .toList();
+        List<List<String>> headList = null;
+        if (StringUtils.isNotBlank(exportDTO.getFormKey())) {
+            headList = getExportMergeHeadList(exportDTO.getHeadList(), exportDTO.getOrgId(), exportDTO.getFormKey());
+        } else {
+            headList = exportDTO.getHeadList().stream()
+                    .map(head -> Collections.singletonList(head.getTitle()))
+                    .toList();
+        }
         // 准备导出文件
         File file = prepareExportFile(exportTask.getFileId(), exportDTO.getFileName(), exportTask.getOrganizationId());
         try (ExcelWriter writer = EasyExcel.write(file)
@@ -900,9 +929,14 @@ public abstract class BaseExportService {
         LocaleContextHolder.setLocale(exportDTO.getLocale());
         ExportThreadRegistry.register(exportTask.getId(), Thread.currentThread());
         //表头信息
-        List<List<String>> headList = exportDTO.getHeadList().stream()
-                .map(head -> Collections.singletonList(head.getTitle()))
-                .toList();
+        List<List<String>> headList = null;
+        if (StringUtils.isNotBlank(exportDTO.getFormKey())) {
+            headList = getExportMergeHeadList(exportDTO.getHeadList(), exportDTO.getOrgId(), exportDTO.getFormKey());
+        } else {
+            headList = exportDTO.getHeadList().stream()
+                    .map(head -> Collections.singletonList(head.getTitle()))
+                    .toList();
+        }
         //分批查询数据并写入文件
         batchHandleData(exportTask.getFileId(),
                 headList,

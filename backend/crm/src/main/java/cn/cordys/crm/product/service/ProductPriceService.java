@@ -4,6 +4,7 @@ import cn.cordys.aspectj.annotation.OperationLog;
 import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.aspectj.context.OperationLogContext;
+import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.domain.BaseModuleFieldValue;
@@ -11,10 +12,14 @@ import cn.cordys.common.domain.BaseResourceSubField;
 import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.dto.request.PosRequest;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.mapper.CommonMapper;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
+import cn.cordys.common.service.BaseExportService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
+import cn.cordys.common.uid.SerialNumGenerator;
+import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.ServiceUtils;
@@ -32,7 +37,9 @@ import cn.cordys.crm.product.dto.response.ProductPriceResponse;
 import cn.cordys.crm.product.mapper.ExtProductPriceMapper;
 import cn.cordys.crm.system.constants.ImportType;
 import cn.cordys.crm.system.constants.SheetKey;
+import cn.cordys.crm.system.dto.field.SerialNumberField;
 import cn.cordys.crm.system.dto.field.base.BaseField;
+import cn.cordys.crm.system.dto.request.ImportRequest;
 import cn.cordys.crm.system.dto.request.ResourceBatchEditRequest;
 import cn.cordys.crm.system.dto.response.ImportResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
@@ -57,12 +64,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * @author song-cc-rock
@@ -70,14 +84,14 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 @Transactional(rollbackFor = Exception.class)
 @Slf4j
-public class ProductPriceService {
+public class ProductPriceService extends BaseExportService {
 
     @Resource
     private BaseService baseService;
     @Resource
     private ModuleFormService moduleFormService;
-	@Resource
-	private ModuleFieldExtService moduleFieldExtService;
+    @Resource
+    private ModuleFieldExtService moduleFieldExtService;
     @Resource
     private ModuleFormCacheService moduleFormCacheService;
     @Resource
@@ -98,6 +112,10 @@ public class ProductPriceService {
     private BaseMapper<OpportunityQuotationFieldBlob> opportunityQuotationFieldBlobBaseMapper;
     @Resource
     private AttachmentService attachmentService;
+    @Resource
+    private SqlSessionFactory sqlSessionFactory;
+    @Resource
+    private SerialNumGenerator serialNumGenerator;
 
     public static final int MAX_NAME_SPLIT_LENGTH = 243;
 
@@ -106,7 +124,6 @@ public class ProductPriceService {
      *
      * @param request    请求参数
      * @param currentOrg 当前组织
-     *
      * @return 价格列表
      */
     public PagerWithOption<List<ProductPriceResponse>> list(ProductPricePageRequest request, String currentOrg) {
@@ -126,7 +143,6 @@ public class ProductPriceService {
      * @param request     请求参数
      * @param currentUser 当前用户
      * @param currentOrg  当前组织
-     *
      * @return 价格表
      */
     @OperationLog(module = LogModule.PRODUCT_PRICE_MANAGEMENT, type = LogType.ADD, resourceName = "{#request.name}", operator = "{#currentUser}")
@@ -155,7 +171,6 @@ public class ProductPriceService {
      * @param request     请求参数
      * @param currentUser 当前用户
      * @param currentOrg  当前组织
-     *
      * @return 价格表
      */
     @OperationLog(module = LogModule.PRODUCT_PRICE_MANAGEMENT, type = LogType.UPDATE, operator = "{#currentUser}")
@@ -182,7 +197,6 @@ public class ProductPriceService {
      * ⚠️反射调用; 勿修改入参, 返回, 方法名!
      *
      * @param id 价格表ID
-     *
      * @return 价格表详情
      */
     public ProductPriceGetResponse get(String id) {
@@ -201,49 +215,51 @@ public class ProductPriceService {
         return baseService.setCreateAndUpdateUserName(priceDetail);
     }
 
-	/**
-	 * 获取价格表详情-简化版 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
-	 * @param id 价格表ID
-	 * @return 价格表详情
-	 */
-	public ProductPriceGetResponse getSimple(String id) {
-		ProductPrice price = productPriceMapper.selectByPrimaryKey(id);
-		if (price == null) {
-			return null;
-		}
-		ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
-		// 处理自定义字段(包括详情附件)
-		ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), price.getOrganizationId());
-		List<BaseModuleFieldValue> fvs = productPriceFieldService.getModuleFieldValuesByResourceId(id);
-		moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
-		return response;
-	}
+    /**
+     * 获取价格表详情-简化版 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     *
+     * @param id 价格表ID
+     * @return 价格表详情
+     */
+    public ProductPriceGetResponse getSimple(String id) {
+        ProductPrice price = productPriceMapper.selectByPrimaryKey(id);
+        if (price == null) {
+            return null;
+        }
+        ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
+        // 处理自定义字段(包括详情附件)
+        ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), price.getOrganizationId());
+        List<BaseModuleFieldValue> fvs = productPriceFieldService.getModuleFieldValuesByResourceId(id);
+        moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
+        return response;
+    }
 
-	/**
-	 * 批量获取价格表详情 (用于数据源批量查询优化)
-	 * @param ids 价格表ID集合
-	 * @return 价格表详情列表
-	 */
-	public List<ProductPriceGetResponse> batchGetSimpleByIds(List<String> ids) {
-		if (CollectionUtils.isEmpty(ids)) {
-			return Collections.emptyList();
-		}
-		List<ProductPrice> prices = productPriceMapper.selectByIds(ids);
-		if (CollectionUtils.isEmpty(prices)) {
-			return Collections.emptyList();
-		}
-		ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), prices.getFirst().getOrganizationId());
-		Map<String, List<BaseModuleFieldValue>> fieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
+    /**
+     * 批量获取价格表详情 (用于数据源批量查询优化)
+     *
+     * @param ids 价格表ID集合
+     * @return 价格表详情列表
+     */
+    public List<ProductPriceGetResponse> batchGetSimpleByIds(List<String> ids) {
+        if (CollectionUtils.isEmpty(ids)) {
+            return Collections.emptyList();
+        }
+        List<ProductPrice> prices = productPriceMapper.selectByIds(ids);
+        if (CollectionUtils.isEmpty(prices)) {
+            return Collections.emptyList();
+        }
+        ModuleFormConfigDTO priceFormConf = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), prices.getFirst().getOrganizationId());
+        Map<String, List<BaseModuleFieldValue>> fieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
 
-		return prices.stream().map(price -> {
-			ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
-			List<BaseModuleFieldValue> fvs = fieldValueMap.get(price.getId());
-			if (CollectionUtils.isNotEmpty(fvs)) {
-				moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
-			}
-			return response;
-		}).toList();
-	}
+        return prices.stream().map(price -> {
+            ProductPriceGetResponse response = BeanUtils.copyBean(new ProductPriceGetResponse(), price);
+            List<BaseModuleFieldValue> fvs = fieldValueMap.get(price.getId());
+            if (CollectionUtils.isNotEmpty(fvs)) {
+                moduleFormService.processBusinessFieldValues(response, fvs, priceFormConf);
+            }
+            return response;
+        }).toList();
+    }
 
     /**
      * 删除价格表
@@ -291,7 +307,6 @@ public class ProductPriceService {
      * @param id          价格表ID
      * @param currentUser 当前用户
      * @param currentOrg  当前组织
-     *
      * @return 复制后价格表
      */
     @OperationLog(module = LogModule.PRODUCT_PRICE_MANAGEMENT, type = LogType.ADD, operator = "{#currentUser}")
@@ -344,7 +359,7 @@ public class ProductPriceService {
      */
     public void downloadImportTpl(HttpServletResponse response, String currentOrg) {
         new EasyExcelExporter().exportMultiSheetTplWithSharedHandler(response,
-                moduleFormService.getCustomImportHeadsNoRef(FormKey.PRICE.getKey(), currentOrg),
+                processDuplicateLastLevelHeads(moduleFormService.getCustomImportHeadsNoRef(FormKey.PRICE.getKey(), currentOrg)),
                 Translator.get("product.price.import_tpl.name"),
                 Translator.get(SheetKey.DATA), Translator.get(SheetKey.COMMENT),
                 new CustomTemplateWriteHandler(moduleFormService.getAllCustomImportFields(FormKey.PRICE.getKey(), currentOrg)),
@@ -357,14 +372,13 @@ public class ProductPriceService {
      *
      * @param file       导入文件
      * @param currentOrg 当前组织
-     *
      * @return 导入检查信息
      */
-    public ImportResponse importPreCheck(MultipartFile file, String currentOrg) {
+    public ImportResponse importPreCheck(MultipartFile file, String importType, String currentOrg) {
         if (file == null) {
             throw new GenericException(Translator.get("file_cannot_be_null"));
         }
-        return checkImportExcel(file, currentOrg);
+        return checkImportExcel(file, importType, currentOrg);
     }
 
     /**
@@ -372,10 +386,9 @@ public class ProductPriceService {
      *
      * @param file       文件
      * @param currentOrg 当前组织
-     *
      * @return 检查信息
      */
-    private ImportResponse checkImportExcel(MultipartFile file, String currentOrg) {
+    private ImportResponse checkImportExcel(MultipartFile file, String importType, String currentOrg) {
         try {
             List<BaseField> fields = moduleFormService.getAllCustomImportFields(
                     FormKey.PRICE.getKey(),
@@ -405,7 +418,7 @@ public class ProductPriceService {
                             currentOrg,
                             mergeCellEventListener.getMergeCellMap(),
                             mergeCellEventListener.getMergeRowDataMap(),
-                            ImportType.ADD.name()
+                            importType
                     );
 
             FastExcelFactory.read(file.getInputStream(), eventListener)
@@ -432,10 +445,9 @@ public class ProductPriceService {
      * @param file        导入文件
      * @param currentOrg  当前组织
      * @param currentUser 当前用户
-     *
      * @return 导入返回信息
      */
-    public ImportResponse realImport(MultipartFile file, String currentOrg, String currentUser) {
+    public ImportResponse realImport(MultipartFile file, ImportRequest request, String currentOrg, String currentUser) {
         try {
             List<BaseField> fields = moduleFormService.getAllFields(
                     FormKey.PRICE.getKey(),
@@ -463,7 +475,8 @@ public class ProductPriceService {
                             currentUser,
                             fields,
                             mergeCellEventListener.getMergeCellMap(),
-                            mergeCellEventListener.getMergeRowDataMap()
+                            mergeCellEventListener.getMergeRowDataMap(),
+                            request
                     );
 
             FastExcelFactory.read(file.getInputStream(), eventListener)
@@ -491,51 +504,120 @@ public class ProductPriceService {
      * @param currentOrg  当前组织
      * @param currentUser 当前用户
      * @param fields      自定义字段集合
-     *
      * @return 导入监听器
      */
-    private CustomFieldImportEventListener<ProductPrice> getPriceEventListener(
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CustomFieldImportEventListener<ProductPrice> getPriceEventListener(
             String currentOrg,
             String currentUser,
             List<BaseField> fields,
             Map<Integer, List<CellExtra>> mergeCellMap,
-            Map<Integer, Map<Integer, String>> mergeRowDataMap) {
+            Map<Integer, Map<Integer, String>> mergeRowDataMap,
+            ImportRequest request) {
 
         AtomicLong initPos = new AtomicLong(getNextOrder(currentOrg));
+        ModuleFormConfigDTO priceFormConfig = moduleFormCacheService.getBusinessFormConfig(FormKey.PRICE.getKey(), currentOrg);
 
         CustomImportAfterDoConsumer<ProductPrice, BaseResourceSubField> afterDo =
                 (prices, priceFields, priceFieldBlobs) -> {
 
                     List<LogDTO> logs = new ArrayList<>();
+                    ImportType importType = EnumUtils.valueOf(ImportType.class, request.getImportType());
+                    switch (importType) {
+                        case ADD -> {
+                            prices.forEach(price -> {
+                                price.setPos(initPos.getAndAdd(ServiceUtils.POS_STEP));
+                                logs.add(new LogDTO(currentOrg, price.getId(), currentUser, LogType.ADD, LogModule.PRODUCT_PRICE_MANAGEMENT, price.getName()));
+                            });
+                            productPriceMapper.batchInsert(prices);
+                            productPriceFieldMapper.batchInsert(priceFields.stream().map(field -> BeanUtils.copyBean(new ProductPriceField(), field)).toList());
+                            productPriceFieldBlobMapper.batchInsert(priceFieldBlobs.stream().map(field -> BeanUtils.copyBean(new ProductPriceFieldBlob(), field)).toList());
+                            logService.batchAdd(logs);
+                        }
+                        case UPDATE -> {
+                            List<String> ids = prices.stream().map(ProductPrice::getId).toList();
+                            if (org.apache.commons.collections.CollectionUtils.isEmpty(ids)) {
+                                break;
+                            }
+                            //原数据
+                            List<ProductPrice> originList = productPriceMapper.selectByIds(ids);
+                            if (CollectionUtils.isEmpty(originList)) {
+                                break;
+                            }
+                            Map<String, ProductPrice> originMaps = originList.stream().collect(Collectors.toMap(ProductPrice::getId, Function.identity()));
+                            Map<String, List<BaseModuleFieldValue>> originFieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
 
-                    prices.forEach(price -> {
-                        price.setPos(initPos.getAndAdd(ServiceUtils.POS_STEP));
-                        logs.add(new LogDTO(
-                                currentOrg,
-                                price.getId(),
-                                currentUser,
-                                LogType.ADD,
-                                LogModule.PRODUCT_PRICE_MANAGEMENT,
-                                price.getName()
-                        ));
-                    });
+                            List<ProductPriceField> insertField = new ArrayList<>();
+                            List<ProductPriceFieldBlob> insertFieldBlob = new ArrayList<>();
+                            SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+                            ExtProductPriceMapper batchMapper = sqlSession.getMapper(ExtProductPriceMapper.class);
+                            CommonMapper commonMapper = sqlSession.getMapper(CommonMapper.class);
 
-                    productPriceMapper.batchInsert(prices);
+                            if (CollectionUtils.isNotEmpty(prices)) {
+                                prices.forEach(price -> {
+                                    batchMapper.updateProductPrice(price);
+                                });
+                            }
 
-                    productPriceFieldMapper.batchInsert(
-                            priceFields.stream()
-                                    .map(field -> BeanUtils.copyBean(new ProductPriceField(), field))
-                                    .toList()
-                    );
+                            if (CollectionUtils.isNotEmpty(priceFields)) {
+                                List<ProductPriceField> fieldList = productPriceFieldMapper.selectByIds(priceFields.stream().map(BaseResourceSubField::getId).toList());
+                                Map<String, ProductPriceField> fieldMap = fieldList.stream().collect(Collectors.toMap(ProductPriceField::getId, Function.identity()));
+                                priceFields.forEach(priceField -> {
+                                    if (fieldMap.containsKey(priceField.getId())) {
+                                        commonMapper.updateCustomerField("product_price_field", priceField);
+                                    } else {
+                                        insertField.add(BeanUtils.copyBean(new ProductPriceField(), priceField));
+                                    }
+                                });
+                            }
 
-                    productPriceFieldBlobMapper.batchInsert(
-                            priceFieldBlobs.stream()
-                                    .map(field -> BeanUtils.copyBean(new ProductPriceFieldBlob(), field))
-                                    .toList()
-                    );
+                            if (org.apache.commons.collections.CollectionUtils.isNotEmpty(priceFieldBlobs)) {
+                                List<ProductPriceFieldBlob> blobList = productPriceFieldBlobMapper.selectByIds(priceFieldBlobs.stream().map(BaseResourceSubField::getId).toList());
+                                Map<String, ProductPriceFieldBlob> blobMap = blobList.stream().collect(Collectors.toMap(ProductPriceFieldBlob::getId, Function.identity()));
+                                priceFieldBlobs.forEach(priceFieldBlob -> {
+                                    if (blobMap.containsKey(priceFieldBlob.getId())) {
+                                        commonMapper.updateCustomerField("product_price_field_blob", priceFieldBlob);
+                                    } else {
+                                        insertFieldBlob.add(BeanUtils.copyBean(new ProductPriceFieldBlob(), priceFieldBlob));
+                                    }
+                                });
 
-                    // record logs
-                    logService.batchAdd(logs);
+                            }
+
+                            sqlSession.flushStatements();
+                            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+
+                            if (org.apache.commons.collections.CollectionUtils.isNotEmpty(insertField)) {
+                                productPriceFieldMapper.batchInsert(insertField);
+                            }
+                            if (org.apache.commons.collections.CollectionUtils.isNotEmpty(insertFieldBlob)) {
+                                productPriceFieldBlobMapper.batchInsert(insertFieldBlob);
+                            }
+
+                            SqlSession currentSession =
+                                    SqlSessionUtils.getSqlSession(sqlSessionFactory);
+                            currentSession.clearCache();
+
+                            Map<String, ProductPrice> modifiedMaps = productPriceMapper.selectByIds(ids).stream().collect(Collectors.toMap(ProductPrice::getId, Function.identity()));
+                            Map<String, List<BaseModuleFieldValue>> modifiedFieldValueMap = productPriceFieldService.getResourceFieldMap(ids, true);
+
+                            ids.forEach(id -> {
+                                ProductPrice originDate = originMaps.get(id);
+                                ProductPrice modifiedDate = modifiedMaps.get(id);
+                                baseService.handleUpdateLogWithSubTable(originDate, modifiedDate, originFieldValueMap.get(id), modifiedFieldValueMap.get(id), id, modifiedDate.getName(), Translator.get("products_info"), priceFormConfig);
+                                LogContextInfo contextInfo = OperationLogContext.getContext();
+                                if (contextInfo != null) {
+                                    LogDTO logDTO = new LogDTO(currentOrg, id, currentUser, LogType.UPDATE, LogModule.PRODUCT_PRICE_MANAGEMENT, modifiedDate.getName());
+                                    logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                                    logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                                    logs.add(logDTO);
+                                    OperationLogContext.clear();
+                                }
+                            });
+                            logService.batchAdd(logs);
+                        }
+                    }
+
                 };
 
         return new CustomFieldImportEventListener<>(
@@ -549,7 +631,7 @@ public class ProductPriceService {
                 2000,
                 mergeCellMap,
                 mergeRowDataMap,
-                ImportType.ADD.name()
+                request.getImportType()
         );
     }
 
@@ -557,7 +639,6 @@ public class ProductPriceService {
      * 构建列表数据
      *
      * @param listData 列表数据
-     *
      * @return 列表数据
      */
     public List<ProductPriceResponse> buildList(List<ProductPriceResponse> listData) {
@@ -573,7 +654,6 @@ public class ProductPriceService {
      * 处理列表数据
      *
      * @param listData 列表数据
-     *
      * @return 列表数据
      */
     public List<ProductPriceResponse> processList(List<ProductPriceResponse> listData, ModuleFormConfigDTO priceFormConf) {
@@ -626,7 +706,6 @@ public class ProductPriceService {
      * 获取下一个排序值
      *
      * @param orgId 组织ID
-     *
      * @return 下一个排序值
      */
     public Long getNextOrder(String orgId) {
@@ -638,7 +717,6 @@ public class ProductPriceService {
      * 获取价格表名称
      *
      * @param id id
-     *
      * @return 名称
      */
     public String getProductPriceName(String id) {
@@ -650,7 +728,6 @@ public class ProductPriceService {
      * 通过ID集合获取价格表名称串
      *
      * @param ids ID集合
-     *
      * @return 名称字符串
      */
     public String getProductPriceNameByIds(List<String> ids) {
@@ -666,7 +743,6 @@ public class ProductPriceService {
      * 通过名称获取价格表集合
      *
      * @param names 名称集合
-     *
      * @return 价格表集合
      */
     public List<ProductPrice> getProductPriceListByNames(List<String> names) {
@@ -683,16 +759,41 @@ public class ProductPriceService {
      */
     private void copyPriceFields(String sourceId, String targetId, String currentOrg, String currentUser) {
 
+        // 表单字段配置 (用于识别流水号字段)
+        Map<String, BaseField> fieldConfigMap = moduleFormService.getAllFields(FormKey.PRICE.getKey(), currentOrg)
+                .stream().collect(Collectors.toMap(BaseField::getId, Function.identity(), (prev, next) -> next));
+
         // 1 普通字段
         LambdaQueryWrapper<ProductPriceField> fieldQuery = new LambdaQueryWrapper<>();
         fieldQuery.eq(ProductPriceField::getResourceId, sourceId);
         List<ProductPriceField> sourceFields = productPriceFieldMapper.selectListByLambda(fieldQuery);
 
         if (CollectionUtils.isNotEmpty(sourceFields)) {
+            Map<String, String> bizIdMap = new HashMap<>();
             List<ProductPriceField> targetFields = sourceFields.stream()
                     .peek(field -> {
                         field.setId(IDGenerator.nextStr());
                         field.setResourceId(targetId);
+                        // 流水号字段需要重新生成, 避免复制后与原价格表的流水号重复
+                        BaseField fieldConfig = fieldConfigMap.get(field.getFieldId());
+                        if (fieldConfig instanceof SerialNumberField serialNumberField && field.getFieldValue() != null) {
+                            String formulaPrefix = field.getFieldValue().toString().replace("${" + serialNumberField.getName() + "}", StringUtils.EMPTY);
+                            String newSerialNo = serialNumGenerator.generateByRules(
+                                    serialNumberField.getSerialNumberRules(formulaPrefix), currentOrg, FormKey.PRICE.getKey());
+                            if (StringUtils.isNotBlank(newSerialNo)) {
+                                field.setFieldValue(newSerialNo);
+                            }
+                        }
+                        // 同一行的 bizID 保持一致
+                        String originBizId = field.getBizId();
+                        if (StringUtils.isNotBlank(originBizId)) {
+                            if (bizIdMap.containsKey(originBizId)) {
+                                field.setBizId(bizIdMap.get(originBizId));
+                            } else {
+                                field.setBizId(IDGenerator.nextStr());
+                                bizIdMap.put(originBizId, field.getBizId());
+                            }
+                        }
                     })
                     .toList();
 
@@ -736,5 +837,36 @@ public class ProductPriceService {
 
         // 3 复制附件实体
         attachmentService.batchCopyOfIdMap(attachmentIdMap, targetId, currentUser);
+    }
+
+
+    /**
+     * 获取数据
+     *
+     * @param resourceId
+     * @param fieldId
+     * @param fieldValue
+     * @return
+     */
+    public Set<String> getPriceData(Object resourceId, String fieldId, Object fieldValue) {
+        List<ProductPriceField> productPriceFields = extProductPriceMapper.getPriceData(resourceId, fieldId, fieldValue);
+        return productPriceFields.stream().map(ProductPriceField::getBizId).collect(Collectors.toSet());
+    }
+
+    public Set<String> getPriceBlobData(Object resourceId, String fieldId, String fieldValue) {
+        List<ProductPriceField> productPriceFields = extProductPriceMapper.getPriceBlobData(resourceId, fieldId, fieldValue);
+        return productPriceFields.stream().map(ProductPriceField::getBizId).collect(Collectors.toSet());
+    }
+
+    /**
+     * 匹配bizId
+     *
+     * @param resourceId
+     * @param productName
+     * @return
+     */
+    public Set<String> getBizIdsByResource(Object resourceId, String productName) {
+        List<String> bizIds = extProductPriceMapper.getBizIdsByResource(resourceId.toString(), productName);
+        return CollectionUtils.isNotEmpty(bizIds) ? new HashSet<>(bizIds) : new HashSet<>(0);
     }
 }

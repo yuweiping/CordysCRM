@@ -44,3 +44,28 @@ export interface OperationLogDetailDiffItem {
 export interface OperationLogDetail extends OperationLogItem {
   diffs?: OperationLogDetailDiffItem[];
 }
+
+export type AiExecutionLogOperator = 'auto' | string;
+export type AiExecutionLogOperationType = 'data_write' | 'data_read' | 'task_execution' | 'model_call';
+export type AiExecutionLogStatus = 'success' | 'failed';
+
+export interface AiExecutionLogParams extends LoginLogParams {
+  status?: AiExecutionLogStatus | null;
+  keyword?: string;
+}
+
+export interface AiExecutionLogItem {
+  id: string;
+  operator: AiExecutionLogOperator;
+  operatorName: string;
+  name: string;
+  runId: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  callTime?: number;
+  callIp?: string;
+  status: AiExecutionLogStatus;
+  prompt: string;
+  trace: string;
+}

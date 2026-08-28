@@ -26,6 +26,9 @@
         <listItem
           :item="item"
           type="record"
+          :form-key="props.type"
+          :source-id="props.sourceId"
+          :source-name="props.initialSourceName"
           :readonly="props.readonly"
           @click="goDetail(item)"
           @delete="handleDelete(item)"
@@ -85,6 +88,8 @@
       crmListRef.value?.loadList(true);
     });
   }
+
+  onActivated(loadList);
 
   defineExpose({
     loadList,

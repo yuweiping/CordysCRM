@@ -188,6 +188,7 @@ public class PermissionConstants {
     public static final String CONTRACT_ADD = "CONTRACT:ADD";
     public static final String CONTRACT_UPDATE = "CONTRACT:UPDATE";
     public static final String CONTRACT_DELETE = "CONTRACT:DELETE";
+    public static final String CONTRACT_IMPORT = "CONTRACT:IMPORT";
     public static final String CONTRACT_EXPORT = "CONTRACT:EXPORT";
     public static final String CONTRACT_APPROVAL = "CONTRACT:APPROVAL";
     public static final String CONTRACT_STAGE = "CONTRACT:STAGE";
@@ -247,6 +248,8 @@ public class PermissionConstants {
     public static final String ORDER_UPDATE = "ORDER:UPDATE";
     public static final String ORDER_DELETE = "ORDER:DELETE";
     public static final String ORDER_DOWNLOAD = "ORDER:DOWNLOAD";
+    public static final String ORDER_IMPORT = "ORDER:IMPORT";
+    public static final String ORDER_EXPORT = "ORDER:EXPORT";
     /*------ end: ORDER_ROLE ------*/
 
     /*------ start: PROCESS_SETTING ------*/

@@ -74,10 +74,18 @@
         />
 
         <div
-          v-if="renderableParts.length || showAssistantLoading"
+          v-if="thoughtParts.length || renderableParts.length || showAssistantLoading"
           class="ai-chat-message__bubble max-w-full overflow-hidden"
           :class="{ 'w-full': !isUser }"
         >
+          <AiThoughtBlock
+            v-if="thoughtParts.length"
+            :items="thoughtParts"
+            :message-id="props.message.id"
+            :is-generating="isGenerating"
+            :status="thoughtStatus"
+            :duration="props.message.metadata?.duration"
+          />
           <template v-for="item in renderableParts" :key="item.key">
             <AiTextBlock v-if="isUserTextPart(item.part)" :part="item.part" :mcps="messageMcps" />
             <component
@@ -90,27 +98,84 @@
             <div v-else class="ai-chat-block">{{ item.part.type }}</div>
           </template>
           <AiLoadingBlock v-if="showAssistantLoading" />
+          <div v-if="showGeneratingStatus" class="mt-[8px] flex items-center gap-[4px] text-[var(--text-n4)]">
+            <span>{{ t('aiChat.generating') }}</span>
+            <CrmIcon type="iconicon_loading" :size="16" color="var(--text-n4)" class="animate-spin" />
+          </div>
         </div>
       </template>
 
       <div
         v-if="showActions"
-        class="mt-[8px] flex items-center gap-[12px] text-[var(--text-n4)] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
-        :class="isUser ? 'justify-end' : 'justify-start'"
+        class="mt-[8px] flex items-center gap-[12px] text-[var(--text-n4)] transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+        :class="[isUser ? 'justify-end' : 'justify-start', showDislikePopover ? 'opacity-100' : 'opacity-0']"
       >
-        <n-tooltip v-for="action in messageActions" :key="action.key" :delay="300">
-          <template #trigger>
-            <CrmIcon
-              class="cursor-pointer"
-              :type="action.iconType"
-              :size="16"
-              :color="actionColor(action.key)"
-              :class="actionClass(action.key)"
-              @click="handleActionSelect(action.key)"
-            />
-          </template>
-          {{ action.tooltipContent }}
-        </n-tooltip>
+        <template v-for="action in messageActions" :key="action.key">
+          <n-popover
+            v-if="action.key === 'dislike'"
+            v-model:show="showDislikePopover"
+            trigger="manual"
+            placement="bottom"
+            @clickoutside="closeDislikePopover"
+          >
+            <template #trigger>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <CrmIcon
+                    :type="action.iconType"
+                    :size="16"
+                    :color="actionColor(action.key)"
+                    :class="actionClass(action.key)"
+                    @click="handleDislikeClick"
+                  />
+                </template>
+                {{ action.tooltipContent }}
+              </n-tooltip>
+            </template>
+            <div class="w-[350px]">
+              <div class="mb-[8px] font-[600] text-[var(--text-n1)]">{{ t('aiChat.feedbackReasonTitle') }}</div>
+              <div class="mb-[16px] flex flex-wrap gap-[8px]">
+                <button
+                  v-for="reason in feedbackReasonOptions"
+                  :key="reason.value"
+                  class="h-[24px] min-w-[74px] cursor-pointer rounded-[3px] border border-[var(--text-n7)] bg-[var(--text-n10)] px-[7px] text-[var(--text-n1)]"
+                  :class="{
+                    '!border-[var(--primary-8)] !text-[var(--primary-8)]': selectedDislikeReasons.includes(
+                      reason.value
+                    ),
+                  }"
+                  type="button"
+                  @click="toggleDislikeReason(reason.value)"
+                >
+                  {{ reason.label }}
+                </button>
+              </div>
+              <n-button
+                type="primary"
+                block
+                size="small"
+                :disabled="selectedDislikeReasons.length === 0"
+                :loading="submittingDislike"
+                @click="submitDislikeMessage"
+              >
+                {{ t('aiChat.feedbackSubmit') }}
+              </n-button>
+            </div>
+          </n-popover>
+          <n-tooltip v-else :delay="300">
+            <template #trigger>
+              <CrmIcon
+                class="cursor-pointer"
+                :type="action.iconType"
+                :size="16"
+                :color="actionColor(action.key)"
+                :class="actionClass(action.key)"
+                @click="handleActionSelect(action.key)"
+              />
+            </template>
+            {{ action.tooltipContent }}
+          </n-tooltip>
+        </template>
 
         <div v-if="tokenUsageText" class="flex items-center gap-[8px]">
           <CrmIcon type="iconicon_star1" :size="16" />
@@ -123,10 +188,20 @@
 
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
-  import { NButton, NTooltip, useMessage } from 'naive-ui';
+  import { NButton, NPopover, NTooltip, useMessage } from 'naive-ui';
 
-  import type { AiChatMessage, AiChatMessagePart, AiComposerSubmitPayload } from '@lib/shared/ai-chat';
-  import { getAiChatMessageText, hasRenderableAiChatContent, useAiChatRuntime } from '@lib/shared/ai-chat';
+  import type {
+    AiChatMessage,
+    AiChatMessagePart,
+    AiChatThoughtStatus,
+    AiComposerSubmitPayload,
+  } from '@lib/shared/ai-chat';
+  import {
+    getAiChatMessageCopyText,
+    getAiChatMessageText,
+    hasRenderableAiChatContent,
+    useAiChatRuntime,
+  } from '@lib/shared/ai-chat';
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { formatThousands } from '@lib/shared/method';
 
@@ -135,12 +210,12 @@
   import AiErrorBlock from '../blocks/AiErrorBlock.vue';
   import AiLoadingBlock from '../blocks/AiLoadingBlock.vue';
   import AiMarkdownBlock from '../blocks/AiMarkdownBlock.vue';
-  import AiProgressBlock from '../blocks/AiProgressBlock.vue';
   import AiTextBlock from '../blocks/AiTextBlock.vue';
+  import AiThoughtBlock from '../blocks/AiThoughtBlock.vue';
   import AiAttachmentList from './AiAttachmentList.vue';
   import AiComposer from './AiComposer.vue';
 
-  import { dislikeAgentChat, likeAgentChat } from '@/api/modules';
+  import { cancelAgentChatFeedback, dislikeAgentChat, likeAgentChat } from '@/api/modules';
   import useLegacyCopy from '@/hooks/useLegacyCopy';
 
   import type { Component } from 'vue';
@@ -166,9 +241,7 @@
 
   const assistantPartRenderers: Partial<Record<AiChatMessagePart['type'], Component>> = {
     'text': AiMarkdownBlock,
-    'reasoning': AiMarkdownBlock,
     'data-error': AiErrorBlock,
-    'data-progress': AiProgressBlock,
   };
 
   const isEditing = ref(false);
@@ -178,7 +251,7 @@
   const canRetry = computed(() => props.message.role === 'assistant' && !runtime.state.loading.value);
   const canSubmitEdit = computed(() => editContent.value.trim().length > 0 && !runtime.state.loading.value);
   const isGenerating = computed(() => Boolean(props.isGenerating));
-  const copyableText = computed(() => getAiChatMessageText(props.message));
+  const copyableText = computed(() => getAiChatMessageCopyText(props.message));
   const canCopy = computed(() => copyableText.value.length > 0);
   const canShowActionArea = computed(() => !isEditing.value && (isUser.value || !isGenerating.value));
   const runId = computed(() => props.message.metadata?.runId);
@@ -187,7 +260,41 @@
   const tokenUsageText = computed(() =>
     typeof props.message.metadata?.tokens === 'number' ? formatThousands(props.message.metadata.tokens) : ''
   );
+
+  const showDislikePopover = ref(false);
+  const selectedDislikeReasons = ref<string[]>([]);
+  const submittingDislike = ref(false);
   const feedback = ref<boolean | undefined>(props.message.metadata?.helpful);
+  const feedbackReasonOptions = computed(() => [
+    {
+      label: t('aiChat.feedbackReasonUnderstanding'),
+      value: t('aiChat.feedbackReasonUnderstanding'),
+    },
+    {
+      label: t('aiChat.feedbackReasonContext'),
+      value: t('aiChat.feedbackReasonContext'),
+    },
+    {
+      label: t('aiChat.feedbackReasonUnclear'),
+      value: t('aiChat.feedbackReasonUnclear'),
+    },
+    {
+      label: t('aiChat.feedbackReasonCode'),
+      value: t('aiChat.feedbackReasonCode'),
+    },
+    {
+      label: t('aiChat.feedbackReasonUnprofessional'),
+      value: t('aiChat.feedbackReasonUnprofessional'),
+    },
+    {
+      label: t('aiChat.feedbackReasonCodeFormat'),
+      value: t('aiChat.feedbackReasonCodeFormat'),
+    },
+    {
+      label: t('aiChat.feedbackReasonOther'),
+      value: t('aiChat.feedbackReasonOther'),
+    },
+  ]);
 
   function actionClass(key: string): Record<string, boolean> {
     const isActiveFeedback = key === 'like' || key === 'dislike';
@@ -200,8 +307,7 @@
 
     return {
       'ai-chat-message__feedback--active': active,
-      'cursor-pointer': !active,
-      'cursor-not-allowed': active,
+      'cursor-pointer': true,
     };
   }
 
@@ -213,12 +319,23 @@
     return undefined;
   }
 
+  function setFeedback(value: boolean | undefined): void {
+    feedback.value = value;
+    if (props.message.metadata) {
+      props.message.metadata.helpful = value;
+    }
+  }
+
+  function closeDislikePopover(): void {
+    showDislikePopover.value = false;
+    selectedDislikeReasons.value = [];
+  }
+
   const messageAttachments = computed(() => props.message.metadata?.attachments ?? []);
   const messageMcps = computed(() => props.message.metadata?.mcps ?? []);
 
   const renderableParts = computed(() =>
     props.message.parts
-      .filter((part) => ['text', 'reasoning', 'data-error', 'data-progress'].includes(part.type))
       .map((part, index) => {
         const messagePart = { ...part } as AiChatMessagePart;
 
@@ -229,10 +346,36 @@
           renderer: isUser.value ? undefined : assistantPartRenderers[messagePart.type],
         };
       })
+      .filter((item) => ['text', 'data-error'].includes(item.part.type))
+  );
+  const thoughtParts = computed(() =>
+    props.message.parts
+      .map((part, index) => {
+        const messagePart = { ...part } as AiChatMessagePart;
+
+        return {
+          index,
+          key: `${messagePart.type}_${index}`,
+          part: messagePart,
+        };
+      })
+      .filter((item) => !isUser.value && ['reasoning', 'data-progress'].includes(item.part.type))
   );
   const showAssistantLoading = computed(
     () => !isUser.value && isGenerating.value && !hasRenderableAiChatContent(props.message.parts)
   );
+  const showGeneratingStatus = computed(() => !isUser.value && isGenerating.value);
+  const thoughtStatus = computed<AiChatThoughtStatus>(() => {
+    if (isGenerating.value) {
+      return 'thinking';
+    }
+
+    if (props.message.metadata?.finishReason === 'stopped') {
+      return 'stopped';
+    }
+
+    return 'completed';
+  });
 
   const messageClass = computed(() => ({
     'flex-row-reverse': isUser.value,
@@ -257,8 +400,15 @@
       isEditing.value = false;
       editContent.value = '';
       feedback.value = props.message.metadata?.helpful;
+      closeDislikePopover();
     }
   );
+
+  watch(showDislikePopover, (value) => {
+    if (value) {
+      selectedDislikeReasons.value = [];
+    }
+  });
 
   // 重试
   async function handleRetry(): Promise<void> {
@@ -266,24 +416,29 @@
   }
 
   async function handleCopyMessage(): Promise<void> {
-    if (!canCopy.value) {
+    const text = copyableText.value;
+
+    if (!text.trim()) {
       return;
     }
 
-    await legacyCopy(copyableText.value);
+    await legacyCopy(text);
   }
 
   async function handleLikeMessage(): Promise<void> {
-    if (!runId.value || feedback.value === true) {
+    if (!runId.value) {
       return;
     }
 
     try {
-      await likeAgentChat(runId.value);
-      feedback.value = true;
-      if (props.message.metadata) {
-        props.message.metadata.helpful = true;
+      if (feedback.value === true) {
+        await cancelAgentChatFeedback(runId.value);
+        setFeedback(undefined);
+        return;
       }
+
+      await likeAgentChat(runId.value);
+      setFeedback(true);
       Message.success(t('aiChat.feedbackThanks'));
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -291,21 +446,53 @@
     }
   }
 
-  async function handleDislikeMessage(): Promise<void> {
-    if (!runId.value || feedback.value === false) {
+  function toggleDislikeReason(reason: string): void {
+    selectedDislikeReasons.value = selectedDislikeReasons.value.includes(reason)
+      ? selectedDislikeReasons.value.filter((item) => item !== reason)
+      : [...selectedDislikeReasons.value, reason];
+  }
+
+  async function handleDislikeClick() {
+    if (!runId.value) {
       return;
     }
 
     try {
-      await dislikeAgentChat(runId.value);
-      feedback.value = false;
-      if (props.message.metadata) {
-        props.message.metadata.helpful = false;
+      if (feedback.value === false) {
+        await cancelAgentChatFeedback(runId.value);
+        setFeedback(undefined);
+        closeDislikePopover();
+        return;
       }
-      Message.success(t('aiChat.feedbackThanks'));
+
+      showDislikePopover.value = true;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.log(error);
+    }
+  }
+
+  async function submitDislikeMessage() {
+    if (
+      !runId.value ||
+      feedback.value === false ||
+      selectedDislikeReasons.value.length === 0 ||
+      submittingDislike.value
+    ) {
+      return;
+    }
+
+    try {
+      submittingDislike.value = true;
+      await dislikeAgentChat(runId.value, { reason: selectedDislikeReasons.value.join(', ') });
+      setFeedback(false);
+      closeDislikePopover();
+      Message.success(t('aiChat.feedbackSubmitted'));
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    } finally {
+      submittingDislike.value = false;
     }
   }
 
@@ -367,9 +554,6 @@
         break;
       case 'like':
         await handleLikeMessage();
-        break;
-      case 'dislike':
-        await handleDislikeMessage();
         break;
       default:
         break;

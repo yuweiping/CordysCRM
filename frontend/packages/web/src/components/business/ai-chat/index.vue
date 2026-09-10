@@ -56,10 +56,17 @@
               <n-tooltip v-else trigger="hover">
                 <template #trigger>
                   <div
-                    class="one-line-text"
+                    class="flex min-w-0 items-center gap-[4px] overflow-hidden"
                     :class="props.activeHistoryId === item.id ? 'text-[var(--primary-8)]' : ''"
                   >
-                    {{ item.title }}
+                    <CrmIcon
+                      v-if="isHistoryRunning(item.id)"
+                      type="iconicon_loading"
+                      :size="16"
+                      :color="props.activeHistoryId === item.id ? 'var(--primary-8)' : 'var(--text-n4)'"
+                      class="shrink-0 animate-spin"
+                    />
+                    <span class="one-line-text min-w-0">{{ item.title }}</span>
                   </div>
                 </template>
                 {{ item.title }}
@@ -72,10 +79,30 @@
 
     <template #2>
       <main class="h-full min-h-0 min-w-0">
-        <AiChatProvider :runtime="runtime">
+        <AiChatProvider :key="props.activeRuntimeKey || 'inner'" :runtime="runtime">
           <AiChatContent :scroll-to-bottom-key="props.activeHistoryId">
+            <template #empty>
+              <div class="flex w-full flex-col items-center">
+                <div class="mb-[40px] text-[24px] font-[600]">
+                  {{ t('aiChat.emptyTitle') }}
+                </div>
+                <div class="grid grid-cols-2 gap-[12px]">
+                  <div
+                    v-for="item in emptySuggestionList"
+                    :key="item.label"
+                    class="flex h-[74px] w-[260px] cursor-pointer items-center gap-[8px] rounded-[4px] border border-solid border-[var(--text-n8)] bg-[var(--text-n10)] px-[16px] text-[16px] font-[600] hover:bg-[var(--text-n9)] active:border-[var(--primary-8)] active:bg-[var(--text-n9)] active:text-[var(--primary-8)]"
+                    @click="handleSuggestionClick(item.label)"
+                  >
+                    <CrmSvgIcon :name="item.icon" width="24px" height="24px" class="shrink-0" />
+                    <span>{{ item.label }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <template #composer>
               <AiComposer
+                class="middle-box-shadow mx-[24px] mb-[24px] rounded-[4px] border border-solid border-[var(--text-n8)]"
                 :placeholder="props.placeholder || t('aiChat.inputPlaceholder')"
                 :mcp-options="props.mcpOptions"
                 @mcp-updated="emit('mcpUpdated')"
@@ -101,6 +128,7 @@
   import type { ActionsItem } from '@/components/pure/crm-more-action/type';
   import CrmSearchInput from '@/components/pure/crm-search-input/index.vue';
   import CrmSplitPanel from '@/components/pure/crm-split-panel/index.vue';
+  import CrmSvgIcon from '@/components/pure/crm-svg/index.vue';
   import AiChatContent from './components/AiChatContent.vue';
   import AiComposer from './components/AiComposer.vue';
 
@@ -108,23 +136,28 @@
     id: string;
     title: string;
     active?: boolean;
+    localPending?: boolean;
   }
 
   const props = withDefaults(
     defineProps<{
       runtime?: AiChatRuntime;
+      activeRuntimeKey?: string;
       historyItems?: AiChatHistoryItem[];
       activeHistoryId?: string;
       historyLoading?: boolean;
       historyNoMore?: boolean;
+      runningHistoryIds?: string[];
       mcpOptions?: AiChatMcp[];
       placeholder?: string;
     }>(),
     {
       historyItems: () => [],
+      activeRuntimeKey: '',
       activeHistoryId: '',
       historyLoading: false,
       historyNoMore: true,
+      runningHistoryIds: () => [],
       mcpOptions: () => [],
       placeholder: '',
     }
@@ -161,8 +194,33 @@
     },
   ];
 
+  const emptySuggestionList = [
+    {
+      icon: 'ai',
+      label: t('aiChat.emptyCustomerLookup'),
+    },
+    {
+      icon: 'ai3',
+      label: t('aiChat.emptySalesBrief'),
+    },
+    {
+      icon: 'ai2',
+      label: t('aiChat.emptyReceivablesSummary'),
+    },
+    {
+      icon: 'ai4',
+      label: t('aiChat.emptyOpportunityStats'),
+    },
+  ];
+
+  const runningHistoryIdSet = computed(() => new Set(props.runningHistoryIds));
+
+  function isHistoryRunning(id: unknown): boolean {
+    return runningHistoryIdSet.value.has(String(id));
+  }
+
   function getHistoryMoreActions(item: Record<string, unknown>): ActionsItem[] {
-    return editingHistoryId.value === item.id ? [] : historyMoreActions;
+    return editingHistoryId.value === item.id || item.localPending ? [] : historyMoreActions;
   }
 
   function handleHistoryClick(item: Record<string, unknown>): void {
@@ -258,6 +316,10 @@
   const innerRuntime = createAiChatRuntime();
   const runtime = computed(() => props.runtime ?? innerRuntime);
 
+  function handleSuggestionClick(label: string): void {
+    runtime.value.setInput(label);
+  }
+
   watch(keyword, (value) => {
     if (searchTimer) {
       clearTimeout(searchTimer);
@@ -283,3 +345,5 @@
     resetHistoryRenameLoading,
   });
 </script>
+
+<style scoped lang="less"></style>

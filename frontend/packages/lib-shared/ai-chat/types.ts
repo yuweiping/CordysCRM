@@ -10,6 +10,8 @@ export interface AiChatError {
 export type AiFileKind = 'file' | 'image';
 
 export type AiChatAttachmentStatus = 'uploading' | 'done' | 'error';
+export type AiChatFinishReason = 'completed' | 'stopped';
+export type AiChatThoughtStatus = 'thinking' | 'completed' | 'stopped';
 
 // 附件
 export interface AiChatAttachment {
@@ -36,6 +38,8 @@ export interface AiChatMeta {
   attachments?: AiChatAttachment[];
   tokens?: number;
   runId?: string;
+  duration?: number;
+  finishReason?: AiChatFinishReason;
   helpful?: boolean;
 }
 

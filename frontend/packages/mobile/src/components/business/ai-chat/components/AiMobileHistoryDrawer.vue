@@ -19,28 +19,36 @@
       </div>
 
       <van-list
-        :loading="loading"
+        v-model:loading="listLoading"
         :finished="noMore"
         :finished-text="items.length ? t('common.listFinishedTip') : ''"
         class="flex-1 overflow-y-auto"
-        @load="emit('reachBottom')"
+        @load="handleReachBottom"
       >
         <van-empty v-if="items.length === 0 && !loading" :description="t('aiChat.noConversation')" />
 
-        <van-swipe-cell v-for="item in items" :key="item.id">
+        <van-swipe-cell v-for="item in items" :key="item.id" :disabled="item.localPending">
           <div
-            class="px-[16px] py-[12px]"
+            class="flex items-center gap-[8px] px-[16px] py-[12px]"
             :class="{ '!bg-[var(--primary-7)]': activeId === item.id }"
             @click="handleClick(item.id)"
           >
             <div
-              class="truncate text-[14px] text-[var(--text-n1)]"
+              class="flex min-w-0 flex-1 items-center gap-[4px] text-[14px] text-[var(--text-n1)]"
               :class="{ '!text-[var(--primary-8)]': activeId === item.id }"
             >
-              {{ item.title }}
+              <CrmIcon
+                v-if="isHistoryRunning(item.id)"
+                name="iconicon_loading"
+                width="16px"
+                height="16px"
+                :color="activeId === item.id ? 'var(--primary-8)' : 'var(--text-n4)'"
+                class="shrink-0 animate-spin"
+              />
+              <span class="min-w-0 flex-1 truncate">{{ item.title }}</span>
             </div>
           </div>
-          <template #right>
+          <template v-if="!item.localPending" #right>
             <van-button square type="primary" class="h-full" @click="openRename(item)">
               {{ t('aiChat.renameConversation') }}
             </van-button>
@@ -117,12 +125,14 @@
       activeId?: string;
       loading?: boolean;
       noMore?: boolean;
+      runningIds?: string[];
     }>(),
     {
       items: () => [],
       activeId: '',
       loading: false,
       noMore: true,
+      runningIds: () => [],
     }
   );
 
@@ -139,10 +149,24 @@
   const { t } = useI18n();
 
   const keyword = ref('');
+  const listLoading = ref(false);
+
+  function isHistoryRunning(id: string): boolean {
+    return props.runningIds.includes(id);
+  }
 
   const handleSearchChange = debounce(() => {
     emit('search', keyword.value.trim());
   }, 300);
+
+  function handleReachBottom(): void {
+    if (props.loading || props.noMore) {
+      listLoading.value = props.loading;
+      return;
+    }
+
+    emit('reachBottom');
+  }
 
   function handleClick(id: string): void {
     emit('click', id);
@@ -198,6 +222,14 @@
       emit('search', keyword.value.trim());
     }
   });
+
+  watch(
+    () => props.loading,
+    (value) => {
+      listLoading.value = value;
+    },
+    { immediate: true }
+  );
 
   onBeforeUnmount(() => {
     handleSearchChange.cancel();

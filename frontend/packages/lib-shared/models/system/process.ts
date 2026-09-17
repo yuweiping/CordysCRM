@@ -237,7 +237,7 @@ export interface CommonApprovalActionParams {
 
 export interface ApprovalTodoTableParams extends TableQueryParams {
   resourceName?: string;
-  resourceType: ApprovalResourceTypeEnum;
+  resourceType: string;
 }
 
 export interface ApprovalTodoItem {
@@ -249,7 +249,7 @@ export interface ApprovalTodoItem {
   approvalFlowVersionId: string;
   resourceId: string;
   resourceName: string;
-  resourceType: ApprovalResourceTypeEnum;
+  resourceType: string;
   resourceNotFound: boolean;
   applicant: string;
   submitTime: number;
@@ -263,9 +263,9 @@ export interface ApprovalOperationParams {
   nodeId: string;
   instanceId: string;
   approverId: string;
+  customFormId?: string;
   comment?: string;
   attachmentIds: string[];
-  module: string;
 }
 
 export interface ApprovalBackParams extends ApprovalOperationParams {
@@ -295,6 +295,7 @@ export interface TodoStatistic {
   contract: number;
   order: number;
   invoice: number;
+  [key: string]: number | undefined;
 }
 
 export interface ApprovalDetail {

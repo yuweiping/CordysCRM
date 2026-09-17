@@ -20,6 +20,7 @@ import cn.cordys.crm.approval.handler.ApprovalResourceHandler;
 import cn.cordys.crm.approval.mapper.ExtApprovalInstanceMapper;
 import cn.cordys.crm.approval.mapper.ExtApprovalResourceSnapshotMapper;
 import cn.cordys.crm.approval.mapper.ExtApprovalTaskMapper;
+import cn.cordys.crm.form.domain.CustomForm;
 import cn.cordys.crm.system.constants.NotificationConstants;
 import cn.cordys.crm.system.domain.OrganizationUser;
 import cn.cordys.crm.system.domain.User;
@@ -43,8 +44,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static cn.cordys.crm.approval.service.ApprovalResourceService.FORM_SERVICE;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -87,6 +86,8 @@ public class ApprovalActionService {
 	private BaseMapper<ApprovalResourceSnapshot> approvalResourceSnapshotMapper;
 	@Resource
 	private ExtApprovalResourceSnapshotMapper extApprovalResourceSnapshotMapper;
+	@Resource
+	private BaseMapper<CustomForm> customFormMapper;
 
 	public static final Long DEFAULT_SIGN_SORT_STEP = 100L;
     @Resource
@@ -230,14 +231,14 @@ public class ApprovalActionService {
 			return;
 		}
 
-		if (formKey == null || !FORM_SERVICE.containsKey(formKey)) {
+		ApprovalResourceHandler handler = ApprovalResourceService.resolveApprovalHandler(formKey);
+		if (handler == null) {
 			return;
 		}
 		ApprovalResourceSnapshot snapshot = extApprovalResourceSnapshotMapper.selectByResourceId(resourceId);
 		if (snapshot == null) {
 			return;
 		}
-		ApprovalResourceHandler handler = FORM_SERVICE.get(formKey);
 		handler.revertToSnapshot(resourceId, userId, orgId, snapshot.getSnapshotData());
 		// 回退成功后清理快照
 		approvalResourceSnapshotMapper.deleteByPrimaryKey(snapshot.getId());
@@ -1002,7 +1003,15 @@ public class ApprovalActionService {
 		ApprovalResourceService resourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
 		if (resourceService != null) {
 			List<String> ccUserIds = ccTasks.stream().map(ApprovalTask::getApproverId).toList();
-			String type = Translator.get(instance.getType());
+			String type = Translator.get(instance.getType(), instance.getType());
+			if (Strings.CS.equals(type, instance.getType())) {
+				// 自定义表单
+				CustomForm customForm = customFormMapper.selectByPrimaryKey(instance.getType());
+				if (customForm != null) {
+					type = customForm.getName();
+				}
+			}
+
 			String name = resourceService.getInstanceResourceName(FormKey.ofKey(instance.getType()), instance.getResourceId());
 			String state = Translator.get("contract.approval_status." + instance.getApprovalStatus().toLowerCase());
 			Map<String, Object> paramMap = new HashMap<>(3);
@@ -1265,9 +1274,6 @@ public class ApprovalActionService {
 			return;
 		}
 		FormKey formKey = FormKey.ofKey(instance.getType());
-		if (formKey == null) {
-			return;
-		}
 		ApprovalStatus approvalStatus = ApprovalStatus.valueOf(instance.getApprovalStatus());
 		if (approvalStatus != ApprovalStatus.APPROVED && approvalStatus != ApprovalStatus.UNAPPROVED) {
 			return;
@@ -1276,29 +1282,43 @@ public class ApprovalActionService {
 				? Translator.get("contract.approval_status.approved")
 				: Translator.get("contract.approval_status.unapproved");
 
-		String type = Translator.get(instance.getType());
+		String type = Translator.get(instance.getType(), instance.getType());
+
+		if (Strings.CS.equals(type, instance.getType())) {
+			// 自定义表单
+			CustomForm customForm = customFormMapper.selectByPrimaryKey(instance.getType());
+			if (customForm != null) {
+				type = customForm.getName();
+			}
+		}
 
 		String module;
 		String event;
-		switch (formKey) {
-			case QUOTATION -> {
-				module = NotificationConstants.Module.OPPORTUNITY;
-				event = NotificationConstants.Event.BUSINESS_QUOTATION_APPROVAL;
-			}
-			case CONTRACT -> {
-				module = NotificationConstants.Module.CONTRACT;
-				event = NotificationConstants.Event.CONTRACT_APPROVAL;
-			}
-			case ORDER -> {
-				module = NotificationConstants.Module.ORDER;
-				event = NotificationConstants.Event.ORDER_APPROVAL;
-			}
-			case INVOICE -> {
-				module = NotificationConstants.Module.CONTRACT;
-				event = NotificationConstants.Event.INVOICE_APPROVAL;
-			}
-			default -> {
-				return;
+		if (formKey == null) {
+			// 自定义表单（非 FormKey 枚举），统一发送到审批待办通知
+			module = NotificationConstants.Module.APPROVAL;
+			event = NotificationConstants.Event.CUSTOM_FORM_DATA_APPROVAL;
+		} else {
+			switch (formKey) {
+				case QUOTATION -> {
+					module = NotificationConstants.Module.OPPORTUNITY;
+					event = NotificationConstants.Event.BUSINESS_QUOTATION_APPROVAL;
+				}
+				case CONTRACT -> {
+					module = NotificationConstants.Module.CONTRACT;
+					event = NotificationConstants.Event.CONTRACT_APPROVAL;
+				}
+				case ORDER -> {
+					module = NotificationConstants.Module.ORDER;
+					event = NotificationConstants.Event.ORDER_APPROVAL;
+				}
+				case INVOICE -> {
+					module = NotificationConstants.Module.CONTRACT;
+					event = NotificationConstants.Event.INVOICE_APPROVAL;
+				}
+				default -> {
+					return;
+				}
 			}
 		}
 
@@ -1320,7 +1340,8 @@ public class ApprovalActionService {
 	 */
 	private String getLogModuleOfFormKey(FormKey formKey) {
 		if (formKey == null) {
-			return null;
+			// 自定义表单（非 FormKey 枚举）
+			return LogModule.CUSTOM_FORM_DATA;
 		}
 		switch (formKey) {
 			case QUOTATION -> {
@@ -1347,7 +1368,15 @@ public class ApprovalActionService {
 		if (resourceService != null) {
 			List<String> approvers = tasks.stream().map(ApprovalTask::getApproverId).toList();
 			Map<String, Object> paramMap = new HashMap<>(2);
-			paramMap.put("type", Translator.get(instance.getType(), Locale.SIMPLIFIED_CHINESE));
+			String formName = Translator.get(instance.getType(), Locale.SIMPLIFIED_CHINESE, instance.getType());
+			if (Strings.CS.equals(formName, instance.getType())) {
+				// 自定义表单
+				CustomForm customForm = customFormMapper.selectByPrimaryKey(instance.getType());
+				if (customForm != null) {
+					formName = customForm.getName();
+				}
+			}
+			paramMap.put("type", formName);
 			paramMap.put("name", resourceService.getInstanceResourceName(FormKey.ofKey(instance.getType()), instance.getResourceId()));
 			commonNoticeSendService.sendNotice(NotificationConstants.Module.APPROVAL, NotificationConstants.Event.APPROVAL_TODO, paramMap, instance.getSubmitterId(), currentOrgId, approvers, true);
 		}

@@ -7,6 +7,8 @@ import cn.cordys.aspectj.context.OperationLogContext;
 import cn.cordys.aspectj.dto.LogContextInfo;
 import cn.cordys.aspectj.dto.LogDTO;
 import cn.cordys.common.constants.BusinessModuleField;
+import cn.cordys.common.constants.FormKey;
+import cn.cordys.common.constants.PermissionConstants;
 import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.domain.BaseResourceSubField;
 import cn.cordys.common.dto.OptionDTO;
@@ -14,13 +16,29 @@ import cn.cordys.common.exception.GenericException;
 import cn.cordys.common.mapper.CommonMapper;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
+import cn.cordys.common.permission.ResourcePermissionService;
 import cn.cordys.common.response.result.CrmHttpResultCode;
+import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
+import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.service.BaseResourceFieldService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
+import cn.cordys.common.util.CommonBeanFactory;
+import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
+import cn.cordys.crm.approval.annotation.HitApproval;
+import cn.cordys.crm.approval.constants.ApprovalResourceUpdateType;
+import cn.cordys.crm.approval.constants.ApprovalStatus;
+import cn.cordys.crm.approval.constants.ExecuteTimingEnum;
+import cn.cordys.crm.approval.dto.ResourceApprovalFieldUpdateParam;
+import cn.cordys.crm.approval.dto.ResourceApprovalPostUpdateParam;
+import cn.cordys.crm.approval.dto.ResourceSnapshotApprovalParam;
+import cn.cordys.crm.approval.handler.ApprovalResourceHandler;
+import cn.cordys.crm.approval.service.ApprovalFlowService;
+import cn.cordys.crm.approval.service.ApprovalResourceService;
 import cn.cordys.crm.form.domain.*;
 import cn.cordys.crm.form.dto.request.*;
 import cn.cordys.crm.form.dto.response.CustomFormDataGetResponse;
@@ -31,6 +49,7 @@ import cn.cordys.crm.system.domain.ModuleForm;
 import cn.cordys.crm.system.dto.field.base.BaseField;
 import cn.cordys.crm.system.dto.response.ImportResponse;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
+import cn.cordys.crm.system.dto.response.BatchAffectReasonResponse;
 import cn.cordys.crm.system.excel.CustomImportAfterDoConsumer;
 import cn.cordys.crm.system.excel.handler.CustomHeadColWidthStyleStrategy;
 import cn.cordys.crm.system.excel.handler.CustomTemplateWriteHandler;
@@ -70,7 +89,13 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 @Slf4j
-public class CustomFormDataService {
+public class CustomFormDataService implements ApprovalResourceHandler {
+
+    /**
+     * 自定义表单数据的批量编辑/删除审批权限标识（与 ApprovalFlowService.getCustomFormDataApprovalPermission 保持一致）
+     */
+    private static final String CUSTOM_FORM_DATA_UPDATE_PERMISSION = "CUSTOM_FORM_DATA:UPDATE";
+    private static final String CUSTOM_FORM_DATA_DELETE_PERMISSION = "CUSTOM_FORM_DATA:DELETE";
 
     @Resource
     private BaseMapper<CustomFormData> customFormDataMapper;
@@ -102,6 +127,10 @@ public class CustomFormDataService {
     private BaseMapper<CustomFormDataFieldBlob> customFormDataFieldBlobMapper;
     @Resource
     private SqlSessionFactory sqlSessionFactory;
+    @Resource
+    private ResourcePermissionService resourcePermissionService;
+    @Resource
+    private ApprovalFlowService approvalFlowService;
 
     public PagerWithOption<List<CustomFormDataListResponse>> page(CustomFormDataPageRequest request, String userId, String orgId, boolean catchPermissionException) {
         String formId = request.getCustomFormId();
@@ -124,10 +153,15 @@ public class CustomFormDataService {
         Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
         List<CustomFormDataListResponse> list = extCustomFormDataMapper.list(request, orgId, userId, manageOwn);
         CustomFormDataFieldService.setFormKey(formId);
+        List<String> approvingResourceIds = list.stream().filter(item -> Strings.CI.contains(item.getApprovalStatus(), ApprovalStatus.APPROVING.name())).map(CustomFormDataListResponse::getId).toList();
+        Map<String, Boolean> firstNodeApprovedMap = baseService.getApprovingResourceFirstNodeApproved(approvingResourceIds, orgId);
         try {
             list = buildList(list, formId, orgId);
             Map<String, List<OptionDTO>> optionMap = buildOptionMap(formId, orgId, list);
-            list.forEach(item -> item.setIsAdmin(isAdminUser(dataScope, userId, item.getOwner())));
+            list.forEach(item -> {
+                item.setIsAdmin(isAdminUser(dataScope, userId, item.getOwner()));
+                item.setFirstApproved(firstNodeApprovedMap.get(item.getId()));
+            });
             return PageUtils.setPageInfoWithOption(page, list, optionMap);
         } finally {
             CustomFormDataFieldService.clearFormKey();
@@ -135,6 +169,9 @@ public class CustomFormDataService {
     }
 
     private boolean isAdminUser(CustomFormRoleKey dataScope, String userId, String owner) {
+        if (dataScope == null) {
+            return false;
+        }
         return dataScope == CustomFormRoleKey.MANAGE_ALL ||
                 (dataScope == CustomFormRoleKey.MANAGE_OWN && StringUtils.equals(owner, userId));
     }
@@ -179,10 +216,16 @@ public class CustomFormDataService {
         if (data == null) {
             throw new GenericException(CrmHttpResultCode.NOT_FOUND);
         }
-        checkCurrentOrganization(data, orgId);
-        CustomFormRoleKey dataScope = getDataScope(data.getCustomFormId(), userId, orgId);
-        if (dataScope == CustomFormRoleKey.MANAGE_OWN && !StringUtils.equals(data.getOwner(), userId)) {
-            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+
+        CustomFormRoleKey dataScope = null;
+        // 先校验是否是审批资源
+        if (!resourcePermissionService.hasApprovalTaskPermission(id, userId)) {
+            checkCurrentOrganization(data, orgId);
+            // 获取并校验权限
+            dataScope = getDataScope(data.getCustomFormId(), userId, orgId);
+            if (dataScope == CustomFormRoleKey.MANAGE_OWN && !StringUtils.equals(data.getOwner(), userId)) {
+                throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+            }
         }
 
         CustomFormDataGetResponse resp = BeanUtils.copyBean(new CustomFormDataGetResponse(), data);
@@ -211,6 +254,11 @@ public class CustomFormDataService {
             CustomFormDataFieldService.clearFormKey();
         }
 
+        if (Strings.CI.equals(resp.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
+            Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(resp.getId()), orgId);
+            resp.setFirstApproved(firstNodeApproved.get(resp.getId()));
+        }
+
         return resp;
     }
 
@@ -226,6 +274,7 @@ public class CustomFormDataService {
             return null;
         }
         CustomFormDataGetResponse customFormDataGetResponse = BeanUtils.copyBean(new CustomFormDataGetResponse(), customFormData);
+        CustomFormDataFieldService.setFormKey(customFormData.getCustomFormId());
         // 获取模块字段
         List<BaseModuleFieldValue> customFormDataFields = customFormDataFieldService.getModuleFieldValuesByResourceId(id);
         customFormDataGetResponse.setModuleFields(customFormDataFields);
@@ -259,6 +308,7 @@ public class CustomFormDataService {
     }
 
     @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.ADD)
+    @HitApproval(formKeyExpr = "{#request.customFormId}", executeType = ExecuteTimingEnum.CREATE, resourceId = "#{request.id}", operatorId = "{#userId}")
     public CustomFormData add(CustomFormDataAddRequest request, String userId, String orgId) {
         checkCreatePermission(getManageDataScope(request.getCustomFormId(), userId, orgId));
 
@@ -272,6 +322,8 @@ public class CustomFormDataService {
         data.setUpdateTime(System.currentTimeMillis());
         data.setCreateUser(userId);
         data.setUpdateUser(userId);
+        data.setApprovalStatus(ApprovalStatus.NONE.name());
+        data.setApproved(false);
 
         CustomFormDataFieldService.setFormKey(request.getCustomFormId());
         try {
@@ -297,20 +349,17 @@ public class CustomFormDataService {
     }
 
     @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.UPDATE, resourceId = "{#request.id}")
-    public void update(CustomFormDataUpdateRequest request, String userId, String orgId) {
+    @HitApproval(formKeyExpr = "{#request.customFormId}", executeType = ExecuteTimingEnum.UPDATE, resourceId = "{#request.id}", updateType = "{#request.updateType}", operatorId = "{#userId}", comment = "{#request.comment}")
+    public CustomFormData update(CustomFormDataUpdateRequest request, String userId, String orgId, boolean checkPermission) {
         CustomFormData originData = customFormDataMapper.selectByPrimaryKey(request.getId());
         if (originData == null) {
             throw new GenericException(CrmHttpResultCode.NOT_FOUND);
         }
-        checkCurrentOrganization(originData, orgId);
 
-        CustomFormRoleKey dataScope = getManageDataScope(originData.getCustomFormId(), userId, orgId);
-        checkWritePermission(dataScope, originData.getOwner(), userId);
-
-        if (StringUtils.isNotBlank(request.getCustomFormId())
-                && !StringUtils.equals(request.getCustomFormId(), originData.getCustomFormId())) {
-            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+        if (checkPermission) {
+            checkUpdatePermission(request, userId, orgId, originData);
         }
+
         if (request.getName() == null) request.setName(originData.getName());
         if (request.getOwner() == null) request.setOwner(originData.getOwner());
 
@@ -320,6 +369,10 @@ public class CustomFormDataService {
         updateData.setOwner(request.getOwner());
         updateData.setUpdateTime(System.currentTimeMillis());
         updateData.setUpdateUser(userId);
+        // 保留不可更改的字段
+        updateData.setCreateUser(originData.getCreateUser());
+        updateData.setCreateTime(originData.getCreateTime());
+        updateData.setApprovalStatus(originData.getApprovalStatus());
         customFormDataMapper.update(updateData);
 
 
@@ -342,18 +395,38 @@ public class CustomFormDataService {
         } finally {
             CustomFormDataFieldService.clearFormKey();
         }
+
+        return customFormDataMapper.selectByPrimaryKey(request.getId());
     }
 
+    private void checkUpdatePermission(CustomFormDataUpdateRequest request, String userId, String orgId, CustomFormData originData) {
+        checkWritePermission(userId, orgId, originData);
+
+        if (StringUtils.isNotBlank(request.getCustomFormId())
+                && !StringUtils.equals(request.getCustomFormId(), originData.getCustomFormId())) {
+            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+        }
+    }
+
+    private void checkWritePermission(String userId, String orgId, CustomFormData originData) {
+        checkCurrentOrganization(originData, orgId);
+
+        CustomFormRoleKey dataScope = getManageDataScope(originData.getCustomFormId(), userId, orgId);
+        checkWritePermission(dataScope, originData.getOwner(), userId);
+    }
+
+    @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.DELETE, resourceId = "{#id}")
+    public void delete(String id, String userId) {
+        delete(id, userId, OrganizationContext.getOrganizationId());
+    }
+
+    @Override
     @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id, String userId, String orgId) {
         CustomFormData data = customFormDataMapper.selectByPrimaryKey(id);
         if (data == null) {
             throw new GenericException(CrmHttpResultCode.NOT_FOUND);
         }
-        checkCurrentOrganization(data, orgId);
-
-        CustomFormRoleKey dataScope = getManageDataScope(data.getCustomFormId(), userId, orgId);
-        checkWritePermission(dataScope, data.getOwner(), userId);
 
         customFormDataFieldService.deleteByResourceId(id);
         customFormDataMapper.deleteByPrimaryKey(id);
@@ -362,17 +435,206 @@ public class CustomFormDataService {
         OperationLogContext.setResourceName(data.getName());
     }
 
-    public void batchUpdate(CustomFormDataBatchUpdateRequest request, String userId, String orgId) {
-        List<CustomFormData> dataList = customFormDataMapper.selectByIds(request.getIds());
-        checkCompleteBatch(request.getIds(), dataList);
-        checkBatchPermission(userId, dataList, request.getCustomFormId(), orgId);
-        CustomFormDataFieldService.setFormKey(request.getCustomFormId());
+    @OperationLog(module = LogModule.CUSTOM_FORM_DATA, type = LogType.DELETE, resourceId = "{#id}")
+    @HitApproval(executeType = ExecuteTimingEnum.DELETE, resourceId = "{#id}", operatorId = "{#userId}")
+    public void deleteWithApprovalCheck(String id, String userId, String orgId) {
+        CustomFormData data = customFormDataMapper.selectByPrimaryKey(id);
+        checkWritePermission(userId, orgId, data);
+        delete(id, userId, orgId);
+    }
+
+    @Override
+    public FormKey getFormKey() {
+        // 自定义表单不在 FormKey 枚举中，返回 null 表示自定义表单处理器（由引擎单独持有）
+        return null;
+    }
+
+    /**
+     * ⚠️反射调用: 由审批执行操作统一调用, 勿修改。
+     * 自定义表单无独立快照表，仅需同步主表审批状态，此处为 no-op。
+     */
+    @Override
+    public void updateSnapshotApprovalStatus(ResourceSnapshotApprovalParam param) {
+        // no-op: 自定义表单审批状态持久化在 custom_form_data 主表，由 updateResourceApprovalStatus 统一维护
+    }
+
+    /**
+     * ⚠️反射调用: 由审批执行后置操作统一调用, 勿修改。
+     * 将审批通过的字段值回写到业务主表及自定义字段表。
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Override
+    public void updateApprovalPostField(ResourceApprovalPostUpdateParam postFieldParam) {
+        String orgId = OrganizationContext.getOrganizationId();
+        CustomFormData customFormData = customFormDataMapper.selectByPrimaryKey(postFieldParam.getResourceId());
+        if (customFormData == null) {
+            return;
+        }
+        String customFormId = customFormData.getCustomFormId();
+        ModuleFormConfigDTO formConfig = moduleFormCacheService.getBusinessFormConfig(customFormId, orgId);
+        List<BaseField> fields = formConfig.getFields();
+        Map<String, BaseField> fieldConfigMap = fields.stream().collect(Collectors.toMap(BaseField::getId, f -> f));
+        // 保存原始数据用于日志记录
+        CustomFormData originData = BeanUtils.copyBean(new CustomFormData(), customFormData);
+        CustomFormDataFieldService.setFormKey(customFormData.getCustomFormId());
+        List<BaseModuleFieldValue> originFields = customFormDataFieldService.getModuleFieldValuesByResourceId(postFieldParam.getResourceId());
+        List<CustomFormDataField> customFormDataFields = new ArrayList<>();
+        List<CustomFormDataFieldBlob> customFormDataFieldBlobs = new ArrayList<>();
+
+        for (ResourceApprovalFieldUpdateParam fieldUpdateParam : postFieldParam.getFields()) {
+            if (!fieldConfigMap.containsKey(fieldUpdateParam.getFieldId()) || fieldUpdateParam.getFieldValue() == null) {
+                continue;
+            }
+            BaseField fieldConfig = fieldConfigMap.get(fieldUpdateParam.getFieldId());
+            AbstractModuleFieldResolver customFieldResolver = ModuleFieldResolverFactory.getResolver(fieldConfig.getType());
+            if (fieldConfig.hasBusinessKey()) {
+                // 业务主表字段
+                customFormDataFieldService.setResourceFieldValue(customFormData, fieldConfig.getBusinessKey(), fieldUpdateParam.getFieldValue());
+            } else {
+                // 自定义字段
+                if (fieldConfig.isBlob()) {
+                    customFormDataFieldBlobMapper.deleteByLambda(new LambdaQueryWrapper<CustomFormDataFieldBlob>()
+                            .eq(CustomFormDataFieldBlob::getFieldId, fieldUpdateParam.getFieldId()).eq(CustomFormDataFieldBlob::getResourceId, postFieldParam.getResourceId()));
+                    CustomFormDataFieldBlob field = new CustomFormDataFieldBlob();
+                    field.setId(IDGenerator.nextStr());
+                    field.setResourceId(postFieldParam.getResourceId());
+                    field.setFieldId(fieldUpdateParam.getFieldId());
+                    field.setFieldValue(customFieldResolver.convertToString(fieldConfig, fieldUpdateParam.getFieldValue()));
+                    customFormDataFieldBlobs.add(field);
+                } else {
+                    customFormDataFieldMapper.deleteByLambda(new LambdaQueryWrapper<CustomFormDataField>()
+                            .eq(CustomFormDataField::getFieldId, fieldUpdateParam.getFieldId()).eq(CustomFormDataField::getResourceId, postFieldParam.getResourceId()));
+                    CustomFormDataField field = new CustomFormDataField();
+                    field.setId(IDGenerator.nextStr());
+                    field.setResourceId(postFieldParam.getResourceId());
+                    field.setFieldId(fieldUpdateParam.getFieldId());
+                    field.setFieldValue(customFieldResolver.convertToString(fieldConfig, fieldUpdateParam.getFieldValue()));
+                    customFormDataFields.add(field);
+                }
+            }
+        }
+        customFormDataMapper.updateById(customFormData);
+        if (CollectionUtils.isNotEmpty(customFormDataFields)) {
+            customFormDataFieldMapper.batchInsert(customFormDataFields);
+        }
+        if (CollectionUtils.isNotEmpty(customFormDataFieldBlobs)) {
+            customFormDataFieldBlobMapper.batchInsert(customFormDataFieldBlobs);
+        }
+        // 记录审批后置字段更新日志
+        CustomFormDataFieldService.setFormKey(customFormId);
         try {
-            BaseField field = customFormDataFieldService.getAndCheckField(request.getFieldId(), orgId);
-            customFormDataFieldService.batchUpdate(request, field, dataList, CustomFormData.class, LogModule.CUSTOM_FORM_DATA, extCustomFormDataMapper::batchUpdate, userId, orgId);
+            baseService.handleUpdateLogWithSubTable(originData, customFormData, originFields,
+                    customFormDataFieldService.getModuleFieldValuesByResourceId(postFieldParam.getResourceId()),
+                    postFieldParam.getResourceId(), customFormData.getName(), Translator.get("products_info"), formConfig);
+            // 从 OperationLogContext 中获取日志信息并手动记录
+            LogContextInfo contextInfo = OperationLogContext.getContext();
+            if (contextInfo != null) {
+                LogDTO logDTO = new LogDTO(orgId, postFieldParam.getResourceId(), postFieldParam.getOperator(), LogType.UPDATE, LogModule.CUSTOM_FORM_DATA, customFormData.getName());
+                logDTO.setOriginalValue(contextInfo.getOriginalValue());
+                logDTO.setModifiedValue(contextInfo.getModifiedValue());
+                logService.add(logDTO);
+                OperationLogContext.clear();
+            }
         } finally {
             CustomFormDataFieldService.clearFormKey();
         }
+    }
+
+    /**
+     * 获取编辑前的资源数据快照 (用于审批驳回/撤回时回退)。
+     * 从数据库查询当前完整数据, 组装成更新请求参数格式并返回 JSON。
+     */
+    @Override
+    public String getPreUpdateSnapshotData(String resourceId, String userId, String orgId) {
+        CustomFormData customFormData = customFormDataMapper.selectByPrimaryKey(resourceId);
+        if (customFormData == null) {
+            return null;
+        }
+        CustomFormDataFieldService.setFormKey(customFormData.getCustomFormId());
+        List<BaseModuleFieldValue> customFormDataFields = customFormDataFieldService.getModuleFieldValuesByResourceId(resourceId);
+        CustomFormDataUpdateRequest snapshotReq = BeanUtils.copyBean(new CustomFormDataUpdateRequest(), customFormData);
+        snapshotReq.setUpdateType(ApprovalResourceUpdateType.APPROVAL.getValue());
+        snapshotReq.setCustomFormId(customFormData.getCustomFormId());
+        snapshotReq.setModuleFields(customFormDataFields);
+        return JSON.toJSONString(snapshotReq);
+    }
+
+    /**
+     * 使用快照数据回退资源 (回退时会记录编辑日志, 但跳过审批)。
+     */
+    @Override
+    public void revertToSnapshot(String resourceId, String userId, String orgId, String snapshotData) {
+        try {
+            CustomFormDataUpdateRequest request = JSON.parseObject(snapshotData, CustomFormDataUpdateRequest.class);
+            if (request == null) {
+                return;
+            }
+            CommonBeanFactory.getBean(CustomFormDataService.class).update(request, userId, orgId, false);
+        } catch (Exception e) {
+            log.error("审批回退还原业务数据失败, resourceId:{}", resourceId, e);
+            throw e;
+        }
+    }
+
+    /**
+     * 获取字段详情 (⚠️反射调用; 勿修改入参, 返回, 方法名!)
+     *
+     * @param id 自定义表单数据ID
+     * @return 详情
+     */
+    public CustomFormDataGetResponse getFieldValues(String id) {
+        return getSimple(id);
+    }
+
+    public BatchAffectReasonResponse batchUpdate(CustomFormDataBatchUpdateRequest request, String userId, String orgId) {
+        List<CustomFormData> dataList = customFormDataMapper.selectByIds(request.getIds());
+        checkBatchPermission(userId, dataList, request.getCustomFormId(), orgId);
+
+        // 校验状态权限，过滤出有权限操作的资源（参考 ContractService.batchUpdate）
+        List<String> permittedIds = approvalFlowService.filterResourcesWithPermission(
+                request.getCustomFormId(),
+                dataList,
+                CUSTOM_FORM_DATA_UPDATE_PERMISSION,
+                orgId,
+                CustomFormData::getId,
+                CustomFormData::getApprovalStatus,
+                PermissionConstants.CUSTOM_FORM_READ
+        );
+        if (CollectionUtils.isEmpty(permittedIds)) {
+            return BatchAffectReasonResponse.builder()
+                    .success(0).fail(dataList.size()).skip(0)
+                    .errorMessages(Translator.get("no.operation.permission"))
+                    .build();
+        }
+
+        CustomFormDataFieldService.setFormKey(request.getCustomFormId());
+        try {
+            BaseField field = customFormDataFieldService.getAndCheckField(request.getFieldId(), orgId);
+            // 批量编辑触发审批流：历史上审批通过过的资源进入审批（UPDATE），未通过过的设为待提审（CREATE）
+            ApprovalResourceService approvalResourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
+            approvalResourceService.batchEditTriggerApprovalForCustomForm(
+                    permittedIds, request.getFieldId(), request.getCustomFormId(), orgId, userId, field.getName(), request.getFieldValue());
+
+            List<CustomFormData> permittedDataList = dataList.stream()
+                    .filter(data -> permittedIds.contains(data.getId()))
+                    .toList();
+            CustomFormDataBatchUpdateRequest filteredRequest = new CustomFormDataBatchUpdateRequest();
+            filteredRequest.setCustomFormId(request.getCustomFormId());
+            filteredRequest.setIds(permittedIds);
+            filteredRequest.setFieldId(request.getFieldId());
+            filteredRequest.setFieldValue(request.getFieldValue());
+            customFormDataFieldService.batchUpdate(filteredRequest, field, permittedDataList, CustomFormData.class,
+                    LogModule.CUSTOM_FORM_DATA, extCustomFormDataMapper::batchUpdate, userId, orgId);
+        } finally {
+            CustomFormDataFieldService.clearFormKey();
+        }
+
+        return BatchAffectReasonResponse.builder()
+                .success(permittedIds.size())
+                .fail(dataList.size() - permittedIds.size())
+                .skip(0)
+                .errorMessages(Translator.get("batch.update.reason"))
+                .build();
     }
 
     private void checkBatchPermission(String userId, List<CustomFormData> dataList, String formId, String orgId) {
@@ -395,31 +657,51 @@ public class CustomFormDataService {
 
     public void batchDelete(List<String> ids, String userId, String orgId) {
         List<CustomFormData> dataList = customFormDataMapper.selectByIds(ids);
-        checkCompleteBatch(ids, dataList);
 
         String formId = dataList.getFirst().getCustomFormId();
         checkBatchPermission(userId, dataList, formId, orgId);
 
-        List<String> deletableIds = dataList.stream()
-                .map(CustomFormData::getId)
+        // 校验状态权限，过滤出有权限操作的资源（参考 ContractService.batchDelete）
+        List<String> permittedIds = approvalFlowService.filterResourcesWithPermission(
+                formId,
+                dataList,
+                CUSTOM_FORM_DATA_DELETE_PERMISSION,
+                orgId,
+                CustomFormData::getId,
+                CustomFormData::getApprovalStatus,
+                PermissionConstants.CUSTOM_FORM_READ
+        );
+        if (CollectionUtils.isEmpty(permittedIds)) {
+            return;
+        }
+
+        List<CustomFormData> permittedDataList = dataList.stream()
+                .filter(data -> permittedIds.contains(data.getId()))
                 .toList();
+        Map<String, String> nameMap = permittedDataList.stream()
+                .collect(Collectors.toMap(CustomFormData::getId, CustomFormData::getName));
 
-        customFormDataFieldService.deleteByResourceIds(deletableIds);
-        customFormDataMapper.deleteByIds(deletableIds);
+        // 批量删除触发审批流：命中删除审批流的资源进入审批，不执行物理删除
+        ApprovalResourceService approvalResourceService = CommonBeanFactory.getBean(ApprovalResourceService.class);
+        List<String> approvalIds = approvalResourceService.batchDeleteTriggerApprovalForCustomForm(
+                permittedIds, formId, orgId, userId, nameMap);
+        List<String> deleteIds = approvalIds.isEmpty()
+                ? permittedIds
+                : permittedIds.stream().filter(id -> !approvalIds.contains(id)).toList();
+        if (CollectionUtils.isEmpty(deleteIds)) {
+            return;
+        }
 
-        List<LogDTO> logs = dataList.stream()
+        customFormDataFieldService.deleteByResourceIds(deleteIds);
+        customFormDataMapper.deleteByIds(deleteIds);
+
+        List<LogDTO> logs = permittedDataList.stream()
+                .filter(data -> deleteIds.contains(data.getId()))
                 .map(data ->
                         new LogDTO(orgId, data.getId(), userId, LogType.DELETE, LogModule.CUSTOM_FORM_DATA, data.getName())
                 )
                 .toList();
         logService.batchAdd(logs);
-    }
-
-    private void checkCompleteBatch(List<String> ids, List<CustomFormData> records) {
-        if (CollectionUtils.isEmpty(ids) || CollectionUtils.isEmpty(records)
-                || !new HashSet<>(ids).equals(records.stream().map(CustomFormData::getId).collect(Collectors.toSet()))) {
-            throw new GenericException(CrmHttpResultCode.NOT_FOUND);
-        }
     }
 
     private void checkWritePermission(CustomFormRoleKey dataScope, String owner, String currentUserId) {

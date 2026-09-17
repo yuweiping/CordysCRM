@@ -1,17 +1,20 @@
 package cn.cordys.crm.approval.service;
 
+import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.Pager;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.approval.constants.ApprovalFormTypeEnum;
 import cn.cordys.crm.approval.constants.ApprovalState;
 import cn.cordys.crm.approval.domain.ApprovalInstance;
 import cn.cordys.crm.approval.domain.ApprovalTask;
 import cn.cordys.crm.approval.dto.request.ApprovalTodoPageRequest;
-import cn.cordys.crm.approval.dto.response.ApprovalTodoCountResponse;
 import cn.cordys.crm.approval.dto.response.ApprovalTodoItemResponse;
+import cn.cordys.crm.approval.dto.response.ApprovalTodoTypeCount;
 import cn.cordys.crm.approval.mapper.ExtApprovalTaskMapper;
 import cn.cordys.crm.contract.domain.Contract;
 import cn.cordys.crm.contract.domain.ContractInvoice;
+import cn.cordys.crm.form.domain.CustomFormData;
 import cn.cordys.crm.opportunity.domain.OpportunityQuotation;
 import cn.cordys.crm.order.domain.Order;
 import cn.cordys.crm.system.domain.User;
@@ -20,6 +23,7 @@ import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import jakarta.annotation.Resource;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.springframework.stereotype.Service;
@@ -46,7 +50,11 @@ public class ApprovalTodoService {
     @Resource
     private BaseMapper<ContractInvoice> invoiceMapper;
     @Resource
+    private BaseMapper<CustomFormData> customFormDataMapper;
+    @Resource
     private ExtApprovalTaskMapper extApprovalTaskMapper;
+    @Resource
+    private ApprovalFlowService approvalFlowService;
 
     public Pager<List<ApprovalTodoItemResponse>> getTodoPage(ApprovalTodoPageRequest request, String userId) {
         // 在未登录场景下直接返回空分页数据。
@@ -54,7 +62,7 @@ public class ApprovalTodoService {
             return new Pager<>(Collections.<ApprovalTodoItemResponse>emptyList(), 0, request.getPageSize(), request.getCurrent());
         }
 
-        // 解析资源类型过滤参数，支持 ALL 或具体类型。
+        // 解析资源类型过滤参数，支持 ALL 或具体类型（标准表单或自定义表单 customFormId）。
         ApprovalFormTypeEnum filterType = parseFilterType(request.getResourceType());
         if (!isAllType(request.getResourceType()) && filterType == null) {
             return new Pager<>(Collections.<ApprovalTodoItemResponse>emptyList(), 0, request.getPageSize(), request.getCurrent());
@@ -65,7 +73,7 @@ public class ApprovalTodoService {
         List<ApprovalTodoItemResponse> items = extApprovalTaskMapper.selectPendingTasks(
                 userId,
                 ApprovalState.APPROVING.getId(),
-                filterType == null ? null : filterType.name().toLowerCase(),
+                resolveResourceTypeFilter(filterType, request.getResourceType()),
                 StringUtils.trimToNull(request.getKeyword())
         );
         if (items.isEmpty()) {
@@ -76,33 +84,34 @@ public class ApprovalTodoService {
         return PageUtils.setPageInfo(page, items);
     }
 
-    public ApprovalTodoCountResponse getPendingCount(String userId) {
-        ApprovalTodoCountResponse response = emptyCountResponse();
+    /**
+     * 待我审批统计。返回 key 与 {@link ApprovalFlowService#getFlowFormOptions} 保持一致：
+     * 标准表单为 quotation/contract/order/invoice，自定义表单为 customFormId；value 为对应待审批数量，
+     * 无待处理的表单返回 0。
+     */
+    public Map<String, Integer> getPendingCount(String userId) {
         // 未登录用户直接返回空统计。
         if (StringUtils.isBlank(userId)) {
-            return response;
+            return Collections.emptyMap();
         }
-        // 通过聚合SQL统计待我审批总数及资源类型分布。
-        ApprovalTodoCountResponse count = extApprovalTaskMapper.countPendingByApprover(userId, ApprovalState.APPROVING.getId());
-        if (count == null) {
-            return response;
+        String organizationId = OrganizationContext.getOrganizationId();
+        // 以配置了审批流的表单枚举为准，保证返回 key 与 getFlowFormOptions 一致。
+        List<OptionDTO> options = StringUtils.isBlank(organizationId)
+                ? List.of()
+                : approvalFlowService.getFlowFormOptions(organizationId);
+        // 单次聚合查询按资源类型统计待我审批（含标准与自定义类型），避免逐表单N+1。
+        List<ApprovalTodoTypeCount> counts = extApprovalTaskMapper.countPendingGroupByType(userId, ApprovalState.APPROVING.getId());
+        Map<String, Integer> rawCounts = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(counts)) {
+            for (ApprovalTodoTypeCount item : counts) {
+                rawCounts.put(item.getType(), Optional.ofNullable(item.getCount()).orElse(0));
+            }
         }
-        response.setTotal(Optional.ofNullable(count.getTotal()).orElse(0));
-        response.setQuotation(Optional.ofNullable(count.getQuotation()).orElse(0));
-        response.setContract(Optional.ofNullable(count.getContract()).orElse(0));
-        response.setOrder(Optional.ofNullable(count.getOrder()).orElse(0));
-        response.setInvoice(Optional.ofNullable(count.getInvoice()).orElse(0));
-        return response;
-    }
-
-    private ApprovalTodoCountResponse emptyCountResponse() {
-        ApprovalTodoCountResponse response = new ApprovalTodoCountResponse();
-        response.setTotal(0);
-        response.setQuotation(0);
-        response.setContract(0);
-        response.setOrder(0);
-        response.setInvoice(0);
-        return response;
+        Map<String, Integer> formCounts = new LinkedHashMap<>(options.size());
+        for (OptionDTO option : options) {
+            formCounts.put(option.getIdAsString(), rawCounts.getOrDefault(option.getIdAsString(), 0));
+        }
+        return formCounts;
     }
 
     public Pager<List<ApprovalTodoItemResponse>> getProcessedPage(ApprovalTodoPageRequest request, String userId) {
@@ -120,7 +129,7 @@ public class ApprovalTodoService {
         String keyword = StringUtils.trimToNull(request.getKeyword());
         List<ApprovalTodoItemResponse> items = extApprovalTaskMapper.selectProcessedTasks(
                 userId,
-                filterType == null ? null : filterType.name().toLowerCase(),
+                resolveResourceTypeFilter(filterType, request.getResourceType()),
                 keyword
         );
         return PageUtils.setPageInfo(page, items);
@@ -142,7 +151,7 @@ public class ApprovalTodoService {
         String keyword = StringUtils.trimToNull(request.getKeyword());
         List<ApprovalTodoItemResponse> items = extApprovalTaskMapper.selectInitiatedTasks(
                 userId,
-                filterType == null ? null : filterType.name().toLowerCase(),
+                resolveResourceTypeFilter(filterType, request.getResourceType()),
                 keyword
         );
         // 返回分页结果，分页元信息沿用 PageHelper 查询结果。
@@ -165,7 +174,7 @@ public class ApprovalTodoService {
         String keyword = StringUtils.trimToNull(request.getKeyword());
         List<ApprovalTodoItemResponse> items = extApprovalTaskMapper.selectCcTasks(
                 userId,
-                filterType == null ? null : filterType.name().toLowerCase(),
+                resolveResourceTypeFilter(filterType, request.getResourceType()),
                 keyword
         );
         return PageUtils.setPageInfo(page, items);
@@ -237,6 +246,8 @@ public class ApprovalTodoService {
                         .collect(Collectors.toMap(Order::getId, Order::getName, (prev, next) -> prev)));
                 case INVOICE -> resourceNameMap.put(formType, invoiceMapper.selectByIds(distinctIds).stream()
                         .collect(Collectors.toMap(ContractInvoice::getId, ContractInvoice::getName, (prev, next) -> prev)));
+                case CUSTOM_FORM -> resourceNameMap.put(formType, customFormDataMapper.selectByIds(distinctIds).stream()
+                        .collect(Collectors.toMap(CustomFormData::getId, CustomFormData::getName, (prev, next) -> prev)));
             }
         });
         return resourceNameMap;
@@ -254,11 +265,11 @@ public class ApprovalTodoService {
         }
         // 兼容旧值或别名写法。
         return switch (type.toLowerCase()) {
-            case "quote", "quotation" -> ApprovalFormTypeEnum.QUOTATION;
+            case "quotation" -> ApprovalFormTypeEnum.QUOTATION;
             case "contract" -> ApprovalFormTypeEnum.CONTRACT;
             case "order" -> ApprovalFormTypeEnum.ORDER;
             case "invoice" -> ApprovalFormTypeEnum.INVOICE;
-            default -> null;
+            default -> ApprovalFormTypeEnum.CUSTOM_FORM; // 非标准值视为自定义表单(customFormId)
         };
     }
 
@@ -272,6 +283,25 @@ public class ApprovalTodoService {
         }
         return parseFormType(resourceType);
     }
+
+    /**
+     * 构造按资源类型过滤的实际 type 值。标准表单按枚举码（如 quotation/contract/order/invoice）过滤；
+     * 自定义表单类型不在枚举值中，需直接使用 customFormId 过滤。
+     *
+     * @param filterType   解析后的类型，ALL 时为 null
+     * @param resourceType 原始的过滤入参
+     */
+    private String resolveResourceTypeFilter(ApprovalFormTypeEnum filterType, String resourceType) {
+        if (filterType == null) {
+            return null;
+        }
+        if (filterType == ApprovalFormTypeEnum.CUSTOM_FORM) {
+            // 自定义表单：type 存的是 customFormId，直接用入参原样过滤
+            return resourceType;
+        }
+        return filterType.name().toLowerCase();
+    }
+
 
     private Set<String> loadInstanceIdsByResourceName(String resourceName) {
         if (StringUtils.isBlank(resourceName)) {
@@ -307,6 +337,13 @@ public class ApprovalTodoService {
         if (!invoiceIds.isEmpty()) {
             resourceIdsByType.put(ApprovalFormTypeEnum.INVOICE, invoiceIds);
         }
+        LambdaQueryWrapper<CustomFormData> customFormWrapper = new LambdaQueryWrapper<>();
+        customFormWrapper.like(CustomFormData::getName, resourceName);
+        List<String> customFormDataIds = customFormDataMapper.selectListByLambda(customFormWrapper).stream()
+                .map(CustomFormData::getId).filter(StringUtils::isNotBlank).toList();
+        if (!customFormDataIds.isEmpty()) {
+            resourceIdsByType.put(ApprovalFormTypeEnum.CUSTOM_FORM, customFormDataIds);
+        }
         if (resourceIdsByType.isEmpty()) {
             return Collections.emptySet();
         }
@@ -314,15 +351,19 @@ public class ApprovalTodoService {
         // 按资源类型与资源ID反查审批实例ID。
         Set<String> instanceIds = new HashSet<>();
         resourceIdsByType.forEach((formType, resourceIds) -> {
-            List<String> aliases = switch (formType) {
-                case QUOTATION -> List.of("quotation", "quote");
-                case CONTRACT -> List.of("contract");
-                case ORDER -> List.of("order");
-                case INVOICE -> List.of("invoice");
-            };
             LambdaQueryWrapper<ApprovalInstance> wrapper = new LambdaQueryWrapper<>();
-            wrapper.in(ApprovalInstance::getType, aliases)
-                    .in(ApprovalInstance::getResourceId, resourceIds);
+            wrapper.in(ApprovalInstance::getResourceId, resourceIds);
+            if (formType != ApprovalFormTypeEnum.CUSTOM_FORM) {
+                // 标准表单类型按 type 别名过滤；自定义表单 type 为 customFormId，直接按 resourceId 匹配
+                List<String> aliases = switch (formType) {
+                    case QUOTATION -> List.of("quotation", "quote");
+                    case CONTRACT -> List.of("contract");
+                    case ORDER -> List.of("order");
+                    case INVOICE -> List.of("invoice");
+                    default -> List.of();
+                };
+                wrapper.in(ApprovalInstance::getType, aliases);
+            }
             instanceIds.addAll(approvalInstanceMapper.selectListByLambda(wrapper).stream()
                     .map(ApprovalInstance::getId)
                     .filter(StringUtils::isNotBlank)

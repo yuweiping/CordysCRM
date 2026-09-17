@@ -56,4 +56,13 @@ public class CustomFormDataGetResponse {
 
     @Schema(description = "当前用户是否是管理员")
     private Boolean isAdmin;
+
+    @Schema(description = "审批状态")
+    private String approvalStatus;
+
+    @Schema(description = "是否审批通过过")
+    private Boolean approved;
+
+    @Schema(description = "审批第一个节点是否通过")
+    private Boolean firstApproved;
 }

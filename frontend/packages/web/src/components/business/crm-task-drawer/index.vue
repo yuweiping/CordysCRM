@@ -74,7 +74,7 @@
           </div>
         </div>
         <taskList
-          v-if="show"
+          v-if="show && activeTaskType"
           ref="taskListRef"
           v-model:selected-keys="selectedKeys"
           key-field="id"
@@ -93,8 +93,7 @@
     v-model:show="approvalVisible"
     :approval-type="approvalType"
     :approval-item-keys="selectedKeys"
-    :resource-type="resourceType"
-    module="WORKBENCH"
+    :resource-type="activeResourceType"
     @approval-success="handleApproveSuccess"
   />
   <ContractDetailDrawer
@@ -124,27 +123,49 @@
     @open-contract-drawer="handleOpenContractDetail"
     @open-customer-drawer="handleOpenCustomerDetail"
   />
+  <CustomFormDetailDrawer
+    v-model:visible="customFormDetailVisible"
+    :source-id="activeResourceId"
+    :customFormId="resourceType"
+    :approvalTaskId="approvalTaskId"
+    :refreshId="customFormRefreshKey"
+    @edit="handleCustomFormEdit"
+    @refresh="handleApproveSuccess"
+  />
+  <CrmFormCreateDrawer
+    v-model:visible="customFormEditVisible"
+    :form-key="FormDesignKeyEnum.CUSTOM_FORM"
+    :source-id="activeResourceId"
+    :need-init-detail="true"
+    :custom-form-id="resourceType"
+    @saved="handleCustomFormSaved"
+    @review="handleCustomFormReview"
+  />
 </template>
 
 <script setup lang="ts">
   import { NButton, NCheckbox, NCollapse, NCollapseItem } from 'naive-ui';
-  import { cloneDeep } from 'lodash-es';
 
+  import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { type ApprovalListTypeEnum, ApprovalResourceTypeEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import type { OptionDTO } from '@lib/shared/models/system/business';
   import type { ApprovalProcessDetail } from '@lib/shared/models/system/process';
 
   import CrmDrawer from '@/components/pure/crm-drawer/index.vue';
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import CrmSearchInput from '@/components/pure/crm-search-input/index.vue';
+  import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import approvalModal from './approvalModal.vue';
   import taskList from './taskList.vue';
   import ContractDetailDrawer from '@/views/contract/contract/components/detail.vue';
   import InvoiceDetailDrawer from '@/views/contract/invoice/components/detail.vue';
+  import CustomFormDetailDrawer from '@/views/customForm/components/detail.vue';
   import QuotationDetailDrawer from '@/views/opportunity/components/quotation/detail.vue';
   import OrderDetailDrawer from '@/views/order/order/components/detail.vue';
 
-  import { getApprovalConfigDetail, getTodoStatistic } from '@/api/modules';
+  import { getApprovalConfigDetail, getApprovalFlowFormOptions, getTodoStatistic } from '@/api/modules';
+  import useApprovalResourceAction from '@/hooks/useApprovalResourceAction';
   import useOpenNewPage from '@/hooks/useOpenNewPage.js';
 
   import { ContractRouteEnum, CustomerRouteEnum } from '@/enums/routeEnum.js';
@@ -162,7 +183,12 @@
   });
 
   const keyword = ref('');
-  const activeTaskType = ref<string>('pending-QUOTATION');
+  const activeTaskType = ref<string>('');
+
+  function getTaskResourceType(taskType: string) {
+    const separatorIndex = taskType.indexOf('-');
+    return separatorIndex === -1 ? '' : taskType.slice(separatorIndex + 1);
+  }
 
   const statistic = ref<Record<string, any>>({
     total: 0,
@@ -171,63 +197,55 @@
     order: 0,
     invoice: 0,
   });
-  const moduleItems = [
-    {
-      name: ApprovalResourceTypeEnum.QUOTATION,
-      title: t('menu.quotation'),
+
+  const approvalFormOptions = ref<OptionDTO[]>([]);
+  const moduleItems = computed(() =>
+    approvalFormOptions.value.map((item) => ({
+      name: String(item.id),
+      title: item.name,
       count: 0,
-    },
-    {
-      name: ApprovalResourceTypeEnum.CONTRACT,
-      title: t('module.contract'),
-      count: 0,
-    },
-    {
-      name: ApprovalResourceTypeEnum.ORDER,
-      title: t('module.order'),
-      count: 0,
-    },
-    {
-      name: ApprovalResourceTypeEnum.INVOICE,
-      title: t('module.invoiceApproval'),
-      count: 0,
-    },
-  ];
-  const allItems = [
+    }))
+  );
+  const allItems = computed(() => [
     {
       name: 'pending',
       title: t('workbench.dataOverview.pendingApproval'),
       count: 0,
-      children: cloneDeep(moduleItems).map((e) => ({ ...e, name: `pending-${e.name}` })),
+      children: moduleItems.value.map((e) => ({ ...e, name: `pending-${e.name}` })),
     },
     {
       name: 'approved',
       title: t('workbench.dataOverview.approvedByMe'),
       count: 0,
-      children: cloneDeep(moduleItems).map((e) => ({ ...e, name: `approved-${e.name}` })),
+      children: moduleItems.value.map((e) => ({ ...e, name: `approved-${e.name}` })),
     },
     {
       name: 'initiated',
       title: t('workbench.dataOverview.initiatedByMe'),
       count: 0,
-      children: cloneDeep(moduleItems).map((e) => ({ ...e, name: `initiated-${e.name}` })),
+      children: moduleItems.value.map((e) => ({ ...e, name: `initiated-${e.name}` })),
     },
     {
       name: 'copied',
       title: t('workbench.dataOverview.copiedToMe'),
       count: 0,
-      children: cloneDeep(moduleItems).map((e) => ({ ...e, name: `copied-${e.name}` })),
+      children: moduleItems.value.map((e) => ({ ...e, name: `copied-${e.name}` })),
     },
-  ];
+  ]);
+
+  function getStatisticCount(resourceType: string) {
+    return statistic.value[resourceType] ?? statistic.value[resourceType.toLowerCase()] ?? 0;
+  }
+
   const collapseItems = computed(() => {
-    return allItems.map((e) => {
+    return allItems.value.map((e) => {
       if (e.name === 'pending') {
         e.count = statistic.value.total;
         e.children = e.children.map((child) => {
-          const [_, name] = child.name.split('-');
+          const resourceType = getTaskResourceType(child.name);
           return {
             ...child,
-            count: statistic.value[name.toLowerCase()],
+            count: getStatisticCount(resourceType),
           };
         });
       }
@@ -236,10 +254,11 @@
   });
 
   const activeModuleTitle = computed(() => {
-    const [_, moduleName] = activeTaskType.value.split('-');
-    const module = moduleItems.find((item) => item.name === moduleName);
+    const resourceType = getTaskResourceType(activeTaskType.value);
+    const module = moduleItems.value.find((item) => item.name === resourceType);
     return module ? module.title : '';
   });
+  const activeResourceType = computed(() => getTaskResourceType(activeTaskType.value));
   const allSelect = ref<boolean>(false);
   const selectedKeys = ref<string[]>([]);
   const listTotal = ref(0);
@@ -281,10 +300,28 @@
     }
   }
 
+  async function initApprovalFormOptions() {
+    try {
+      approvalFormOptions.value = await getApprovalFlowFormOptions();
+      const targetListType = props.type || 'pending';
+      const resourceType = getTaskResourceType(activeTaskType.value);
+
+      if (!resourceType || !moduleItems.value.some((item) => item.name === resourceType)) {
+        activeTaskType.value = moduleItems.value.length ? `${targetListType}-${moduleItems.value[0].name}` : '';
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+      approvalFormOptions.value = [];
+      activeTaskType.value = '';
+    }
+  }
+
   watch(
     () => show.value,
     (val) => {
       if (val) {
+        initApprovalFormOptions();
         initStatistic();
       }
     },
@@ -326,9 +363,10 @@
     (val) => {
       if (!val) {
         keyword.value = '';
-        activeTaskType.value = 'pending-QUOTATION';
+        activeTaskType.value = '';
       } else if (props.type) {
-        activeTaskType.value = `${props.type}-QUOTATION`;
+        const firstModule = moduleItems.value[0]?.name;
+        activeTaskType.value = firstModule ? `${props.type}-${firstModule}` : '';
       }
     }
   );
@@ -338,6 +376,10 @@
   async function initApprovalConfigDetail() {
     try {
       const [_, resourceType] = activeTaskType.value.split('-');
+      if (!resourceType) {
+        approvalConfigDetail.value = undefined;
+        return;
+      }
       approvalConfigDetail.value = await getApprovalConfigDetail(resourceType);
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -360,8 +402,15 @@
   const quotationDetailVisible = ref(false);
   const orderDetailVisible = ref(false);
   const invoiceDetailVisible = ref(false);
+  const customFormDetailVisible = ref(false);
+  const customFormEditVisible = ref(false);
+  const customFormRefreshKey = ref(0);
   const approvalTaskId = ref('');
   const resourceType = ref('');
+  const { reviewByFormResult } = useApprovalResourceAction({
+    formKey: resourceType,
+  });
+
   function handleOpenDetail(resourceId: string, _resourceType: string, _approvalTaskId: string) {
     activeResourceId.value = resourceId;
     approvalTaskId.value = _approvalTaskId;
@@ -380,6 +429,7 @@
         invoiceDetailVisible.value = true;
         break;
       default:
+        customFormDetailVisible.value = true;
         break;
     }
   }
@@ -389,6 +439,26 @@
     taskListRef.value?.loadTaskList(true);
     allSelect.value = false;
     selectedKeys.value = [];
+  }
+
+  function refreshCustomFormDetail() {
+    customFormRefreshKey.value += 1;
+    handleApproveSuccess();
+  }
+
+  function handleCustomFormEdit(sourceId: string) {
+    activeResourceId.value = sourceId;
+    customFormEditVisible.value = true;
+  }
+
+  function handleCustomFormSaved() {
+    refreshCustomFormDetail();
+  }
+
+  function handleCustomFormReview(res: any) {
+    reviewByFormResult(res, {
+      onSuccess: refreshCustomFormDetail,
+    });
   }
 
   function handleOpenCustomerDetail(params: { customerId: string; inCustomerPool: boolean; poolId: string }) {

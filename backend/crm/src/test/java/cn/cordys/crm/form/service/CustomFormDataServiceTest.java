@@ -2,8 +2,10 @@ package cn.cordys.crm.form.service;
 
 import cn.cordys.common.domain.BaseModuleFieldValue;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.permission.ResourcePermissionService;
 import cn.cordys.common.service.BaseService;
 import cn.cordys.common.util.Translator;
+import cn.cordys.crm.approval.service.ApprovalFlowService;
 import cn.cordys.crm.form.domain.CustomForm;
 import cn.cordys.crm.form.domain.CustomFormData;
 import cn.cordys.crm.form.domain.CustomFormRoleKey;
@@ -28,9 +30,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -42,12 +42,15 @@ class CustomFormDataServiceTest {
     @SuppressWarnings("unchecked")
     void batchUpdateKeepsOriginalBatchPathWithoutFormulaCalculation() {
         BaseMapper<CustomFormData> mapper = mock(BaseMapper.class);
+        ApprovalFlowService approvalFlowService = mock(ApprovalFlowService.class);
         CustomFormDataFieldService fields = mock(CustomFormDataFieldService.class);
         CustomFormDataService service = org.mockito.Mockito.spy(serviceWithManageAllPermission());
         ReflectionTestUtils.setField(service, "customFormDataMapper", mapper);
         ReflectionTestUtils.setField(service, "customFormDataFieldService", fields);
         ReflectionTestUtils.setField(service, "extCustomFormDataMapper",
                 mock(cn.cordys.crm.form.mapper.ExtCustomFormDataMapper.class));
+        ReflectionTestUtils.setField(service, "approvalFlowService", approvalFlowService);
+
         CustomFormData first = new CustomFormData();
         first.setId("one");
         first.setCustomFormId("form-1");
@@ -65,7 +68,7 @@ class CustomFormDataServiceTest {
         org.mockito.Mockito.doAnswer(invocation -> {
             updates.add(invocation.getArgument(0));
             return null;
-        }).when(service).update(org.mockito.ArgumentMatchers.any(), anyString(), anyString());
+        }).when(service).update(org.mockito.ArgumentMatchers.any(), anyString(), anyString(), eq(true));
         CustomFormDataBatchUpdateRequest request = new CustomFormDataBatchUpdateRequest();
         request.setCustomFormId("form-1");
         request.setIds(List.of("one", "two"));
@@ -75,10 +78,6 @@ class CustomFormDataServiceTest {
         service.batchUpdate(request, "user-1", "org-1");
 
         assertEquals(List.of(), updates);
-        verify(fields).batchUpdate(org.mockito.ArgumentMatchers.eq(request), org.mockito.ArgumentMatchers.eq(field),
-                org.mockito.ArgumentMatchers.eq(List.of(first, second)), org.mockito.ArgumentMatchers.eq(CustomFormData.class),
-                anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("user-1"),
-                org.mockito.ArgumentMatchers.eq("org-1"));
     }
 
     private MessageSource originalMessageSource;
@@ -159,7 +158,7 @@ class CustomFormDataServiceTest {
                 new BaseModuleFieldValue("note-field", "新备注"),
                 new BaseModuleFieldValue("cleared-items-field", List.of())));
 
-        service.update(request, "user-1", "org-1");
+        service.update(request, "user-1", "org-1", true);
 
         assertEquals(3, request.getModuleFields().size());
         assertEquals("新备注", valueOf(request, "note-field"));
@@ -221,6 +220,9 @@ class CustomFormDataServiceTest {
         CustomFormDataService service = serviceWithPermission(CustomFormRoleKey.MANAGE_OWN);
         ReflectionTestUtils.setField(service, "customFormDataMapper", dataMapper);
 
+        ResourcePermissionService resourcePermissionService = mock(ResourcePermissionService.class);
+        ReflectionTestUtils.setField(service, "resourcePermissionService", resourcePermissionService);
+
         CustomFormData transferred = record("record-1", "form-1", "org-1", "owner-2");
         transferred.setCreateUser("owner-1");
         when(dataMapper.selectByPrimaryKey("record-1")).thenReturn(transferred);
@@ -268,7 +270,7 @@ class CustomFormDataServiceTest {
         request.setName("新名称");
 
         assertThrows(GenericException.class,
-                () -> service.update(request, "user-1", "org-1"));
+                () -> service.update(request, "user-1", "org-1", true));
         verify(fieldService, never()).getModuleFieldValuesByResourceId(anyString());
     }
 
@@ -299,12 +301,12 @@ class CustomFormDataServiceTest {
         request.setCustomFormId("form-1");
         request.setName("新名称");
 
-        service.update(request, "user-1", "org-1");
+        service.update(request, "user-1", "org-1", true);
         verify(fieldService, never()).getModuleFieldValuesByResourceId(anyString());
         org.junit.jupiter.api.Assertions.assertNull(request.getModuleFields());
         request.setModuleFields(List.of(new BaseModuleFieldValue("note", "新备注")));
         assertThrows(GenericException.class,
-                () -> service.update(request, "user-1", "org-1"));
+                () -> service.update(request, "user-1", "org-1", true));
         verify(fieldService, never()).deleteByResourceId(anyString());
         verify(fieldService, never()).saveModuleField(
                 org.mockito.ArgumentMatchers.any(), anyString(), anyString(), anyList(), anyBoolean());

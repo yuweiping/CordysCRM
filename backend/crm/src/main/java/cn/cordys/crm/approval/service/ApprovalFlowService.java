@@ -35,6 +35,7 @@ import cn.cordys.crm.approval.dto.request.*;
 import cn.cordys.crm.approval.dto.response.*;
 import cn.cordys.crm.approval.mapper.ExtApprovalFlowMapper;
 import cn.cordys.crm.approval.mapper.ExtApprovalInstanceMapper;
+import cn.cordys.crm.form.domain.CustomForm;
 import cn.cordys.crm.system.domain.Department;
 import cn.cordys.crm.system.domain.OrganizationUser;
 import cn.cordys.crm.system.domain.User;
@@ -109,6 +110,8 @@ public class ApprovalFlowService {
     private ExtApprovalInstanceMapper extApprovalInstanceMapper;
     @Resource
     private ApprovalInstanceService approvalInstanceService;
+    @Resource
+    private BaseMapper<CustomForm> customFormMapper;
 
     /**
      * 加签节点后缀分隔符
@@ -163,21 +166,30 @@ public class ApprovalFlowService {
         return response;
     }
 
+
+    public <T> List<String> filterResourcesWithPermission(
+            String formType, List<T> resources, String permission, String organizationId,
+            java.util.function.Function<T, String> idGetter,
+            java.util.function.Function<T, String> statusGetter) {
+        return filterResourcesWithPermission(formType, resources, permission, organizationId, idGetter, statusGetter, permission);
+    }
+
     /**
      * 批量检查资源的操作权限
      *
      * @param formType       表单类型
      * @param resources      资源列表
-     * @param permission     权限标识
+     * @param statusPermission     状态权限
      * @param organizationId 组织ID
      * @param idGetter       获取资源ID的函数
      * @param statusGetter   获取审批状态的函数
+     * @param rolePermission   角色权限
      * @return 有权限的资源ID列表
      */
     public <T> List<String> filterResourcesWithPermission(
-            String formType, List<T> resources, String permission, String organizationId,
+            String formType, List<T> resources, String statusPermission, String organizationId,
             java.util.function.Function<T, String> idGetter,
-            java.util.function.Function<T, String> statusGetter) {
+            java.util.function.Function<T, String> statusGetter, String rolePermission) {
         if (CollectionUtils.isEmpty(resources)) {
             return List.of();
         }
@@ -204,14 +216,14 @@ public class ApprovalFlowService {
         // 构建需要权限的状态集合：(审批状态, 权限) -> 是否需要权限
         Map<String, Boolean> permissionRequiredMap = new HashMap<>(statusPermissions.size());
         for (StatusPermissionDTO sp : statusPermissions) {
-            if (permission.equals(sp.getPermission())) {
+            if (statusPermission.equals(sp.getPermission())) {
                 permissionRequiredMap.put(sp.getApprovalStatus(), sp.getEnabled());
             }
         }
         // 没有开启审核时创建的数据，状态为NONE，也应该能被修改
         permissionRequiredMap.put(ApprovalStatus.NONE.name(), true);
         // 检查用户是否有该权限
-        boolean hasPermission = PermissionUtils.hasPermission(permission);
+        boolean hasPermission = PermissionUtils.hasPermission(rolePermission);
 
         // 过滤出有权限的资源
         return resources.stream()
@@ -368,6 +380,8 @@ public class ApprovalFlowService {
      */
     @OperationLog(module = LogModule.APPROVAL_FLOW, type = LogType.ADD, resourceName = "{#request.name}")
     public ApprovalFlowDetailResponse add(ApprovalFlowAddRequest request, String userId, String organizationId) {
+        // 校验表单类型：标准枚举值或合法的自定义表单ID
+        validateFormType(request.getFormType(), organizationId);
         // 检查该表单类型是否已存在审批流（每个表单类型只能创建一个）
         ApprovalFlow existFlow = selectApprovalFlowByFormType(request.getFormType(), organizationId);
         if (existFlow != null) {
@@ -424,6 +438,28 @@ public class ApprovalFlowService {
             return null;
         }
         return existFlows.getFirst();
+    }
+
+    /**
+     * 校验审批流表单类型：标准可审批表单类型(quotation/contract/invoice/order)直接放行；
+     * 非标准值视为自定义表单ID，需校验同组织下存在对应自定义表单。
+     */
+    private void validateFormType(String formType, String organizationId) {
+        if (StringUtils.isBlank(formType)) {
+            throw new GenericException(Translator.get("module.form.illegal"));
+        }
+        for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[]{
+                ApprovalFormTypeEnum.QUOTATION, ApprovalFormTypeEnum.CONTRACT,
+                ApprovalFormTypeEnum.INVOICE, ApprovalFormTypeEnum.ORDER}) {
+            if (type.getValue().equals(formType)) {
+                return;
+            }
+        }
+        // 非标准值：视为自定义表单ID，校验存在性
+        CustomForm customForm = customFormMapper.selectByPrimaryKey(formType);
+        if (customForm == null || !organizationId.equals(customForm.getOrganizationId())) {
+            throw new GenericException(Translator.get("module.form.illegal"));
+        }
     }
 
     /**
@@ -562,11 +598,8 @@ public class ApprovalFlowService {
     }
 
     private String getNumberPrefix(String formType) {
-        try {
-            return ApprovalFormTypeEnum.valueOf(formType.toUpperCase()).getPrefix();
-        } catch (IllegalArgumentException e) {
-            return "APV";
-        }
+        ApprovalFormTypeEnum type = ApprovalFormTypeEnum.getByValue(formType);
+        return type != null ? type.getPrefix() : "APV";
     }
 
     private List<ApprovalNodeResponse> getNodesByFlowVersionId(String flowVersionId) {
@@ -1018,11 +1051,38 @@ public class ApprovalFlowService {
     private List<Permission> getPermissionsByFormType(String formType) {
         List<PermissionDefinitionItem> permissionSetting = roleService.getPermissionSetting();
         String permissionId = Objects.requireNonNull(ApprovalFormTypeEnum.getByValue(formType)).getPermissionId();
+        if (Strings.CI.equals(permissionId, ApprovalFormTypeEnum.CUSTOM_FORM.getPermissionId())) {
+            // 自定义表单的审批权限
+            return getCustomFormDataApprovalPermission();
+        }
         List<Permission> permissions = findPermissionsByPermissionId(permissionSetting, permissionId);
+
         if (permissions == null) {
             return List.of();
         }
-        return permissions;
+        // 审批权限排除导入
+        return permissions.stream()
+                .filter(permission -> !permission.getId().contains("IMPORT"))
+                .collect(Collectors.toList());
+    }
+
+    private List<Permission> getCustomFormDataApprovalPermission() {
+        Permission readPermission = new Permission();
+        readPermission.setId("CUSTOM_FORM_DATA:READ");
+        readPermission.setName(Translator.get("permission.read"));
+
+        Permission updatePermission = new Permission();
+        updatePermission.setId("CUSTOM_FORM_DATA:UPDATE");
+        updatePermission.setName(Translator.get("permission.update"));
+
+        Permission deletePermission = new Permission();
+        deletePermission.setId("CUSTOM_FORM_DATA:DELETE");
+        deletePermission.setName(Translator.get("permission.delete"));
+
+        Permission exportPermission = new Permission();
+        exportPermission.setId("CUSTOM_FORM_DATA:EXPORT");
+        exportPermission.setName(Translator.get("permission.export"));
+        return List.of(readPermission, updatePermission, deletePermission, exportPermission);
     }
 
     /**
@@ -1058,6 +1118,11 @@ public class ApprovalFlowService {
                 StatusPermissionDTO item = savedPermissionMap.get(key);
                 if (item != null) {
                     updatedPermissions.add(item);
+                    // 审批中编辑和删除权限 enable 设置为 false
+                    if (Strings.CS.equals(approvalStatus, ApprovalStatus.APPROVING.name())
+                            && (permission.getIdAsString().endsWith(":UPDATE") || permission.getIdAsString().endsWith(":DELETE"))) {
+                        item.setEnabled(false);
+                    }
                 } else {
                     // 添加缺失的权限，默认不启用
                     StatusPermissionDTO newItem = new StatusPermissionDTO();
@@ -1065,11 +1130,6 @@ public class ApprovalFlowService {
                     newItem.setPermission(permission.getIdAsString());
                     newItem.setEnabled(false);
                     updatedPermissions.add(newItem);
-                }
-                // 审批中编辑和删除权限 enable 设置为 false
-                if (Strings.CS.equals(approvalStatus, ApprovalStatus.APPROVING.name())
-                        && (permission.getIdAsString().endsWith(":UPDATE") || permission.getIdAsString().endsWith(":DELETE"))) {
-                    item.setEnabled(false);
                 }
             }
         }
@@ -1444,6 +1504,73 @@ public class ApprovalFlowService {
     }
 
     /**
+     * 获取已配置审批流的表单选项列表（含未启用审批流、包含自定义表单）。
+     * 以审批流表的 formType 为准去重，返回 [{id: formType, name: 表单显示名}]。
+     *
+     * @param organizationId 组织ID
+     * @return 表单选项列表
+     */
+    public List<OptionDTO> getFlowFormOptions(String organizationId) {
+        if (StringUtils.isBlank(organizationId)) {
+            return List.of();
+        }
+        LambdaQueryWrapper<ApprovalFlow> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ApprovalFlow::getOrganizationId, organizationId)
+                .eq(ApprovalFlow::getDeleted, false);
+        List<ApprovalFlow> flows = approvalFlowMapper.selectListByLambda(wrapper);
+        if (CollectionUtils.isEmpty(flows)) {
+            return List.of();
+        }
+
+        // 按 formType 去重并保留先后顺序
+        Map<String, String> formTypeNameMap = new LinkedHashMap<>();
+        Set<String> customFormIds = new LinkedHashSet<>();
+        for (ApprovalFlow flow : flows) {
+            String formType = flow.getFormType();
+            if (StringUtils.isBlank(formType) || formTypeNameMap.containsKey(formType)) {
+                continue;
+            }
+            FormKey formKey = FormKey.ofKey(formType);
+            if (formKey != null) {
+                // 标准表单类型，直接翻译显示名
+                formTypeNameMap.put(formType, getFlowFormDisplayName(formKey));
+            } else {
+                // 自定义表单，先标记 null，稍后按 customFormId 批量查名称
+                customFormIds.add(formType);
+                formTypeNameMap.put(formType, null);
+            }
+        }
+
+        if (CollectionUtils.isNotEmpty(customFormIds)) {
+            List<CustomForm> customForms = customFormMapper.selectByIds(new ArrayList<>(customFormIds));
+            Map<String, String> customNameMap = customForms.stream()
+                    .collect(Collectors.toMap(CustomForm::getId, CustomForm::getName, (prev, next) -> prev));
+            for (String customFormId : customFormIds) {
+                formTypeNameMap.put(customFormId, customNameMap.get(customFormId));
+            }
+        }
+
+        List<OptionDTO> options = new ArrayList<>(formTypeNameMap.size());
+        for (Map.Entry<String, String> entry : formTypeNameMap.entrySet()) {
+            options.add(new OptionDTO(entry.getKey(), entry.getValue()));
+        }
+        return options;
+    }
+
+    /**
+     * 标准审批表单的显示名
+     */
+    private String getFlowFormDisplayName(FormKey formKey) {
+        return switch (formKey) {
+            case QUOTATION -> Translator.get("module.resource_type.quotation");
+            case CONTRACT -> Translator.get("module.resource_type.contract");
+            case INVOICE -> Translator.get("module.resource_type.invoice");
+            case ORDER -> Translator.get("module.resource_type.order");
+            default -> "";
+        };
+    }
+
+    /**
      * 根据审批人类型解析具体审批人用户列表
      *
      * @param userId       当前用户ID
@@ -1675,7 +1802,9 @@ public class ApprovalFlowService {
             return List.of();
         }
 
-        List<String> resultIds = getLevelUserIds(allCommanderIds, approvalLevel, direction);
+        // 部门层级是终点：从提交人部门向上取到指定部门为止
+        int levelCount = direction == ApproverDirectionEnum.TOP_DOWN ? allCommanderIds.size() - approvalLevel + 1 : approvalLevel;
+        List<String> resultIds = getLevelUserIds(allCommanderIds, levelCount, ApproverDirectionEnum.BOTTOM_UP);
 
         return resolveMemberApprovers(orgId, resultIds);
     }
@@ -1686,9 +1815,9 @@ public class ApprovalFlowService {
         }
         List<String> levelUserIds;
         if (direction == ApproverDirectionEnum.TOP_DOWN) {
-            List<String> topDownUserIds = new ArrayList<>(bottomUpUserIds);
-            Collections.reverse(topDownUserIds);
-            levelUserIds = topDownUserIds.subList(0, approvalLevel);
+            // 方向只决定选取范围，审批顺序仍从提交人侧向上
+            int startIndex = bottomUpUserIds.size() - approvalLevel;
+            levelUserIds = bottomUpUserIds.subList(startIndex, bottomUpUserIds.size());
         } else {
             levelUserIds = bottomUpUserIds.subList(0, approvalLevel);
         }

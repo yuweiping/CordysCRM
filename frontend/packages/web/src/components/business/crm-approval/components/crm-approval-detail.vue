@@ -47,7 +47,7 @@
               approvalInfo?.approvalStatus === ProcessStatusEnum.APPROVING &&
               (isApprover || canCancelApply || canCancelApproval)
             "
-            class="sticky bottom-0 border-t border-[var(--text-n8)] bg-[var(--text-n10)] p-[16px]"
+            class="sticky bottom-0 flex max-h-full flex-col border-t border-[var(--text-n8)] bg-[var(--text-n10)] p-[16px]"
           >
             <template v-if="isApprover">
               <div class="flex items-center gap-[4px]">
@@ -60,8 +60,9 @@
                 v-model:file-list="fileList"
                 :required="approvalConfig?.requireComment"
                 :name="t('crm.approval.opinion')"
+                class="min-h-0 flex-1"
               />
-              <div class="mt-[12px] flex gap-[12px]">
+              <div class="mt-[12px] flex shrink-0 gap-[12px]">
                 <n-button type="primary" class="flex-1" :loading="approvalLoading" @click="handleApprove">
                   {{ t('common.approve') }}
                 </n-button>
@@ -236,11 +237,17 @@
 
   const props = defineProps<{
     sourceId: string;
-    formKey: FormDesignKeyEnum;
+    formKey: FormDesignKeyEnum | string;
     refreshKey?: number;
     layout?: 'horizontal' | 'vertical';
     approvalStatus: ProcessStatusEnum;
   }>();
+  const approvalStandardFormKeys = new Set<string>([
+    FormDesignKeyEnum.OPPORTUNITY_QUOTATION,
+    FormDesignKeyEnum.CONTRACT,
+    FormDesignKeyEnum.ORDER,
+    FormDesignKeyEnum.INVOICE,
+  ]);
   const emit = defineEmits<{
     (
       e: 'descriptionInit',
@@ -416,13 +423,6 @@
       );
     }
   });
-  const moduleKeyMap: Partial<Record<FormDesignKeyEnum, string>> = {
-    [FormDesignKeyEnum.CONTACT]: 'CONTRACT_INDEX',
-    [FormDesignKeyEnum.INVOICE]: 'CONTRACT_INVOICE',
-    [FormDesignKeyEnum.OPPORTUNITY_QUOTATION]: 'OPPORTUNITY_QUOTATION',
-    [FormDesignKeyEnum.ORDER]: 'ORDER_INDEX',
-  };
-
   const noApproval = ref(false);
   async function initApprovalDetail() {
     try {
@@ -454,7 +454,6 @@
         attachmentIds: fileList.value.map((e) => e.id),
         approverId: currentTaskNode.value.approverId,
         comment: approvalOpinion.value,
-        module: moduleKeyMap[props.formKey]!,
       });
       message.success(t('common.approved'));
       initApprovalDetail();
@@ -508,7 +507,6 @@
                 attachmentIds: fileList.value.map((e) => e.id),
                 approverId: currentTaskNode.value.approverId,
                 comment: approvalOpinion.value,
-                module: moduleKeyMap[props.formKey]!,
               });
               message.success(t('common.rejected'));
               initApprovalDetail();
@@ -536,6 +534,22 @@
   });
   const addSignFormRef = ref<FormInst>();
 
+  function resetAddSignForm() {
+    addSignForm.value = {
+      type: 'BEFORE',
+      reviewer: undefined,
+      reason: '',
+      fileList: [],
+    };
+    addSignFormRef.value?.restoreValidation();
+  }
+
+  watch(addSignModalVisible, (visible) => {
+    if (!visible) {
+      resetAddSignForm();
+    }
+  });
+
   function handleAddSign() {
     addSignFormRef.value?.validate(async (errors) => {
       if (!errors && currentApprovalNode.value && currentTaskNode.value) {
@@ -550,20 +564,14 @@
                   nodeId: currentApprovalNode.value.nodeId,
                   instanceId: approvalInfo.value?.id || '',
                   approverId: currentTaskNode.value?.approverId || '',
+                  customFormId: approvalStandardFormKeys.has(props.formKey) ? undefined : props.formKey,
                   comment: addSignForm.value.reason,
                   attachmentIds: addSignForm.value.fileList.map((e) => e.id),
                   type: addSignForm.value.type,
-                  module: moduleKeyMap[props.formKey]!,
                   signApprover: addSignForm.value.reviewer?.[0] || '',
                 });
                 addSignModalVisible.value = false;
                 message.success(t('crm.approval.addSignSuccess'));
-                addSignForm.value = {
-                  type: 'BEFORE',
-                  reviewer: undefined,
-                  reason: '',
-                  fileList: [],
-                };
                 initApprovalDetail();
                 emit('refresh');
               } catch (error) {
@@ -599,6 +607,21 @@
   });
   const fallbackFormRef = ref<FormInst>();
 
+  function resetFallbackForm() {
+    fallbackForm.value = {
+      node: undefined,
+      reason: '',
+      fileList: [],
+    };
+    fallbackFormRef.value?.restoreValidation();
+  }
+
+  watch(fallbackModalVisible, (visible) => {
+    if (!visible) {
+      resetFallbackForm();
+    }
+  });
+
   function handleFallback() {
     fallbackFormRef.value?.validate(async (errors) => {
       if (!errors && currentApprovalNode.value && currentTaskNode.value) {
@@ -615,17 +638,11 @@
                   approverId: currentTaskNode.value?.approverId || '',
                   comment: fallbackForm.value.reason,
                   attachmentIds: fallbackForm.value.fileList.map((e) => e.id),
-                  module: moduleKeyMap[props.formKey]!,
                   returnToNodeId: fallbackForm.value.node || '',
                 });
                 fallbackModalVisible.value = false;
                 message.success(t('crm.approval.fallbackSuccess'));
                 initApprovalDetail();
-                fallbackForm.value = {
-                  node: undefined,
-                  reason: '',
-                  fileList: [],
-                };
                 emit('refresh');
               } catch (error) {
                 // eslint-disable-next-line no-console

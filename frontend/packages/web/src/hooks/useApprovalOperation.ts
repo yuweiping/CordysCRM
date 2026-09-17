@@ -1,4 +1,4 @@
-import { type Ref, ref } from 'vue';
+import { type MaybeRef, type Ref, ref, unref } from 'vue';
 
 import { FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
 import { ProcessStatusEnum } from '@lib/shared/enums/process';
@@ -16,10 +16,11 @@ export type ApprovalConfigType =
   | FormDesignKeyEnum.CONTRACT
   | FormDesignKeyEnum.INVOICE
   | FormDesignKeyEnum.ORDER
-  | FormDesignKeyEnum.OPPORTUNITY_QUOTATION;
+  | FormDesignKeyEnum.OPPORTUNITY_QUOTATION
+  | string;
 
 export interface UseApprovalOperationOptions<Row extends Record<string, any>> {
-  formType: ApprovalConfigType;
+  formType: MaybeRef<ApprovalConfigType>;
   dataActionMap: Record<string, ActionsItem> | ((row: Row) => Record<string, ActionsItem>);
   isDetail?: boolean;
   maxVisibleActions?: number;
@@ -31,6 +32,7 @@ export interface UseApprovalOperationOptions<Row extends Record<string, any>> {
   };
   specialActionFilter?: (row: Row, actionKeys: string[]) => string[];
   shouldUseRolePermissionOnly?: (row: Row) => boolean; // 应该回退成“只按角色权限”处理，例如报价单作废状态下，但是审批状态还是审批中，此刻按照角色权限处理只展示删除
+  ignoreRolePermissionCheck?: boolean; // 仅按审批状态权限判断，不再叠加系统角色权限。例如自定义表单数据。
 }
 
 function buildStatusPermissionMap(statusPermissions: StatusPermissions[]) {
@@ -64,6 +66,7 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
   const createExecute = ref(false);
   const updateExecute = ref(false);
   const deleteExecute = ref(false);
+  let approvalPermissionRequestToken = 0;
 
   function getApprovalStatus(row: Row) {
     if (!row) {
@@ -78,6 +81,10 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
 
   function getDataActionMap(row: Row) {
     return typeof options.dataActionMap === 'function' ? options.dataActionMap(row) : options.dataActionMap;
+  }
+
+  function hasRolePermission(permissions: string[]) {
+    return options.ignoreRolePermissionCheck || hasAnyPermission(permissions);
   }
 
   function isApplicant(row: Row) {
@@ -186,7 +193,7 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
           return false;
         }
 
-        return !action.permission?.length || hasAnyPermission(action.permission);
+        return !action.permission?.length || hasRolePermission(action.permission);
       });
     }
 
@@ -197,7 +204,7 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
 
       return (
         action.permission.some((permissionId) => currentStatusPermissions.has(permissionId)) &&
-        hasAnyPermission(action.permission)
+        hasRolePermission(action.permission)
       );
     });
   }
@@ -210,7 +217,7 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
         return false;
       }
 
-      return !action.permission?.length || hasAnyPermission(action.permission);
+      return !action.permission?.length || hasRolePermission(action.permission);
     });
   }
 
@@ -260,7 +267,7 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
   }
 
   function getApprovalActionTip(permissions: string[], tipKey: string) {
-    if (!enableApproval.value || !approvalPermissionsDetail.value || !hasAnyPermission(permissions)) {
+    if (!enableApproval.value || !approvalPermissionsDetail.value || !hasRolePermission(permissions)) {
       return '';
     }
 
@@ -281,19 +288,19 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
       return false;
     }
 
-    const hasRolePermission = hasAnyPermission(permissions);
+    const hasCurrentRolePermission = hasRolePermission(permissions);
 
     if (!enableApproval.value || shouldUseRolePermissionOnly?.(row)) {
-      return hasRolePermission;
+      return hasCurrentRolePermission;
     }
 
     const currentStatusPermissions = statusPermissionMap.value.get(getApprovalStatus(row));
 
     if (!currentStatusPermissions) {
-      return hasRolePermission;
+      return hasCurrentRolePermission;
     }
 
-    return hasStatusPermissions(row, permissions) && hasRolePermission;
+    return hasStatusPermissions(row, permissions) && hasCurrentRolePermission;
   }
 
   function splitActions(actions: ActionsItem[]) {
@@ -344,9 +351,13 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
     return splitActions(resolveRowActions(row));
   }
 
-  async function initApprovalPermission() {
+  async function initApprovalPermission(forceRefresh = false) {
+    const requestToken = ++approvalPermissionRequestToken;
     try {
-      const result = await loadApprovalConfig(options.formType);
+      const result = await loadApprovalConfig(unref(options.formType), forceRefresh);
+      if (requestToken !== approvalPermissionRequestToken) {
+        return;
+      }
 
       if (result) {
         approvalPermissionsDetail.value = result;
@@ -361,11 +372,18 @@ export default function useApprovalOperation<Row extends Record<string, any>>(
         createExecute.value = false;
         updateExecute.value = false;
         deleteExecute.value = false;
+        statusPermissionMap.value = new Map();
       }
     } catch (error) {
+      if (requestToken !== approvalPermissionRequestToken) {
+        return;
+      }
+      approvalPermissionsDetail.value = null;
+      enableApproval.value = false;
       createExecute.value = false;
       updateExecute.value = false;
       deleteExecute.value = false;
+      statusPermissionMap.value = new Map();
       // eslint-disable-next-line no-console
       console.log(error);
     }

@@ -67,6 +67,63 @@
             />
           </n-button>
         </n-dropdown>
+        <n-divider vertical class="!mx-[12px]" />
+        <n-popover v-model:show="modelPopoverShow" trigger="click" placement="top-start" :show-arrow="false">
+          <template #trigger>
+            <n-button class="ai-chat-model-button" :class="{ 'ai-chat-model-button--active': modelPopoverShow }" text>
+              <CrmIcon type="iconicon_star1" :size="16" />
+              <span class="max-w-[160px] truncate leading-[20px]">{{ selectedModel?.name || t('log.model') }}</span>
+              <CrmIcon
+                :type="modelPopoverShow ? 'iconicon_chevron_up' : 'iconicon_chevron_down'"
+                :size="16"
+                color="var(--text-n4)"
+              />
+            </n-button>
+          </template>
+
+          <div class="max-h-[320px] w-[260px]">
+            <div class="mb-[8px]">
+              <n-radio-group v-model:value="activeModelSource" class="flex" name="aiChatModelSource" size="small">
+                <n-radio-button
+                  v-for="e in modelSourceList"
+                  :key="e.value"
+                  class="flex-1 text-center"
+                  :value="e.value"
+                  :label="e.label"
+                />
+              </n-radio-group>
+            </div>
+            <n-spin :show="modelOptionsLoading">
+              <n-scrollbar class="max-h-[250px]">
+                <n-tooltip
+                  v-for="model in activeModelOptions"
+                  :key="model.id"
+                  :delay="300"
+                  trigger="hover"
+                  placement="top"
+                >
+                  <template #trigger>
+                    <button
+                      type="button"
+                      class="block h-[28px] w-full cursor-pointer overflow-hidden truncate rounded-[3px] border-0 bg-transparent px-[8px] text-left hover:bg-[var(--primary-7)] hover:text-[var(--primary-8)]"
+                      :class="{ 'bg-[var(--primary-7)] text-[var(--primary-8)]': selectedModel?.id === model.id }"
+                      @click="handleModelSelect(model)"
+                    >
+                      {{ model.name }}
+                    </button>
+                  </template>
+                  {{ model.name }}
+                </n-tooltip>
+                <n-empty
+                  v-if="!modelOptionsLoading && activeModelOptions.length === 0"
+                  :show-icon="false"
+                  :description="t('aiChat.noModel')"
+                  class="py-[12px]"
+                />
+              </n-scrollbar>
+            </n-spin>
+          </div>
+        </n-popover>
       </div>
 
       <n-button v-if="canStop" circle size="small" type="primary" @click="runtime.stop()">
@@ -97,9 +154,29 @@
 
 <script setup lang="ts">
   import { computed, h, nextTick, onMounted, ref, watch } from 'vue';
-  import { type DropdownOption, NButton, NDivider, NDropdown, NTooltip, useMessage } from 'naive-ui';
+  import {
+    type DropdownOption,
+    NButton,
+    NDivider,
+    NDropdown,
+    NEmpty,
+    NPopover,
+    NRadioButton,
+    NRadioGroup,
+    NScrollbar,
+    NSpin,
+    NTooltip,
+    useMessage,
+  } from 'naive-ui';
 
-  import type { AiChatAttachment, AiChatMcp, AiComposerSubmitPayload, AiFileKind } from '@lib/shared/ai-chat';
+  import type {
+    AiChatAttachment,
+    AiChatMcp,
+    AiChatModel,
+    AiChatModelSource,
+    AiComposerSubmitPayload,
+    AiFileKind,
+  } from '@lib/shared/ai-chat';
   import { getMatchedMcp, useAiChatRuntime } from '@lib/shared/ai-chat';
   import { PreviewPictureUrl } from '@lib/shared/api/requrls/system/module';
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -110,6 +187,8 @@
 
   import { deleteAgentMcpConfig, importAgentMcpConfig, uploadAgentChatFile } from '@/api/modules';
   import useModal from '@/hooks/useModal';
+
+  import useAiModelOptions from '../composables/useAiModelOptions';
 
   const props = withDefaults(
     defineProps<{
@@ -144,6 +223,7 @@
   const Message = useMessage();
   const { openModal } = useModal();
   const runtime = useAiChatRuntime();
+  const { modelOptions, selectedModel, loading: modelOptionsLoading, selectModel } = useAiModelOptions();
 
   const editorRef = ref<HTMLElement | null>(null);
   const inputValue = ref(props.initialContent || runtime.state.input.value);
@@ -166,6 +246,23 @@
   const mcpDropdownKey = ref(0);
   const shouldReopenMcpDropdown = ref(false);
   const isComposing = ref(false);
+
+  const modelPopoverShow = ref(false);
+  const activeModelSource = ref<AiChatModelSource>('personal');
+  const modelSourceList = computed(() => [
+    {
+      label: t('aiChat.personalModel'),
+      value: 'personal',
+    },
+    {
+      label: t('aiChat.systemModel'),
+      value: 'system',
+    },
+  ]);
+
+  const activeModelOptions = computed(() =>
+    modelOptions.value.filter((model) => model.source === activeModelSource.value)
+  );
 
   function focusInput(): void {
     nextTick(() => {
@@ -267,14 +364,21 @@
     return props.mcpOptions.filter((mcp) => ids.has(mcp.id));
   }
 
-  function getSubmitPayload(): AiComposerSubmitPayload {
+  function getSubmitPayload(model: AiChatModel | null = selectedModel.value): AiComposerSubmitPayload {
     return {
       content: inputValue.value,
       attachments: [...submitAttachments.value],
       options: {
+        model: model ?? undefined,
         mcps: getEditorMcps(),
       },
     };
+  }
+
+  function handleModelSelect(model: AiChatModel): void {
+    selectModel(model);
+    modelPopoverShow.value = false;
+    emit('change', getSubmitPayload(model));
   }
 
   function syncEditorValue(): void {
@@ -581,6 +685,14 @@
         mcpDropdownShow.value = true;
       }
     }
+  );
+
+  watch(
+    () => selectedModel.value,
+    (model) => {
+      activeModelSource.value = model?.source ?? 'personal';
+    },
+    { immediate: true }
   );
 
   function removeAttachment(attachmentId: string): void {
@@ -954,7 +1066,8 @@
     fill: currentcolor;
   }
   .ai-chat-tool-button,
-  .ai-chat-mcp-button {
+  .ai-chat-mcp-button,
+  .ai-chat-model-button {
     padding: 2px 4px;
     height: 26px !important;
     border-radius: 4px;
@@ -965,6 +1078,12 @@
     }
     :deep(.n-button__content) {
       gap: 4px;
+    }
+  }
+  .ai-chat-model-button {
+    :deep(.n-button__content) {
+      overflow: visible;
+      min-width: 0;
     }
   }
   .ai-chat-composer__drag-mask {

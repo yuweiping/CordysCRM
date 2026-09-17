@@ -1293,7 +1293,12 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
   async function initFormConfig() {
     try {
       loading.value = true;
-      const api = props.isDatasource ? getDatasourceFieldConfig : getFormConfigApiMap[props.formKey.value];
+      const isCustomFormApprovalDetail =
+        props.formKey.value === FormDesignKeyEnum.CUSTOM_FORM && Boolean(props.otherSaveParams?.value?.approvalTaskId);
+      const api =
+        props.isDatasource || isCustomFormApprovalDetail
+          ? getDatasourceFieldConfig
+          : getFormConfigApiMap[props.formKey.value];
       if (props.formKey.value === FormDesignKeyEnum.CUSTOM_FORM) {
         const res = await api(props.customFormId?.value ?? '');
         moduleFormConfig.value = cloneDeep(res);
@@ -1523,7 +1528,7 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
         ...props.otherSaveParams?.value,
         ...extraParams,
         moduleFields: [],
-        customFormId: customFormConfig.value?.id,
+        customFormId: customFormConfig.value?.id ?? props.customFormId?.value,
         id: props.sourceId?.value,
       };
       fieldList.value.forEach((item) => {

@@ -75,22 +75,27 @@
                       scene="approvalRecord"
                       class="font-normal"
                     />
-                    <n-popover v-if="node.backNode" trigger="click" placement="left-start">
+                    <n-popover
+                      v-if="node.backNode"
+                      trigger="click"
+                      placement="left-start"
+                      class="flex max-h-[70vh]"
+                      content-class="relative"
+                    >
                       <template #trigger>
-                        <CrmIcon
-                          type="iconicon_info_circle_filled"
-                          color="var(--warning-yellow)"
-                          :size="16"
-                          @click.stop
-                        />
+                        <CrmTag type="info" theme="outline" tooltipDisabled @click.stop>
+                          {{ t('common.COUNTERSIGNATURE') }}
+                        </CrmTag>
                       </template>
-                      <div class="flex max-w-[400px] flex-col items-center gap-[8px]">
+                      <div class="flex h-full max-w-[400px] flex-col items-center gap-[8px] overflow-hidden">
                         <div class="mr-auto flex items-center gap-[8px]">
                           <CrmIcon type="iconicon_info_circle_filled" color="var(--warning-yellow)" :size="16" />
                           <div>{{ t('crm.approval.fallbackReason') }}</div>
                         </div>
-                        <div class="w-full text-[var(--text-n4)]">{{ node.backReason }}</div>
-                        <n-scrollbar :content-style="{ maxHeight: '400px' }">
+                        <n-scrollbar class="mb-[8px] max-h-[20vh]">
+                          <div class="w-full text-[var(--text-n4)]">{{ node.backReason }}</div>
+                        </n-scrollbar>
+                        <n-scrollbar :content-style="{ maxHeight: 'calc(100% - 20vh)' }" class="flex-1">
                           <CrmFileList
                             v-if="node.backAttachments?.length > 0"
                             :files="node.backAttachments"
@@ -137,19 +142,27 @@
                           </template>
                           {{ task.approver }}
                         </n-tooltip>
-                        <n-popover v-if="task.sign" trigger="click" placement="left-start">
+                        <n-popover
+                          v-if="task.sign"
+                          trigger="click"
+                          placement="left-start"
+                          class="flex max-h-[70vh]"
+                          content-class="relative"
+                        >
                           <template #trigger>
                             <CrmTag type="info" theme="outline" tooltipDisabled @click.stop>
                               {{ t('common.COUNTERSIGNATURE') }}
                             </CrmTag>
                           </template>
-                          <div class="max-w-[400px] flex-col items-center gap-[8px]">
+                          <div class="flex h-full max-w-[400px] flex-col items-center gap-[8px] overflow-hidden">
                             <div class="mr-auto flex items-center gap-[8px]">
                               <CrmIcon type="iconicon_info_circle_filled" color="var(--warning-yellow)" :size="16" />
                               <div>{{ t('crm.approval.addSign') }}</div>
                             </div>
-                            <div class="w-full text-[var(--text-n4)]">{{ task.signComment }}</div>
-                            <n-scrollbar :content-style="{ maxHeight: '400px' }">
+                            <n-scrollbar class="mb-[8px] max-h-[20vh]">
+                              <div class="w-full text-[var(--text-n4)]">{{ task.signComment }}</div>
+                            </n-scrollbar>
+                            <n-scrollbar :content-style="{ maxHeight: 'calc(100% - 20vh)' }" class="flex-1">
                               <CrmFileList
                                 v-if="task.signAttachments?.length > 0"
                                 :files="task.signAttachments"

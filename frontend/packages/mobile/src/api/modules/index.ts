@@ -437,6 +437,8 @@ export const { getAgentOptions } = agentApi;
 
 export const {
   streamAgentChat,
+  reconnectAgentChat,
+  getAgentChatStatus,
   cancelAgentChat,
   confirmAgentChat,
   likeAgentChat,
@@ -484,6 +486,7 @@ export const {
   getProcessedApprovalList,
   getInitiatedApprovalList,
   getCcApprovalList,
+  getApprovalFlowFormOptions,
   getApprovalConfigDetail,
   agreeApproval,
   rejectApproval,

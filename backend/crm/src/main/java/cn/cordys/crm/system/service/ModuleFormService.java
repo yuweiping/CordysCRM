@@ -18,6 +18,7 @@ import cn.cordys.common.resolver.field.AbstractModuleFieldResolver;
 import cn.cordys.common.resolver.field.ModuleFieldResolverFactory;
 import cn.cordys.common.resolver.field.TextMultipleResolver;
 import cn.cordys.common.resolver.field.TextResolver;
+import cn.cordys.common.statistic.StatisticConditionConverter;
 import cn.cordys.common.service.BaseResourceFieldService;
 import cn.cordys.common.service.FieldSourceServiceProvider;
 import cn.cordys.common.uid.IDGenerator;
@@ -27,14 +28,20 @@ import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.constants.BusinessTitleConstants;
 import cn.cordys.crm.contract.constants.SystemFieldConstants;
+import cn.cordys.crm.form.domain.CustomForm;
 import cn.cordys.crm.form.service.CustomFormDataFieldService;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import cn.cordys.crm.system.constants.FieldType;
+import cn.cordys.crm.system.constants.InternalDetailTab;
+import cn.cordys.crm.system.constants.StatisticDataScope;
+import cn.cordys.crm.system.constants.StatisticType;
+import cn.cordys.crm.system.constants.StatisticUpdateScope;
 import cn.cordys.crm.system.domain.*;
 import cn.cordys.crm.system.dto.TransformSourceApplyDTO;
 import cn.cordys.crm.system.dto.field.*;
 import cn.cordys.crm.system.dto.field.base.*;
 import cn.cordys.crm.system.dto.form.FormLinkFill;
+import cn.cordys.crm.system.dto.form.FormDetailTab;
 import cn.cordys.crm.system.dto.form.FormProp;
 import cn.cordys.crm.system.dto.form.base.LinkField;
 import cn.cordys.crm.system.dto.form.base.LinkScenario;
@@ -42,6 +49,7 @@ import cn.cordys.crm.system.dto.request.ModuleFormSaveRequest;
 import cn.cordys.crm.system.dto.response.FormPropLogDTO;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.dto.response.ModuleFormConfigLogDTO;
+import cn.cordys.crm.system.dto.response.RelatedFormDTO;
 import cn.cordys.crm.system.mapper.ExtModuleFieldMapper;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -59,6 +67,8 @@ import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.data.util.ReflectionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -120,6 +130,8 @@ public class ModuleFormService {
     @Resource
     private BaseMapper<ModuleFormBlob> moduleFormBlobMapper;
     @Resource
+    private BaseMapper<CustomForm> customFormMapper;
+    @Resource
     private BaseMapper<ModuleField> moduleFieldMapper;
     @Resource
     private BaseMapper<ModuleFieldBlob> moduleFieldBlobMapper;
@@ -138,6 +150,12 @@ public class ModuleFormService {
     private FieldSourceServiceProvider fieldSourceServiceProvider;
     @Resource
     private ModuleFieldService moduleFieldService;
+    /**
+     * 统计字段刷新需要读取表单配置, 延迟注入避免与表单数据读写形成构造期循环依赖。
+     */
+    @Lazy
+    @Resource
+    private StatisticFieldService statisticFieldService;
     private static final String REF_SYMBOL = "🔗";
 
     /**
@@ -153,7 +171,10 @@ public class ModuleFormService {
         ModuleForm form = getModuleFormByKey(formKey, currentOrgId);
 
         ModuleFormBlob formBlob = moduleFormBlobMapper.selectByPrimaryKey(form.getId());
-        formConfig.setFormProp(JSON.parseObject(formBlob.getProp(), FormProp.class));
+        FormProp formProp = JSON.parseObject(formBlob.getProp(), FormProp.class);
+        // 配置中持久化的是关联 ID，读取时以当前表单、字段名称刷新 Option 回显。
+        resolveDetailTabs(form.getFormKey(), currentOrgId, formProp);
+        formConfig.setFormProp(formProp);
         // set fields
         formConfig.setFields(getAllFields(form.getId()));
         return formConfig;
@@ -208,7 +229,6 @@ public class ModuleFormService {
         List<BaseField> flattenFields = flattenFormAllFieldsWithSubId(config);
         // 设置业务字段参数
         businessModuleFormConfig.setFields(flattenFields.stream()
-                .filter(BaseField::canDisplay)
                 .filter(f -> StringUtils.isEmpty(f.getResourceFieldId()))
                 .peek(this::setFieldBusinessParam)
                 .collect(Collectors.toList())
@@ -241,6 +261,10 @@ public class ModuleFormService {
     public ModuleFormConfigDTO saveWithoutLog(ModuleFormSaveRequest saveParam, String currentUserId, String currentOrgId) {
         // 处理表单
         ModuleForm form = getModuleFormByKey(saveParam.getFormKey(), currentOrgId);
+        if (saveParam.getFormProp() != null) {
+            // 在更新表单及字段前完成校验，失败时不产生任何部分写入。
+            validateAndResolveDetailTabs(saveParam.getFormKey(), currentOrgId, saveParam.getFormProp());
+        }
         form.setUpdateUser(currentUserId);
         form.setUpdateTime(System.currentTimeMillis());
         moduleFormMapper.updateById(form);
@@ -254,12 +278,18 @@ public class ModuleFormService {
 
         if (saveParam.getFields() != null) {
             // 字段合规校验
-            preCheckForFieldSave(saveParam.getFormKey(), saveParam.getFields());
+            preCheckForFieldSave(saveParam.getFormKey(), saveParam.getFields(), currentOrgId);
 
             // 处理字段 (删除&&新增)
             LambdaQueryWrapper<ModuleField> fieldWrapper = new LambdaQueryWrapper<>();
             fieldWrapper.eq(ModuleField::getFormId, form.getId());
             List<ModuleField> fields = moduleFieldMapper.selectListByLambda(fieldWrapper);
+
+            // 统计字段刷新要对比新旧配置, 旧配置必须在下面删除字段之前取出。
+            // 只有新旧任一侧存在统计字段时才读完整字段属性, 避免普通保存多出两次查询。
+            boolean statisticFieldInvolved = hasStatisticField(fields, saveParam.getFields());
+            List<BaseField> originFields = statisticFieldInvolved ? getAllFields(form.getId()) : List.of();
+
             // 重置流水号
             resetSerial(fields, saveParam.getFields(), saveParam.getFormKey(), currentOrgId);
             if (CollectionUtils.isNotEmpty(fields)) {
@@ -269,6 +299,12 @@ public class ModuleFormService {
             }
             if (CollectionUtils.isNotEmpty(saveParam.getFields())) {
                 saveFields(saveParam.getFields(), form.getId(), currentUserId);
+            }
+
+            // 统计字段刷新: 由 StatisticFieldService 对比新旧配置, 配置没改就不刷新。
+            // 必须在事务提交后触发, 否则异步线程读到的是尚未提交的旧配置。
+            if (statisticFieldInvolved) {
+                triggerStatisticRefresh(saveParam.getFormKey(), originFields, saveParam.getFields(), currentOrgId);
             }
         }
 
@@ -427,6 +463,390 @@ public class ModuleFormService {
         }
         logDTO.getFormProp().setLinkProp(parseLinkFieldMap);
         return logDTO;
+    }
+
+    /**
+     * 获取详情页内置标签及包含当前表单数据源字段的表单。
+     *
+     * <p>除枚举维护的内置标签外，动态关联表单必须至少存在一个指向当前表单的数据源字段。查询范围限定在
+     * 当前组织，避免跨组织表单名称和字段配置泄露。查询时先批量筛选数据源单选字段及其属性，
+     * 再按命中的表单 ID 查询表单，避免逐表单加载全部字段产生 N+1 查询。无直接字段关联的内置标签
+     * 从 {@link InternalDetailTab} 补充，并通过 internalKey 标识。</p>
+     *
+     * @param formKey 当前详情表单 Key；自定义表单使用表单 ID
+     * @param organizationId 当前组织 ID
+     * @return 内置标签、关联表单及其匹配的数据源字段
+     */
+    public List<RelatedFormDTO> getRelatedForms(String formKey, String organizationId) {
+        String sourceType = getFormSourceType(formKey);
+
+        // 关联字段只允许数据源单选类型，先从字段主表缩小需要解析的属性范围。
+        List<ModuleField> datasourceFields = moduleFieldMapper.selectListByLambda(new LambdaQueryWrapper<ModuleField>()
+                .eq(ModuleField::getType, FieldType.DATA_SOURCE.name()));
+        if (CollectionUtils.isEmpty(datasourceFields)) {
+            return getInternalRelatedForms(formKey, new HashMap<>());
+        }
+
+        Map<String, ModuleField> datasourceFieldMap = datasourceFields.stream()
+                .collect(Collectors.toMap(ModuleField::getId, Function.identity()));
+        List<ModuleFieldBlob> fieldBlobs = moduleFieldBlobMapper.selectListByLambda(new LambdaQueryWrapper<ModuleFieldBlob>()
+                .in(ModuleFieldBlob::getId, new ArrayList<>(datasourceFieldMap.keySet())));
+
+        // sourceType 存储在字段属性表中；一次解析所有候选属性，记录真正指向当前表单的字段。
+        Set<String> relatedFieldIds = new HashSet<>();
+        for (ModuleFieldBlob fieldBlob : fieldBlobs) {
+            if (StringUtils.isBlank(fieldBlob.getProp())) {
+                continue;
+            }
+            BaseField field = JSON.parseObject(fieldBlob.getProp(), BaseField.class);
+            if (isRelatedField(field, sourceType)) {
+                relatedFieldIds.add(fieldBlob.getId());
+            }
+        }
+        Set<String> relatedFormIds = relatedFieldIds.stream()
+                .map(datasourceFieldMap::get)
+                .filter(Objects::nonNull)
+                .map(ModuleField::getFormId)
+                .collect(Collectors.toSet());
+        List<ModuleForm> relatedForms = relatedFormIds.isEmpty() ? List.of()
+                : moduleFormMapper.selectListByLambda(new LambdaQueryWrapper<ModuleForm>()
+                        .in(ModuleForm::getId, new ArrayList<>(relatedFormIds))
+                        .eq(ModuleForm::getOrganizationId, organizationId));
+        Map<String, String> formNameMap = buildFormNameMap(relatedForms);
+        Map<String, List<OptionDTO>> sourceTypeFieldMap = datasourceFields.stream()
+                .filter(field -> relatedFieldIds.contains(field.getId()))
+                .sorted(Comparator.comparing(ModuleField::getPos, Comparator.nullsLast(Long::compareTo)))
+                .collect(Collectors.groupingBy(ModuleField::getFormId,
+                        Collectors.mapping(field -> new OptionDTO(field.getId(), field.getName()), Collectors.toList())));
+
+        Map<String, RelatedFormDTO> relatedFormMap = relatedForms.stream()
+                .collect(Collectors.toMap(ModuleForm::getFormKey, form -> new RelatedFormDTO(
+                        form.getFormKey(), formNameMap.get(form.getFormKey()),
+                        sourceTypeFieldMap.getOrDefault(form.getId(), List.of()), null)));
+        List<RelatedFormDTO> result = getInternalRelatedForms(formKey, relatedFormMap);
+        result.addAll(relatedFormMap.values().stream()
+                .sorted(Comparator.comparing(RelatedFormDTO::getName, Comparator.nullsLast(String::compareTo)))
+                .toList());
+        // 自定义表单删除后可能残留 sys_module_form 配置，此时无法解析名称，不应继续提供给前端选择。
+        return result.stream()
+                .filter(item -> StringUtils.isNotBlank(item.getName()))
+                .toList();
+    }
+
+    /**
+     * 按枚举顺序组装内置标签，并从动态关联表单中移除已被内置标签覆盖的项。
+     */
+    private List<RelatedFormDTO> getInternalRelatedForms(String formKey,
+                                                         Map<String, RelatedFormDTO> relatedFormMap) {
+        List<RelatedFormDTO> internalForms = new ArrayList<>();
+        Arrays.stream(InternalDetailTab.values())
+                .filter(tab -> tab.getFormKey().equals(formKey))
+                .forEach(tab -> {
+                    RelatedFormDTO relatedForm = tab.getRelatedFormKey() == null
+                            ? null : relatedFormMap.remove(tab.getRelatedFormKey());
+                    List<OptionDTO> fields = relatedForm == null ? List.of() : relatedForm.getSourceTypeFields();
+                    String id = tab.getRelatedFormKey() == null ? tab.name() : tab.getRelatedFormKey();
+                    // 关联表单下拉项的名称必须使用表单名称；动态关联表单缺失时用标准表单翻译兜底，
+                    // 只有没有关联表单的独立内置标签才使用标签默认名称。
+                    String name = relatedForm != null
+                            ? relatedForm.getName()
+                            : tab.getRelatedFormKey() == null
+                            ? Translator.get(tab.getLabelKey())
+                            : Translator.get(tab.getRelatedFormKey(), tab.getRelatedFormKey());
+                    internalForms.add(new RelatedFormDTO(id, name,
+                            fields, tab.name()));
+                });
+        return internalForms;
+    }
+
+    /**
+     * 校验标签约束，并使用服务端名称刷新关联表单、关联字段的回显值。
+     *
+     * <p>该方法会原地规范化 {@code formProp.detailTabs}：去除名称两端空白、补全默认启用状态、
+     * 刷新 Option 名称，并自动补回请求中缺失的系统标签，以兼容尚未提交新属性的旧客户端。</p>
+     *
+     * @param formKey 标签所属表单 Key
+     * @param organizationId 当前组织 ID
+     * @param formProp 待保存的表单属性
+     */
+    public void validateAndResolveDetailTabs(String formKey, String organizationId, FormProp formProp) {
+        DetailTabResolveContext context = loadDetailTabResolveContext(formKey, organizationId, formProp.getDetailTabs());
+        List<FormDetailTab> tabs = new ArrayList<>();
+        if (CollectionUtils.isNotEmpty(formProp.getDetailTabs())) {
+            for (FormDetailTab tab : formProp.getDetailTabs()) {
+                tabs.add(resolveDetailTab(formKey, tab, true, context));
+            }
+        }
+        mergeInternalDetailTabs(tabs, context);
+
+        Set<String> names = new HashSet<>();
+        Set<String> relations = new HashSet<>();
+        Set<String> internalKeys = new HashSet<>();
+        for (FormDetailTab tab : tabs) {
+            String name = StringUtils.trim(tab.getName());
+            if (StringUtils.isBlank(name) || name.length() > 50) {
+                throw new GenericException(Translator.get("module.form.detail_tab.name.invalid"));
+            }
+            tab.setName(name);
+            if (!names.add(name)) {
+                throw new GenericException(Translator.get("module.form.detail_tab.name.repeat"));
+            }
+            if (StringUtils.isNotBlank(tab.getInternalKey()) && !internalKeys.add(tab.getInternalKey())) {
+                throw new GenericException(Translator.get("module.form.detail_tab.system.readonly"));
+            }
+            if (tab.getRelatedForm() != null && tab.getRelatedField() != null) {
+                String relationKey = tab.getRelatedForm().getIdAsString() + ":" + tab.getRelatedField().getIdAsString();
+                if (!relations.add(relationKey)) {
+                    throw new GenericException(Translator.get("module.form.detail_tab.relation.repeat"));
+                }
+            }
+        }
+        formProp.setDetailTabs(tabs);
+    }
+
+    public void resolveDetailTabs(String formKey, String organizationId, FormProp formProp) {
+        if (formProp == null) {
+            return;
+        }
+        DetailTabResolveContext context = loadDetailTabResolveContext(formKey, organizationId, formProp.getDetailTabs());
+        List<FormDetailTab> tabs = new ArrayList<>();
+        if (CollectionUtils.isNotEmpty(formProp.getDetailTabs())) {
+            for (FormDetailTab tab : formProp.getDetailTabs()) {
+                FormDetailTab resolved = resolveDetailTab(formKey, tab, false, context);
+                if (resolved != null) {
+                    tabs.add(resolved);
+                }
+            }
+        }
+        mergeInternalDetailTabs(tabs, context);
+        formProp.setDetailTabs(tabs);
+    }
+
+    private FormDetailTab resolveDetailTab(String formKey, FormDetailTab tab, boolean strict,
+                                           DetailTabResolveContext context) {
+        if (tab == null) {
+            return invalidDetailTab(strict);
+        }
+
+        Optional<InternalDetailTab> internalTab = InternalDetailTab.findByInternalKey(formKey, tab.getInternalKey());
+        if (internalTab.isPresent()) {
+            return resolveInternalDetailTab(tab, internalTab.get(), strict, context);
+        }
+        if (StringUtils.isNotBlank(tab.getInternalKey())) {
+            return invalidInternalDetailTab(strict);
+        }
+
+        if (tab.getRelatedForm() == null || tab.getRelatedField() == null
+                || StringUtils.isBlank(tab.getRelatedForm().getIdAsString())
+                || StringUtils.isBlank(tab.getRelatedField().getIdAsString())) {
+            return invalidDetailTab(strict);
+        }
+
+        String relatedFormKey = tab.getRelatedForm().getIdAsString();
+        ModuleForm relatedForm = context.formMap().get(relatedFormKey);
+        if (relatedForm == null) {
+            return invalidDetailTab(strict);
+        }
+        ModuleField relatedField = context.fieldMap().get(tab.getRelatedField().getIdAsString());
+        if (relatedField == null || !Objects.equals(relatedField.getFormId(), relatedForm.getId())) {
+            return invalidDetailTab(strict);
+        }
+
+        tab.setRelatedForm(new OptionDTO(relatedFormKey, context.formNameMap().get(relatedFormKey)));
+        tab.setRelatedField(new OptionDTO(relatedField.getId(), relatedField.getName()));
+        tab.setEnable(tab.getEnable() == null || tab.getEnable());
+        tab.setInternalKey(null);
+        return tab;
+    }
+
+    private FormDetailTab resolveInternalDetailTab(FormDetailTab tab, InternalDetailTab internalTab, boolean strict,
+                                                   DetailTabResolveContext context) {
+        ModuleForm relatedForm = null;
+        ModuleField relatedField = null;
+        if (internalTab.getRelatedFormKey() != null) {
+            relatedForm = context.formMap().get(internalTab.getRelatedFormKey());
+            if (relatedForm == null) {
+                return invalidDetailTab(strict);
+            }
+        }
+        if (internalTab.getRelatedFieldInternalKey() != null) {
+            Map<String, ModuleField> fieldMap = context.internalKeyFieldMap().get(relatedForm.getId());
+            relatedField = MapUtils.isEmpty(fieldMap) ? null : fieldMap.get(internalTab.getRelatedFieldInternalKey());
+            if (relatedField == null) {
+                return invalidDetailTab(strict);
+            }
+        }
+
+        // 系统标签只允许改名；保存时关联表单、字段和启用状态必须与枚举定义一致。
+        if (strict && (!Objects.equals(getOptionId(tab.getRelatedForm()), internalTab.getRelatedFormKey())
+                || !Objects.equals(getOptionId(tab.getRelatedField()), relatedField == null ? null : relatedField.getId()))) {
+            throw new GenericException(Translator.get("module.form.detail_tab.system.readonly"));
+        }
+
+        tab.setRelatedForm(relatedForm == null ? null : new OptionDTO(relatedForm.getFormKey(),
+                context.formNameMap().get(relatedForm.getFormKey())));
+        tab.setRelatedField(relatedField == null ? null : new OptionDTO(relatedField.getId(), relatedField.getName()));
+        tab.setInternalKey(internalTab.name());
+        // 如果没有改过，则是默认的需要翻译的名字
+        tab.setName(Translator.get(tab.getName(), tab.getName()));
+        return tab;
+    }
+
+    private String getOptionId(OptionDTO option) {
+        return option == null ? null : option.getIdAsString();
+    }
+
+    private FormDetailTab invalidInternalDetailTab(boolean strict) {
+        if (strict) {
+            throw new GenericException(Translator.get("module.form.detail_tab.system.illegal"));
+        }
+        return null;
+    }
+
+    private FormDetailTab invalidDetailTab(boolean strict) {
+        // 保存时严格拒绝非法引用；读取历史配置时忽略已被删除的表单或字段，保证配置接口可用。
+        if (strict) {
+            throw new GenericException(Translator.get("module.form.detail_tab.relation.invalid"));
+        }
+        return null;
+    }
+
+    private void mergeInternalDetailTabs(List<FormDetailTab> tabs, DetailTabResolveContext context) {
+        // 缺失的系统标签始终补回，因此删除系统标签或旧客户端漏传 detailTabs 都不会造成数据丢失。
+        Set<String> configuredInternalKeys = tabs.stream()
+                .map(FormDetailTab::getInternalKey)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toSet());
+        for (InternalDetailTab internalTab : context.internalTabs()) {
+            if (configuredInternalKeys.contains(internalTab.name())) {
+                continue;
+            }
+            FormDetailTab tab = new FormDetailTab();
+            tab.setEnable(true);
+            tab.setInternalKey(internalTab.name());
+            FormDetailTab resolved = resolveInternalDetailTab(tab, internalTab, false, context);
+            // 这里初始化国际化的key
+            tab.setName(internalTab.getLabelKey());
+            if (resolved != null) {
+                tabs.add(tab);
+            }
+        }
+    }
+
+    /**
+     * 批量加载标签校验和回显所需数据，整个标签集合只访问一次表单、字段主表和字段属性表。
+     */
+    private DetailTabResolveContext loadDetailTabResolveContext(String formKey, String organizationId,
+                                                                List<FormDetailTab> configuredTabs) {
+        List<InternalDetailTab> internalTabs = Arrays.stream(InternalDetailTab.values())
+                .filter(internalTab -> internalTab.getFormKey().equals(formKey))
+                .toList();
+        Set<String> relatedFormKeys = internalTabs.stream()
+                .map(InternalDetailTab::getRelatedFormKey)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (CollectionUtils.isNotEmpty(configuredTabs)) {
+            configuredTabs.stream()
+                    .filter(Objects::nonNull)
+                    .map(FormDetailTab::getRelatedForm)
+                    .filter(Objects::nonNull)
+                    .map(OptionDTO::getIdAsString)
+                    .filter(StringUtils::isNotBlank)
+                    .forEach(relatedFormKeys::add);
+        }
+
+        if (relatedFormKeys.isEmpty()) {
+            return new DetailTabResolveContext(Map.of(), Map.of(), Map.of(), Map.of(), internalTabs);
+        }
+
+        List<ModuleForm> relatedForms = moduleFormMapper.selectListByLambda(new LambdaQueryWrapper<ModuleForm>()
+                .in(ModuleForm::getFormKey, new ArrayList<>(relatedFormKeys))
+                .eq(ModuleForm::getOrganizationId, organizationId));
+        Map<String, ModuleForm> formMap = relatedForms.stream()
+                .collect(Collectors.toMap(ModuleForm::getFormKey, Function.identity()));
+        if (relatedForms.isEmpty()) {
+            return new DetailTabResolveContext(formMap, Map.of(), Map.of(), Map.of(), internalTabs);
+        }
+
+        List<String> formIds = relatedForms.stream().map(ModuleForm::getId).toList();
+        List<ModuleField> datasourceFields = moduleFieldMapper.selectListByLambda(new LambdaQueryWrapper<ModuleField>()
+                .in(ModuleField::getFormId, formIds)
+                .eq(ModuleField::getType, FieldType.DATA_SOURCE.name()));
+        Map<String, ModuleField> datasourceFieldMap = datasourceFields.stream()
+                .collect(Collectors.toMap(ModuleField::getId, Function.identity()));
+
+        Map<String, ModuleField> fieldMap = new HashMap<>();
+        Map<String, Map<String, ModuleField>> internalKeyFieldMap = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(datasourceFields)) {
+            List<ModuleFieldBlob> fieldBlobs = moduleFieldBlobMapper.selectListByLambda(new LambdaQueryWrapper<ModuleFieldBlob>()
+                    .in(ModuleFieldBlob::getId, new ArrayList<>(datasourceFieldMap.keySet())));
+            String sourceType = getFormSourceType(formKey);
+            for (ModuleFieldBlob fieldBlob : fieldBlobs) {
+                if (StringUtils.isBlank(fieldBlob.getProp())) {
+                    continue;
+                }
+                BaseField fieldProp = JSON.parseObject(fieldBlob.getProp(), BaseField.class);
+                ModuleField field = datasourceFieldMap.get(fieldBlob.getId());
+                if (field != null && isRelatedField(fieldProp, sourceType)) {
+                    fieldMap.put(field.getId(), field);
+                    internalKeyFieldMap.computeIfAbsent(field.getFormId(), key -> new HashMap<>())
+                            .putIfAbsent(field.getInternalKey(), field);
+                }
+            }
+        }
+
+        Map<String, String> formNameMap = buildFormNameMap(relatedForms);
+        return new DetailTabResolveContext(formMap, fieldMap, internalKeyFieldMap, formNameMap, internalTabs);
+    }
+
+    private Map<String, String> buildFormNameMap(List<ModuleForm> forms) {
+        Set<String> customFormIds = forms.stream()
+                .map(ModuleForm::getFormKey)
+                .filter(key -> FormKey.ofKey(key) == null)
+                .collect(Collectors.toSet());
+        Map<String, String> formNameMap = customFormIds.isEmpty() ? new HashMap<>()
+                : customFormMapper.selectByIds(new ArrayList<>(customFormIds)).stream()
+                .collect(Collectors.toMap(CustomForm::getId, CustomForm::getName));
+        forms.stream()
+                .map(ModuleForm::getFormKey)
+                .filter(key -> FormKey.ofKey(key) != null)
+                .forEach(key -> formNameMap.put(key, Translator.get(key)));
+        return formNameMap;
+    }
+
+    private record DetailTabResolveContext(Map<String, ModuleForm> formMap,
+                                           Map<String, ModuleField> fieldMap,
+                                           Map<String, Map<String, ModuleField>> internalKeyFieldMap,
+                                           Map<String, String> formNameMap,
+                                           List<InternalDetailTab> internalTabs) {
+    }
+
+    private String getFormSourceType(String formKey) {
+        FormKey standardForm = FormKey.ofKey(formKey);
+        if (standardForm == null) {
+            // 自定义表单的数据源类型直接使用其表单 ID。
+            return formKey;
+        }
+        return switch (standardForm) {
+            case CUSTOMER -> FieldSourceType.CUSTOMER.name();
+            case CLUE -> FieldSourceType.CLUE.name();
+            case CONTACT -> FieldSourceType.CONTACT.name();
+            case OPPORTUNITY -> FieldSourceType.OPPORTUNITY.name();
+            case PRODUCT -> FieldSourceType.PRODUCT.name();
+            case PRICE -> FieldSourceType.PRICE.name();
+            case QUOTATION -> FieldSourceType.QUOTATION.name();
+            case CONTRACT -> FieldSourceType.CONTRACT.name();
+            case INVOICE -> FieldSourceType.INVOICE.name();
+            case CONTRACT_PAYMENT_PLAN -> FieldSourceType.PAYMENT_PLAN.name();
+            case CONTRACT_PAYMENT_RECORD -> FieldSourceType.CONTRACT_PAYMENT_RECORD.name();
+            case ORDER -> FieldSourceType.ORDER.name();
+            default -> formKey;
+        };
+    }
+
+    private boolean isRelatedField(BaseField field, String sourceType) {
+        return field instanceof DatasourceField datasourceField
+                && StringUtils.equals(datasourceField.getDataSourceType(), sourceType);
     }
 
     public List<BaseField> getAllFields(String formKey, String orgId) {
@@ -1621,9 +2041,57 @@ public class ModuleFormService {
     }
 
     /**
-     * 字段保存预检查
+     * 新旧字段配置中是否涉及统计字段。
+     *
+     * <p>统计字段是跨表单聚合配置, 只有涉及统计字段的保存才需要读取完整字段属性做新旧对比,
+     * 普通字段的保存不应因此多出查询。</p>
+     *
+     * @param originFields  保存前的字段主表记录
+     * @param currentFields 保存后的字段配置
+     * @return 是否涉及统计字段
      */
-    public void preCheckForFieldSave(String formKey, List<BaseField> fields) {
+    private boolean hasStatisticField(List<ModuleField> originFields, List<BaseField> currentFields) {
+        boolean inOrigin = originFields.stream()
+                .anyMatch(field -> Strings.CS.equals(field.getType(), FieldType.STATISTIC.name()));
+        boolean inCurrent = currentFields.stream().anyMatch(StatisticField.class::isInstance);
+        return inOrigin || inCurrent;
+    }
+
+    /**
+     * 触发统计字段异步刷新。
+     *
+     * <p>保存表单配置本身处于事务中, 而刷新是异步任务; 直接调用会让异步线程可能先于事务提交执行,
+     * 读到尚未提交的旧配置。因此登记到事务提交之后再触发, 无事务上下文时退化为同步调用。</p>
+     *
+     * @param formKey       表单Key
+     * @param originFields  保存前的字段配置
+     * @param currentFields 保存后的字段配置
+     * @param orgId         组织ID
+     */
+    private void triggerStatisticRefresh(String formKey, List<BaseField> originFields,
+                                         List<BaseField> currentFields, String orgId) {
+        Runnable trigger = () ->
+                statisticFieldService.refreshOnConfigSave(formKey, originFields, currentFields, orgId);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    trigger.run();
+                }
+            });
+        } else {
+            trigger.run();
+        }
+    }
+
+    /**
+     * 字段保存预检查
+     *
+     * @param formKey 表单Key
+     * @param fields  字段集合
+     * @param orgId   组织ID
+     */
+    public void preCheckForFieldSave(String formKey, List<BaseField> fields, String orgId) {
         boolean businessDeleted = BusinessModuleField.isBusinessDeleted(formKey, fields);
         if (businessDeleted) {
             throw new GenericException(Translator.get("module.form.business_field.deleted"));
@@ -1643,6 +2111,133 @@ public class ModuleFormService {
             BaseField field = repeatOptional.get();
             throw new GenericException(Translator.getWithArgs("module.form.fields.option.repeat", field.getName()));
         }
+        // 统计字段需要跨表单解析目标字段, 放在本地校验之后, 避免为非法配置做多余的查询。
+        checkStatisticFields(formKey, fields, orgId);
+    }
+
+    /**
+     * 统计字段配置校验。
+     *
+     * <p>统计字段是跨表单的聚合配置, 目标表单、关联字段与被统计字段三者必须自洽。
+     * 目标表单与关联字段的合法组合由 {@link #getRelatedForms} 定义, 这里复用同一份解析结果做服务端
+     * 校验, 避免前端提交未建立数据源关联的组合。</p>
+     *
+     * @param formKey 当前表单Key
+     * @param fields  待保存的字段集合
+     * @param orgId   组织ID
+     */
+    private void checkStatisticFields(String formKey, List<BaseField> fields, String orgId) {
+        List<StatisticField> statisticFields = fields.stream()
+                .filter(StatisticField.class::isInstance)
+                .filter(field -> !field.getId().contains("ref")) // 显示字段不校验
+                .map(StatisticField.class::cast)
+                .toList();
+        if (CollectionUtils.isEmpty(statisticFields)) {
+            return;
+        }
+
+        // TODO 自定义表单暂不支持添加统计字段: 其字段配置模型与数据权限链路尚未适配统计聚合, 后续版本放开。
+        if (FormKey.ofKey(formKey) == null) {
+            throw new GenericException(Translator.get("module.form.statistic.custom.form.unsupported"));
+        }
+
+        Map<String, RelatedFormDTO> relatedFormMap = getRelatedForms(formKey, orgId).stream()
+                .collect(Collectors.toMap(RelatedFormDTO::getId, Function.identity(), (p, n) -> p));
+
+        for (StatisticField statisticField : statisticFields) {
+            checkStatisticField(statisticField, orgId, relatedFormMap);
+        }
+    }
+
+    /**
+     * 校验单个统计字段的配置自洽性。
+     *
+     * @param field          统计字段
+     * @param orgId          组织ID
+     * @param relatedFormMap 当前表单的关联表单, key 为目标表单Key
+     */
+    private void checkStatisticField(StatisticField field, String orgId,
+                                      Map<String, RelatedFormDTO> relatedFormMap) {
+        String name = field.getName();
+
+        // 统计类型决定聚合方式, 非法值会让统计任务无法执行, 必须尽早拦截。
+        boolean validType = Arrays.stream(StatisticType.values())
+                .anyMatch(type -> type.name().equals(field.getStatisticType()));
+        if (!validType) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.type.invalid", name));
+        }
+
+        if (StringUtils.isBlank(field.getTargetFormId())) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.target.required", name));
+        }
+        // TODO 自定义表单暂不支持作为被统计的目标表单, 目标表单目前只允许标准模块表单, 后续版本放开。
+        if (FormKey.ofKey(field.getTargetFormId()) == null) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.target.custom.form.unsupported", name));
+        }
+        if (StringUtils.isBlank(field.getRelatedFieldId())) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.related.field.required", name));
+        }
+
+        RelatedFormDTO targetForm = relatedFormMap.get(field.getTargetFormId());
+        if (targetForm == null) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.target.invalid", name));
+        }
+        boolean relatedFieldMatched = targetForm.getSourceTypeFields().stream()
+                .anyMatch(option -> option.getId().equals(field.getRelatedFieldId()));
+        if (!relatedFieldMatched) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.related.field.invalid", name));
+        }
+
+        // COUNT 只统计关联数据条数, 无需被统计字段; SUM / AVG 必须指定可聚合的数值类字段。
+        if (field.needStatisticField()) {
+            if (StringUtils.isBlank(field.getStatisticFieldId())) {
+                throw new GenericException(Translator.getWithArgs("module.form.statistic.field.required", name));
+            }
+            if (!isStatisticableField(field.getStatisticFieldId(), field.getTargetFormId(), orgId)) {
+                throw new GenericException(Translator.getWithArgs("module.form.statistic.field.invalid", name));
+            }
+        }
+
+        // 统计范围条件存的是设计器筛选弹窗的「字段对字段」结构, 这里与刷新时一样先转成 CombineSearch:
+        // 它的 getConditions() 已经按 valid() 过了一遍, 判空等价于「一条能用的条件都没有」,
+        // 比只看结构是不是空更严 —— 只有左字段没有操作符之类的半成品配置也会被拦下来,
+        // 不会存进去然后刷新时静默当成「不过滤」。
+        // 复用同一个转换器而不是另写一套判空: 校验通过就意味着刷新时真的能拼出条件, 两边不会走偏。
+        if (Strings.CS.equals(field.getDataScope(), StatisticDataScope.CONDITION.name())
+                && CollectionUtils.isEmpty(StatisticConditionConverter
+                .toCombineSearch(field.getCombineSearch()).getConditions())) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.data.scope.required", name));
+        }
+        if (Strings.CS.equals(field.getUpdateScope(), StatisticUpdateScope.CONDITION.name())
+                && MapUtils.isEmpty(field.getUpdateScopeCondition())) {
+            throw new GenericException(Translator.getWithArgs("module.form.statistic.update.scope.required", name));
+        }
+    }
+
+    /**
+     * 被统计字段是否可聚合: 存在于目标表单, 且为子表格之外的数值、计算、统计字段。
+     *
+     * @param statisticFieldId 被统计字段ID
+     * @param targetFormId     目标表单Key
+     * @param orgId            组织ID
+     * @return 是否可聚合
+     */
+    private boolean isStatisticableField(String statisticFieldId, String targetFormId, String orgId) {
+        ModuleForm example = new ModuleForm();
+        example.setFormKey(targetFormId);
+        example.setOrganizationId(orgId);
+        ModuleForm targetForm = moduleFormMapper.selectOne(example);
+        if (targetForm == null) {
+            return false;
+        }
+
+        return getAllFields(targetForm.getId()).stream()
+                // 子表格字段与数据源显示字段不作为统计口径。
+                .filter(field -> StringUtils.isBlank(field.getSubTableFieldId())
+                        && StringUtils.isBlank(field.getResourceFieldId()))
+                .anyMatch(field -> field.getId().equals(statisticFieldId)
+                        && Strings.CS.equalsAny(field.getType(), FieldType.INPUT_NUMBER.name(),
+                        FieldType.FORMULA.name(), FieldType.STATISTIC.name()));
     }
 
     /**
@@ -2115,6 +2710,39 @@ public class ModuleFormService {
             }
             propMap.put("viewSize", "large");
             formBlob.setProp(JSON.toJSONString(propMap));
+            moduleFormBlobMapper.updateById(formBlob);
+        }
+    }
+
+    /**
+     * 为所有组织的标准表单初始化内置详情标签。
+     *
+     * <p>只处理 {@link InternalDetailTab} 中声明过的父表单，并复用详情标签解析逻辑补全当前组织实际的
+     * 关联表单和字段。已有合法标签会被保留，缺失的内置标签按枚举顺序补回。</p>
+     */
+    public void initInternalDetailTabs() {
+        List<String> internalFormKeys = Arrays.stream(InternalDetailTab.values())
+                .map(InternalDetailTab::getFormKey)
+                .distinct()
+                .toList();
+        List<ModuleForm> moduleForms = moduleFormMapper.selectListByLambda(new LambdaQueryWrapper<ModuleForm>()
+                .in(ModuleForm::getFormKey, internalFormKeys));
+        if (CollectionUtils.isEmpty(moduleForms)) {
+            return;
+        }
+
+        List<String> formIds = moduleForms.stream().map(ModuleForm::getId).toList();
+        Map<String, ModuleFormBlob> formBlobMap = moduleFormBlobMapper.selectByIds(formIds).stream()
+                .collect(Collectors.toMap(ModuleFormBlob::getId, Function.identity()));
+        for (ModuleForm moduleForm : moduleForms) {
+            ModuleFormBlob formBlob = formBlobMap.get(moduleForm.getId());
+            if (formBlob == null) {
+                continue;
+            }
+            FormProp formProp = StringUtils.isBlank(formBlob.getProp())
+                    ? new FormProp() : JSON.parseObject(formBlob.getProp(), FormProp.class);
+            resolveDetailTabs(moduleForm.getFormKey(), moduleForm.getOrganizationId(), formProp);
+            formBlob.setProp(JSON.toJSONString(formProp));
             moduleFormBlobMapper.updateById(formBlob);
         }
     }

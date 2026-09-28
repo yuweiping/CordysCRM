@@ -112,5 +112,12 @@ export default {
   'common.updateTime': '更新时间',
   'common.department': '部门',
   'common.alreadyPayAmount': '已回款金额',
-  'common.status': '状态',
+  'common.OR_APPROVAL': '或签',
+  'common.COUNTERSIGNATURE': '加签',
+  'common.AND_APPROVAL': '会签',
+  'common.SEQUENTIAL_APPROVAL': '依次审批',
+  'common.copyTo': '抄送人',
+  'common.frozen': '已冻结',
+  'common.freezeForever': '永久冻结',
+  'common.unfreezeTime': '解冻时间',
 };

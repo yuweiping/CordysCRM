@@ -36,11 +36,20 @@
         :update-api="updateContractStage"
         @load-detail="handleSaved()"
       />
-      <CrmCard no-content-padding hide-footer auto-height class="mb-[16px]">
-        <CrmTab v-model:active-tab="activeTab" no-content :tab-list="tabList" type="line" />
+      <CrmCard v-if="showDetailTabs" no-content-padding hide-footer auto-height class="mb-[16px]">
+        <CrmTab v-model:active-tab="activeTab" no-content :tab-list="tabList" type="line">
+          <template #suffix>
+            <CrmTabSetting
+              v-if="showDetailTabs"
+              :tab-list="enabledDetailTabList"
+              :setting-key="`${FormDesignKeyEnum.CONTRACT}-settingKey`"
+              @init="initTabList"
+            />
+          </template>
+        </CrmTab>
       </CrmCard>
 
-      <CrmCard contentHeight="100%" hide-footer :special-height="170" no-content-padding>
+      <CrmCard contentHeight="100%" hide-footer :special-height="showDetailTabs ? 170 : 90" no-content-padding>
         <!-- 需要用到 detailInfo 所以这里不用 v-if -->
         <div v-show="activeTab === 'contract'" class="h-full">
           <CrmApprovalDetail
@@ -72,11 +81,12 @@
                 @openOpportunityDetail="openOpportunityDetail"
                 @openQuotationDetail="openQuotationDetail"
                 @init="handleInit"
+                @refresh="emit('refresh')"
               />
             </template>
           </CrmApprovalDetail>
         </div>
-        <div v-if="activeTab === 'payment'" class="h-full p-[24px]">
+        <div v-if="activeTab === 'payment'" class="h-full px-[24px] pt-[24px]">
           <PaymentTable
             :form-key="FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT"
             :sourceId="props.sourceId"
@@ -84,7 +94,7 @@
             isContractTab
           />
         </div>
-        <div v-if="activeTab === 'paymentRecord'" class="h-full p-[24px]">
+        <div v-if="activeTab === 'paymentRecord'" class="h-full px-[24px] pt-[24px]">
           <PaymentRecordTable
             :form-key="FormDesignKeyEnum.CONTRACT_PAYMENT_RECORD"
             :sourceId="props.sourceId"
@@ -93,7 +103,7 @@
             @refresh="handleSaved()"
           />
         </div>
-        <div v-if="activeTab === 'invoice'" class="h-full p-[24px]">
+        <div v-if="activeTab === 'invoice'" class="h-full px-[24px] pt-[24px]">
           <InvoiceTable
             :sourceId="props.sourceId"
             :sourceName="title"
@@ -101,7 +111,7 @@
             @open-business-title-drawer="showBusinessTitleDetail"
           />
         </div>
-        <div v-if="activeTab === 'order'" class="h-full p-[24px]">
+        <div v-if="activeTab === 'order'" class="h-full px-[24px] pt-[24px]">
           <OrderTable
             :formKey="FormDesignKeyEnum.CONTRACT_ORDER"
             :sourceId="props.sourceId"
@@ -110,6 +120,11 @@
             @open-customer-drawer="emit('showCustomerDrawer', $event)"
           />
         </div>
+        <template v-for="item in customDetailTabTableList" :key="String(item.tab.name)">
+          <div v-if="activeTab === item.tab.name" class="h-full px-[24px] pt-[24px]">
+            <component :is="item.table.component" v-bind="item.table.props" hideBoard />
+          </div>
+        </template>
       </CrmCard>
     </div>
     <CrmFormCreateDrawer
@@ -161,6 +176,8 @@
   import CrmFormCreateDrawer from '@/components/business/crm-form-create-drawer/index.vue';
   import CrmFormDescription from '@/components/business/crm-form-description/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
+  import CrmTabSetting from '@/components/business/crm-tab-setting/index.vue';
+  import type { TabContentItem } from '@/components/business/crm-tab-setting/type';
   import CrmWorkflowCard from '@/components/business/crm-workflow-card/index.vue';
   import PaymentTable from '@/views/contract/contractPaymentPlan/components/paymentTable.vue';
   import PaymentRecordTable from '@/views/contract/contractPaymentRecord/components/paymentTable.vue';
@@ -169,10 +186,13 @@
   import QuotationDetailDrawer from '@/views/opportunity/components/quotation/detail.vue';
   import OrderTable from '@/views/order/order/components/orderTable.vue';
 
-  import { deleteContract, getContractStatusConfig, updateContractStage } from '@/api/modules';
+  import { deleteContract, getContractFormConfig, getContractStatusConfig, updateContractStage } from '@/api/modules';
   import useApprovalOperation from '@/hooks/useApprovalOperation';
   import useApprovalResourceAction from '@/hooks/useApprovalResourceAction';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
+  import useFormDetailTabAvailability from '@/hooks/useFormDetailTabAvailability';
+  import useFormDetailTabs from '@/hooks/useFormDetailTabs';
+  import useFormDetailTabTable from '@/hooks/useFormDetailTabTable';
   import useModal from '@/hooks/useModal';
   import { hasAnyPermission } from '@/utils/permission';
 
@@ -197,37 +217,76 @@
   const { t } = useI18n();
   const title = ref('');
   const detailInfo = ref();
+  const detailTabConfig = ref<FormConfig>();
 
   const activeTab = ref('contract');
 
-  const tabList = computed(() =>
-    [
-      {
-        name: 'contract',
-        tab: t('module.contract'),
-        permission: ['CONTRACT:READ'],
-      },
-      {
-        name: 'payment',
-        tab: t('module.paymentPlan'),
-        permission: ['CONTRACT_PAYMENT_PLAN:READ'],
-      },
-      {
-        name: 'paymentRecord',
-        tab: t('module.paymentRecord'),
-        permission: ['CONTRACT_PAYMENT_RECORD:READ'],
-      },
-      {
-        name: 'invoice',
-        tab: t('module.invoice'),
-        permission: ['CONTRACT_INVOICE:READ'],
-      },
-      {
-        name: 'order',
-        tab: t('module.order'),
-        permission: ['ORDER:READ'],
-      },
-    ].filter((item) => hasAnyPermission(item.permission))
+  const staticTabList: TabContentItem[] = [
+    {
+      name: 'payment',
+      tab: t('module.paymentPlan'),
+      enable: true,
+      permission: ['CONTRACT_PAYMENT_PLAN:READ'],
+      internalKey: 'CONTRACT_PAYMENT_PLAN',
+    },
+    {
+      name: 'paymentRecord',
+      tab: t('module.paymentRecord'),
+      enable: true,
+      permission: ['CONTRACT_PAYMENT_RECORD:READ'],
+      internalKey: 'CONTRACT_PAYMENT_RECORD',
+    },
+    {
+      name: 'invoice',
+      tab: t('module.invoice'),
+      enable: true,
+      permission: ['CONTRACT_INVOICE:READ'],
+      internalKey: 'CONTRACT_INVOICE',
+    },
+    {
+      name: 'order',
+      tab: t('module.order'),
+      enable: true,
+      permission: ['ORDER:READ'],
+      internalKey: 'CONTRACT_ORDER',
+    },
+  ];
+  const { availableDetailTabIds } = useFormDetailTabAvailability(detailTabConfig, FormDesignKeyEnum.CONTRACT);
+  const { customDetailTabList, enabledDetailTabList } = useFormDetailTabs(
+    detailTabConfig,
+    staticTabList,
+    availableDetailTabIds
+  );
+  const showDetailTabs = computed(() => enabledDetailTabList.value.length > 0);
+  const { getDetailTabTable } = useFormDetailTabTable();
+  const customDetailTabTableList = computed(() =>
+    customDetailTabList.value.flatMap((tab) => {
+      const table = getDetailTabTable(tab.detailTab, props.sourceId, FormDesignKeyEnum.CONTRACT);
+      return table ? [{ tab, table }] : [];
+    })
+  );
+  const settingTabList = ref<TabContentItem[]>([]);
+  const tabList = computed(() => [
+    {
+      name: 'contract',
+      tab: t('module.contract'),
+      enable: true,
+      permission: ['CONTRACT:READ'],
+    },
+    ...settingTabList.value,
+  ]);
+
+  function initTabList(list: TabContentItem[]) {
+    settingTabList.value = list;
+  }
+
+  watch(
+    () => tabList.value,
+    (list) => {
+      if (!list.some((item) => item.name === activeTab.value)) {
+        activeTab.value = list[0]?.name as string;
+      }
+    }
   );
 
   function createContractDetailActionMap(row: ContractItem) {
@@ -476,9 +535,29 @@
     }
   }
 
+  watch(
+    () => activeTab.value,
+    () => {
+      if (activeTab.value === 'contract') {
+        formDescriptionRef.value?.initFormDescription();
+      }
+    }
+  );
+
   async function initStageConfig() {
     try {
       stageConfig.value = await getContractStatusConfig();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
+  }
+
+  async function initDetailTabConfig() {
+    // TODO: 确认 CONTRACT_SNAPSHOT 是否同步 detailTabs；若同步可移除此处额外的普通表单配置请求。
+    try {
+      const config = await getContractFormConfig();
+      detailTabConfig.value = config.formProp;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.log(error);
@@ -490,6 +569,7 @@
     (val) => {
       if (val) {
         initStageConfig();
+        initDetailTabConfig();
         initApprovalPermission();
       } else {
         detailInfo.value = {};

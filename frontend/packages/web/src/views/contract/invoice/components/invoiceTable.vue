@@ -6,7 +6,7 @@
     :fullscreen-target-ref="props.fullscreenTargetRef"
     :class="`crm-contract-payment-table-${FormDesignKeyEnum.INVOICE}`"
     :not-show-table-filter="isAdvancedSearchMode"
-    :action-config="actionConfig"
+    :action-config="props.readonly ? undefined : actionConfig"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
     @sorter-change="propsEvent.sorterChange"
@@ -26,7 +26,7 @@
           {{ t('invoice.new') }}
         </n-button>
         <CrmImportButton
-          v-if="hasAnyPermission(['CONTRACT_INVOICE:IMPORT']) && !props.isContractTab"
+          v-if="hasAnyPermission(['CONTRACT_INVOICE:IMPORT']) && !props.isContractTab && !props.readonly"
           :api-type="FormDesignKeyEnum.INVOICE"
           :title="t('module.invoice')"
           @import-success="() => searchData()"
@@ -55,7 +55,7 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.isContractTab"
+        v-if="!props.isContractTab && !props.detailTabResourceId"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.INVOICE"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -109,6 +109,7 @@
   import useLocale from '@lib/shared/locale/useLocale';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { ContractInvoiceItem } from '@lib/shared/models/contract';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import { COMMON_SELECTION_OPERATORS } from '@/components/pure/crm-advance-filter/index';
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
@@ -146,6 +147,11 @@
     sourceId?: string; // 合同详情下
     sourceName?: string;
     readonly?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
   const emit = defineEmits<{
     (e: 'openBusinessTitleDrawer', params: { id: string }): void;
@@ -160,7 +166,7 @@
   const activeTab = ref();
   const keyword = ref('');
   const tableRefreshId = ref(0);
-  const tableRemoveRefreshId = ref('');
+  const tableRemoveRefreshSignal = ref({ id: '', key: 0 });
   const tableItemRefreshId = ref('');
   // 操作
   const checkedRowKeys = ref<DataTableRowKey[]>([]);
@@ -305,7 +311,10 @@
         try {
           await deleteInvoiced(row.id);
           Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
-          tableRemoveRefreshId.value = row.id;
+          tableRemoveRefreshSignal.value = {
+            id: row.id,
+            key: tableRemoveRefreshSignal.value.key + 1,
+          };
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -398,6 +407,12 @@
 
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.isContractTab ? FormDesignKeyEnum.CONTRACT_INVOICE : FormDesignKeyEnum.INVOICE,
+    readonly: props.readonly,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     operationColumn: {
       key: 'operation',
       width: computed(() => getOperationWidth(enableApproval.value)) as unknown as number,
@@ -481,7 +496,6 @@
     enableApproval,
   });
   const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
-
   const exportColumns = computed<ExportTableColumnItem[]>(() =>
     getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value, true)
   );
@@ -542,12 +556,22 @@
   }
 
   function searchData(val?: string, refreshId?: string) {
-    setLoadListParams({ keyword: val ?? keyword.value, viewId: activeTab.value, contractId: props.sourceId });
+    setLoadListParams({
+      keyword: val ?? keyword.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
+      contractId: props.sourceId,
+    });
     loadList(false, refreshId);
     if (!refreshId) {
       crmTableRef.value?.scrollTo({ top: 0 });
     }
   }
+
+  onMounted(() => {
+    if (props.detailTabResourceId) {
+      searchData();
+    }
+  });
 
   watch(
     () => tableRefreshId.value,
@@ -586,10 +610,10 @@
   }
 
   watch(
-    () => tableRemoveRefreshId.value,
+    () => tableRemoveRefreshSignal.value,
     (val) => {
-      if (val) {
-        removeItemFromList(val);
+      if (val.id) {
+        removeItemFromList(val.id);
       }
     }
   );
@@ -616,7 +640,11 @@
     (val) => {
       if (val) {
         checkedRowKeys.value = [];
-        setLoadListParams({ keyword: keyword.value, viewId: activeTab.value, contractId: props.sourceId });
+        setLoadListParams({
+          keyword: keyword.value,
+          viewId: activeTab.value,
+          contractId: props.sourceId,
+        });
         crmTableRef.value?.setColumnSort(val);
       }
     }

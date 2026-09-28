@@ -7,7 +7,7 @@
     :not-show-table="activeShowType === 'billboard'"
     :not-show-table-filter="isAdvancedSearchMode"
     :fullscreen-target-ref="props.fullscreenTargetRef"
-    :action-config="actionConfig"
+    :action-config="props.readonly ? undefined : actionConfig"
     :hiddenBackToTop="activeShowType === 'billboard'"
     :customTotal="activeShowType === 'billboard'"
     @page-change="propsEvent.pageChange"
@@ -61,7 +61,13 @@
         @keyword-search="searchData"
       />
       <n-tabs
-        v-if="!props.isContractTab && !props.isCustomerTab && !props.hiddenAdvanceFilter"
+        v-if="
+          !props.isContractTab &&
+          !props.isCustomerTab &&
+          !props.hiddenAdvanceFilter &&
+          !props.detailTabResourceId &&
+          !props.hideBoard
+        "
         v-model:value="activeShowType"
         type="segment"
         size="large"
@@ -77,7 +83,13 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.isContractTab && !props.isCustomerTab"
+        v-if="
+          !props.isContractTab &&
+          !props.isCustomerTab &&
+          !props.hiddenAdvanceFilter &&
+          !props.detailTabResourceId &&
+          !props.hideBoard
+        "
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.ORDER"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -175,6 +187,7 @@
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import { OpportunityStageConfig } from '@lib/shared/models/opportunity';
   import { OrderItem } from '@lib/shared/models/order';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -227,6 +240,12 @@
     sourceName?: string;
     readonly?: boolean;
     formKey: FormDesignKeyEnum.ORDER | FormDesignKeyEnum.CONTRACT_ORDER | FormDesignKeyEnum.CUSTOMER_ORDER;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
+    hideBoard?: boolean;
   }>();
   const emit = defineEmits<{
     (e: 'openContractDrawer', params: { id: string }): void;
@@ -438,7 +457,7 @@
     openNewPage(FullPageEnum.FULL_PAGE_EXPORT_ORDER, { id });
   }
 
-  const tableRemoveRefreshId = ref('');
+  const tableRemoveRefreshSignal = ref({ id: '', key: 0 });
   async function handleDelete(row: OrderItem) {
     openModal({
       type: 'error',
@@ -450,7 +469,10 @@
         try {
           await deleteOrder(row.id);
           Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
-          tableRemoveRefreshId.value = row.id;
+          tableRemoveRefreshSignal.value = {
+            id: row.id,
+            key: tableRemoveRefreshSignal.value.key + 1,
+          };
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -535,6 +557,12 @@
 
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.formKey,
+    readonly: props.readonly,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     excludeFieldIds: ['contractId'],
     operationColumn: {
       key: 'operation',
@@ -638,7 +666,6 @@
     setLoadListParams,
     setAdvanceFilter,
   } = useTableRes;
-
   const exportParams = computed(() => ({
     ...tableQueryParams.value,
     ids: checkedRowKeys.value,
@@ -747,10 +774,10 @@
   }
 
   function searchData(val?: string, refreshId?: string) {
-    if (!activeTab.value && !props.isContractTab && !props.isCustomerTab) return;
+    if (!activeTab.value && !props.isContractTab && !props.isCustomerTab && !props.detailTabResourceId) return;
     setLoadListParams({
       keyword: val ?? keyword.value,
-      viewId: activeTab.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
       ...(props.formKey === FormDesignKeyEnum.CONTRACT_ORDER ? { contractId: props.sourceId } : {}),
       ...(props.formKey === FormDesignKeyEnum.CUSTOMER_ORDER ? { customerId: props.sourceId } : {}),
     });
@@ -828,10 +855,10 @@
   }
 
   watch(
-    () => tableRemoveRefreshId.value,
+    () => tableRemoveRefreshSignal.value,
     (val) => {
-      if (val) {
-        removeItemFromList(val);
+      if (val.id) {
+        removeItemFromList(val.id);
         getStatistic();
       }
     }
@@ -866,6 +893,11 @@
   );
 
   onMounted(async () => {
+    if (props.detailTabResourceId) {
+      activeShowType.value = 'table';
+      searchData();
+      return;
+    }
     if (!props.isContractTab && !props.isCustomerTab && !props.hiddenAdvanceFilter) {
       activeShowType.value = (await getItem<'billboard' | 'table'>('order-active-show-type')) ?? 'table';
     } else {

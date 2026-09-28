@@ -1,6 +1,7 @@
 import type { TableQueryParams } from '../common';
 import { UserInfo } from '../user';
 import { SelectedUsersItem } from '@lib/shared/models/system/module';
+import type { OptionDTO } from '@lib/shared/models/system/business';
 
 // 添加部门
 export interface DepartmentItemParams {
@@ -106,4 +107,37 @@ export interface DragNodeParams {
 export interface DEToken {
   url: string;
   token: string;
+}
+
+export type SyncWeekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
+
+export type SyncCycle = 'HOUR' | 'SIX_HOUR' | 'TWELVE_HOUR' | 'DAY' | SyncWeekday;
+
+export type SyncFrequency = 'HOUR' | 'SIX_HOUR' | 'TWELVE_HOUR' | 'DAY' | 'WEEKLY';
+
+export interface ThirdDepartmentNode {
+  id: string;
+  name: string;
+  parentId?: string;
+  isRoot?: boolean;
+  order?: number;
+  crmId?: string;
+  crmParentId?: string;
+  children?: ThirdDepartmentNode[];
+}
+
+export interface SyncUserScheduleConfig {
+  enable: boolean;
+  syncCycle: SyncCycle;
+  syncScope: OptionDTO[];
+  resourceType: string;
+  nextTriggerTime?: number;
+}
+
+export interface SyncUserScheduleForm {
+  enable: boolean;
+  syncFrequency: SyncFrequency;
+  syncWeekday: SyncWeekday;
+  syncScopeMode: 'ALL' | 'DEPARTMENT';
+  syncDepartmentIds: string[];
 }

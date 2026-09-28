@@ -56,7 +56,7 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.hiddenAdvanceFilter"
+        v-if="!props.hiddenAdvanceFilter && !props.detailTabResourceId"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.CLUE"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -154,6 +154,7 @@
   import type { ClueListItem } from '@lib/shared/models/clue';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { TransferParams } from '@lib/shared/models/customer/index';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -206,6 +207,11 @@
     readonly?: boolean;
     isLimitShowDetail?: boolean; // 是否根据权限限查看详情
     hiddenTotal?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
 
   const emit = defineEmits<{
@@ -514,6 +520,11 @@
 
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.tableFormKey,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     containerClass: '.crm-clue-table',
     operationColumn: props.readonly
       ? undefined
@@ -617,7 +628,6 @@
     readonly: props.readonly,
   });
   const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
-
   const exportParams = computed(() => {
     return {
       ...tableQueryParams.value,
@@ -680,7 +690,10 @@
   const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();
 
   function searchData(val?: string, refreshId?: string) {
-    setLoadListParams({ keyword: val ?? keyword.value, viewId: activeTab.value });
+    setLoadListParams({
+      keyword: val ?? keyword.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
+    });
     loadList(false, refreshId);
     if (!refreshId) {
       crmTableRef.value?.scrollTo({ top: 0 });
@@ -796,6 +809,9 @@
       };
       isInitOverviewDrawer.value = true;
       showOverviewDrawer.value = true;
+    }
+    if (props.detailTabResourceId) {
+      searchData();
     }
   });
 

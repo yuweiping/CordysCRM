@@ -261,6 +261,13 @@ public class ApprovalInstanceService {
 					node.setApprovalStatus(node.getTaskNodes().getFirst().getApprovalStatus());
 				}
 			}
+			if (node.isBackNode() && (ApprovalStatus.APPROVED.name().equals(node.getApprovalStatus())
+					|| ApprovalStatus.AUTO_APPROVED.name().equals(node.getApprovalStatus()))) {
+				// 退回节点重新通过后仅保留历史记录，不再展示旧退回信息
+				node.setBackNode(false);
+				node.setBackReason(null);
+				node.setBackAttachments(Collections.emptyList());
+			}
 			ApprovalNode approvalNode;
 			if (node.getNodeId().contains(SIGN_SPILT)) {
 				approvalNode = approvalNodeMap.get(node.getNodeId().split(SIGN_SPILT)[0]);
@@ -346,8 +353,8 @@ public class ApprovalInstanceService {
 			if (CollectionUtils.isEmpty(nlTasks)) {
 				return;
 			}
-			List<ApprovalTask> snTasks = tasks.stream().filter(task -> ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.SN && Strings.CI.contains(task.getNodeId(), hisNode)
-					&& task.getNodeRound().equals(maxRound)).sorted(Comparator.comparing(ApprovalTask::getCreateTime)).toList();
+			List<ApprovalTask> snTasks = tasks.stream().filter(task -> ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.SN && Strings.CI.contains(task.getNodeId(), hisNode))
+					.sorted(Comparator.comparing(ApprovalTask::getCreateTime)).toList();
 			// 加签任务追加
 			if (nodeMultiApprover.size() == 1) {
 				// 单人执行
@@ -559,7 +566,10 @@ public class ApprovalInstanceService {
         if (lastBeforeOnRoot != null) {
             // 需要在中间插入根节点
             for (ApprovalAddSignTask sign : signTasks) {
-                result.add(signTaskMap.get(sign.getTaskId()));
+				ApprovalTask signTask = signTaskMap.get(sign.getTaskId());
+				if (signTask != null) {
+					result.add(signTask);
+				}
                 if (sign == lastBeforeOnRoot) {
                     result.add(currentTask);
                 }
@@ -567,8 +577,25 @@ public class ApprovalInstanceService {
         } else {
             // （都是根节点之后加签）根节点就是第一个节点
             result.add(currentTask);
-            signTasks.forEach(s -> result.add(signTaskMap.get(s.getTaskId())));
+			signTasks.stream().map(sign -> signTaskMap.get(sign.getTaskId())).filter(Objects::nonNull).forEach(result::add);
         }
+		int currentIndex = -1;
+		for (int i = 0; i < result.size(); i++) {
+			ApprovalTask task = result.get(i);
+			if (Objects.equals(task.getNodeRound(), currentTask.getNodeRound()) && ApprovalStatus.APPROVING.name().equals(task.getStatus())) {
+				currentIndex = i;
+				break;
+			}
+		}
+		for (int i = currentIndex + 1; currentIndex >= 0 && i < result.size(); i++) {
+			ApprovalTask task = result.get(i);
+			if (!Objects.equals(task.getNodeRound(), currentTask.getNodeRound())) {
+				ApprovalTask pendingTask = BeanUtils.copyBean(new ApprovalTask(), task);
+				pendingTask.setAction(null);
+				pendingTask.setStatus(ApprovalStatus.PENDING.name());
+				result.set(i, pendingTask);
+			}
+		}
         return result;
     }
 
@@ -634,7 +661,8 @@ public class ApprovalInstanceService {
 	 */
 	private ApprovalTaskNode buildTaskNode(ApprovalTask task, Map<String, ApprovalRecord> taskRecordMap, Map<String, ApprovalAddSignTask> addSignTaskMapOfTask,
 										   Map<String, List<Attachment>> attachmentsMap, Map<String, UserSimple> simpleUserMap) {
-		ApprovalRecord record = taskRecordMap.get(task.getId());
+		boolean taskUnfinished = ApprovalStatus.PENDING.name().equals(task.getStatus()) || ApprovalStatus.APPROVING.name().equals(task.getStatus());
+		ApprovalRecord record = taskUnfinished ? null : taskRecordMap.get(task.getId());
 		ApprovalTaskNode taskNode = ApprovalTaskNode.builder().taskId(task.getId())
 				.sign(ApprovalTaskType.valueOf(task.getType()) == ApprovalTaskType.SN)
 				.approverId(task.getApproverId()).approvalStatus(task.getStatus()).build();

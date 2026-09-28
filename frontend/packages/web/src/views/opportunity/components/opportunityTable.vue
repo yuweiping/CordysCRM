@@ -62,7 +62,7 @@
         @keyword-search="searchByKeyword"
       />
       <n-tabs
-        v-if="!props.isCustomerTab && !props.hiddenAdvanceFilter"
+        v-if="!props.isCustomerTab && !props.hiddenAdvanceFilter && !props.hideBoard"
         v-model:value="activeShowType"
         type="segment"
         size="large"
@@ -78,7 +78,7 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.isCustomerTab && !props.hiddenAdvanceFilter"
+        v-if="!props.isCustomerTab && !props.hiddenAdvanceFilter && !props.detailTabResourceId && !props.hideBoard"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.BUSINESS"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -187,6 +187,7 @@
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { TransferParams } from '@lib/shared/models/customer/index';
   import type { OpportunityItem, OpportunityStageConfig } from '@lib/shared/models/opportunity';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -240,6 +241,12 @@
     hiddenAdvanceFilter?: boolean;
     isLimitShowDetail?: boolean; // 是否根据权限限查看详情
     hiddenTotal?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
+    hideBoard?: boolean;
   }>();
   const emit = defineEmits<{
     (
@@ -627,6 +634,11 @@
   await initStageConfig();
   const { useTableRes, customFieldsFilterConfig, reasonOptions, fieldList } = await useFormCreateTable({
     formKey: props.formKey,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     excludeFieldIds: ['customerId'],
     containerClass: `.crm-opportunity-table-${props.formKey}`,
     operationColumn: props.readonly
@@ -724,7 +736,6 @@
     filterItem,
     advanceFilter,
   } = useTableRes;
-
   const exportParams = computed(() => {
     return {
       ...tableQueryParams.value,
@@ -851,11 +862,16 @@
   );
 
   function searchData(_keyword?: string, refreshId?: string) {
-    if (!activeTab.value && !props.isCustomerTab && props.formKey !== FormDesignKeyEnum.SEARCH_ADVANCED_OPPORTUNITY)
+    if (
+      !activeTab.value &&
+      !props.isCustomerTab &&
+      props.formKey !== FormDesignKeyEnum.SEARCH_ADVANCED_OPPORTUNITY &&
+      !props.detailTabResourceId
+    )
       return;
     setLoadListParams({
       keyword: _keyword ?? keyword.value,
-      viewId: activeTab.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
       customerId: props.sourceId,
     });
     if (activeShowType.value === 'billboard') {
@@ -987,7 +1003,7 @@
   }
 
   onBeforeMount(async () => {
-    if (props.isCustomerTab) {
+    if (props.isCustomerTab || props.detailTabResourceId) {
       searchData();
     }
   });
@@ -998,7 +1014,7 @@
       customFieldsFilterConfig: customFieldsFilterConfig.value as FilterFormItem[],
     });
 
-    if (!props.isCustomerTab && !props.hiddenAdvanceFilter) {
+    if (!props.isCustomerTab && !props.hiddenAdvanceFilter && !props.detailTabResourceId) {
       activeShowType.value = (await getItem<'billboard' | 'table'>(`opportunity-active-show-type`)) ?? 'table';
     } else {
       activeShowType.value = 'table';

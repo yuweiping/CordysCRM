@@ -5,9 +5,9 @@
     v-bind="propsRes"
     class="crm-customForm-table"
     :not-show-table-filter="isAdvancedSearchMode"
-    :action-config="actionConfig"
+    :action-config="props.readonly ? undefined : actionConfig"
     :columns="formColumns"
-    :table-key="customFormId"
+    :table-key="currentTableKey"
     @row-key-change="handleRowKeyChange"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
@@ -104,6 +104,7 @@
   import { characterLimit } from '@lib/shared/method';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { CustomFormPageItem } from '@lib/shared/models/customForm.js';
+  import type { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { type FilterForm, FilterFormItem, type FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -136,6 +137,11 @@
     formKey: string;
     formKeyName: string;
     readonly?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
 
   const emit = defineEmits<{
@@ -155,7 +161,7 @@
   const handleSearchData = ref<null | ((val?: string, refreshId?: string) => void)>(null);
   const checkedRowKeys = ref<DataTableRowKey[]>([]);
   const tableRefreshId = ref(0);
-  const tableRemoveRefreshId = ref('');
+  const tableRemoveRefreshSignal = ref({ id: '', key: 0 });
   const formCreateDrawerVisible = ref(false);
   const activeSourceId = ref('');
   const initialSourceName = ref('');
@@ -238,7 +244,10 @@
         try {
           await deleteCustomFormData(row.id);
           Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
-          tableRemoveRefreshId.value = row.id;
+          tableRemoveRefreshSignal.value = {
+            id: row.id,
+            key: tableRemoveRefreshSignal.value.key + 1,
+          };
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -270,6 +279,8 @@
   }
 
   const showOverviewDrawer = ref(false);
+  // 关联详情 Tab 使用独立列缓存，避免继承普通自定义表格的操作列配置。
+  const currentTableKey = computed(() => props.tableKey || customFormId.value);
   const operationColumn = computed<CrmDataTableColumn | undefined>(() => {
     return {
       key: 'operation',
@@ -295,6 +306,11 @@
 
   const { useTableRes, customFieldsFilterConfig, initFormConfig, columns, fieldList } = await useFormCreateTable({
     formKey: FormDesignKeyEnum.CUSTOM_FORM,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     customFormId,
     disabledSelection: (row: CustomFormPageItem) => {
       return (
@@ -343,7 +359,6 @@
   });
 
   const { propsRes, propsEvent, loadList, setLoadListParams, tableQueryParams, setAdvanceFilter } = useTableRes;
-
   const formColumns = computed(() => columns.value);
   const customFormFilterConfigList = computed<FilterFormItem[]>(() => [
     {
@@ -357,7 +372,10 @@
     ...baseFilterConfigList,
   ]);
   function searchData(val?: string, refreshId?: string) {
-    setLoadListParams({ keyword: val ?? keyword.value, customFormId: customFormId.value });
+    setLoadListParams({
+      keyword: val ?? keyword.value,
+      customFormId: customFormId.value,
+    });
     loadList(false, refreshId, customFormId.value);
     if (!refreshId) {
       crmTableRef.value?.scrollTo({ top: 0 });
@@ -535,10 +553,10 @@
   }
 
   watch(
-    () => tableRemoveRefreshId.value,
+    () => tableRemoveRefreshSignal.value,
     (val) => {
-      if (val) {
-        removeItemFromList(val);
+      if (val.id) {
+        removeItemFromList(val.id);
       }
     }
   );
@@ -554,7 +572,7 @@
   async function init(val: string) {
     checkedRowKeys.value = [];
     keyword.value = '';
-    propsRes.value.tableKey = val;
+    propsRes.value.tableKey = currentTableKey.value;
     await initApprovalPermission(true);
     await initFormConfig(props.readonly, operationColumn.value);
     tableAdvanceFilterRef.value?.clearFilter();

@@ -459,6 +459,7 @@ export const {
   deleteAgentConversation,
   renameAgentConversation,
   uploadAgentChatFile,
+  getAgentModelOptions,
 } = aiApi;
 
 export const {
@@ -477,6 +478,7 @@ export const {
   batchUpdateCustomFormData,
   batchDeleteCustomFormData,
   deleteCustomFormData,
+  refreshStatistic,
 } = useCustomFormApi(CDR);
 
 export const {

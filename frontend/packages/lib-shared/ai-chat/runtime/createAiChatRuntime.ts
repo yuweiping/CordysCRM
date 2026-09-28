@@ -2,7 +2,7 @@ import { computed, markRaw, ref, shallowRef, watch } from 'vue';
 
 import type { AgentChatConfirmData, AgentChatConfirmRequest } from '@lib/shared/models/ai';
 
-import type { AiChatAttachment, AiChatMessage, AiChatMeta, AiChatSubmitPayload } from '../types';
+import type { AiChatAttachment, AiChatMessage, AiChatMeta, AiChatSendOptions, AiChatSubmitPayload } from '../types';
 import type { AiChatRuntime, CreateAiChatRuntimeOptions } from './types';
 import { getAiChatMessageText } from '../utils/message';
 import { Chat } from '@ai-sdk/vue';
@@ -137,6 +137,31 @@ export default function createAiChatRuntime(options: CreateAiChatRuntimeOptions 
     chat.value.messages = chat.value.messages.map((message) => (message.id === messageId ? patch(message) : message));
   }
 
+  function getRetryMetadata(messageId?: string): AiChatMeta | undefined {
+    const messages = chat.value.messages;
+    const targetIndex = messageId ? messages.findIndex((message) => message.id === messageId) : messages.length - 1;
+
+    if (targetIndex < 0) {
+      return undefined;
+    }
+
+    const targetMessage = messages[targetIndex];
+
+    if (targetMessage.role === 'user') {
+      return targetMessage.metadata;
+    }
+
+    for (let index = targetIndex - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+
+      if (message.role === 'user') {
+        return message.metadata;
+      }
+    }
+
+    return undefined;
+  }
+
   function reset(nextMessages: AiChatMessage[] = []): void {
     chat.value.stop();
     chat.value.messages = nextMessages;
@@ -265,12 +290,18 @@ export default function createAiChatRuntime(options: CreateAiChatRuntimeOptions 
     await chat.value.resumeStream();
   }
 
-  async function retry(messageId?: string): Promise<void> {
+  async function retry(messageId?: string, retryOptions: AiChatSendOptions = {}): Promise<void> {
     if (loading.value) {
       return;
     }
 
-    await chat.value.regenerate({ messageId });
+    const metadata = getRetryMetadata(messageId);
+
+    await chat.value.regenerate({
+      messageId,
+      // 历史消息没有保存模型元数据时，使用界面当前选择的模型；内存消息仍优先沿用原模型。
+      metadata: retryOptions.model && !metadata?.model ? { ...metadata, model: retryOptions.model } : metadata,
+    });
   }
 
   async function edit(messageId: string, content: string, options: AiChatSubmitPayload['options'] = {}): Promise<void> {

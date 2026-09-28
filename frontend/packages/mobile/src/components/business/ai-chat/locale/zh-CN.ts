@@ -1,5 +1,9 @@
 export default {
   'aiChat.inputPlaceholder': '输入指令或提问',
+  'aiChat.model': '模型',
+  'aiChat.personalModel': '个人模型',
+  'aiChat.systemModel': '系统模型',
+  'aiChat.noModel': '暂无模型',
   'aiChat.noConversation': '暂无对话',
   'aiChat.emptyTitle': '你能做什么',
   'aiChat.emptyCustomerLookup': '快速查询客户信息',
@@ -40,4 +44,7 @@ export default {
   'aiChat.uploadFile': '附件',
   'aiChat.attachmentUploading': '上传中',
   'aiChat.attachmentUploadFailed': '上传失败',
+  'aiChat.attachmentUnsupportedType': '仅支持图片、Office/PDF/OpenDocument/EPUB/RTF 和 UTF-8 文本',
+  'aiChat.attachmentMaxCount': '最多上传 {count} 个文件',
+  'aiChat.attachmentMaxTotalSize': '文件总大小不能超过 {size} MB',
 };

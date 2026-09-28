@@ -3,18 +3,23 @@ package cn.cordys.crm.system.service;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.constants.LinkScenarioKey;
 import cn.cordys.common.dto.JsonDifferenceDTO;
+import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.dto.stage.CirculationFieldValue;
 import cn.cordys.common.dto.stage.StageConfigResponse;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.crm.contract.mapper.ExtContractStageConfigMapper;
+import cn.cordys.crm.opportunity.mapper.ExtOpportunityStageConfigMapper;
 import cn.cordys.crm.order.mapper.ExtOrderStageConfigMapper;
 import cn.cordys.crm.search.constants.SearchModuleEnum;
 import cn.cordys.crm.system.constants.CirculationFieldValueTypeEnum;
+import cn.cordys.crm.system.constants.FieldType;
 import cn.cordys.crm.system.domain.ModuleField;
 import cn.cordys.crm.system.domain.StageAdvancedConfig;
 import cn.cordys.crm.system.dto.ScopeNameDTO;
 import cn.cordys.crm.system.dto.field.base.BaseField;
+import cn.cordys.crm.system.dto.form.FormDetailTab;
+import cn.cordys.crm.system.dto.form.FormProp;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -43,12 +48,15 @@ public class SystemModuleLogService extends BaseModuleLogService {
     @Resource
     private ExtContractStageConfigMapper extContractStageConfigMapper;
     @Resource
+    private ExtOpportunityStageConfigMapper extOpportunityStageConfigMapper;
+    @Resource
     private ModuleFormCacheService moduleFormCacheService;
     private List<BaseField> fields;
-    private List<StageConfigResponse> stageConfigList;
+    private List<? extends StageConfigResponse> stageConfigList;
 
     @Override
     public List<JsonDifferenceDTO> handleLogField(List<JsonDifferenceDTO> differences, String orgId) {
+        List<JsonDifferenceDTO> detailTabDifferences = new ArrayList<>();
         differences.forEach(differ -> {
             if (isLinkFormKey(differ.getColumn()) && differ.getColumn().split(LINK_KEY_SPILT).length == 2) {
                 String[] splitKey = differ.getColumn().split(LINK_KEY_SPILT);
@@ -83,6 +91,15 @@ public class SystemModuleLogService extends BaseModuleLogService {
             if (Strings.CS.equals("formProp", differ.getColumn())) {
                 differ.setColumnName(Translator.get("log.form.prop"));
                 handleFormPropLogDetail(differ);
+                // 标签页属于 formProp，但需要独立展示，避免只修改标签页时前后文本相同。
+                JsonDifferenceDTO detailTabDifference = buildDetailTabDifference(differ);
+                if (detailTabDifference != null) {
+                    detailTabDifferences.add(detailTabDifference);
+                }
+                if (Objects.equals(differ.getOldValueName(), differ.getNewValueName())) {
+                    differ.setOldValueName(null);
+                    differ.setNewValueName(null);
+                }
             }
 
 
@@ -111,10 +128,24 @@ public class SystemModuleLogService extends BaseModuleLogService {
                 searchSetting(differ);
             }
 
-            if (Strings.CS.equalsAny(differ.getColumn(), "orderSetting", "contractSetting")) {
+            if (Strings.CS.equalsAny(differ.getColumn(), "orderSetting", "contractSetting", "opportunitySetting")) {
                 differ.setColumnName(Translator.get("advanced_circulation_setting"));
-                differ.setNewValueName(String.join(", ", handleConfig(differ.getNewValue(), orgId, Strings.CI.equals(differ.getColumn(), "orderSetting") ? FormKey.ORDER.getKey() : FormKey.CONTRACT.getKey())));
-                differ.setOldValueName(String.join(", ", handleConfig(differ.getOldValue(), orgId, Strings.CI.equals(differ.getColumn(), "orderSetting") ? FormKey.ORDER.getKey() : FormKey.CONTRACT.getKey()).toString()));
+                switch (differ.getColumn()) {
+                    case "orderSetting":
+                        differ.setNewValueName(String.join(", ", handleConfig(differ.getNewValue(), orgId, FormKey.ORDER.getKey())));
+                        differ.setOldValueName(String.join(", ", handleConfig(differ.getOldValue(), orgId, FormKey.ORDER.getKey()).toString()));
+                        break;
+                    case "contractSetting":
+                        differ.setNewValueName(String.join(", ", handleConfig(differ.getNewValue(), orgId, FormKey.CONTRACT.getKey())));
+                        differ.setOldValueName(String.join(", ", handleConfig(differ.getOldValue(), orgId, FormKey.CONTRACT.getKey()).toString()));
+                        break;
+                    case "opportunitySetting":
+                        differ.setNewValueName(String.join(", ", handleConfig(differ.getNewValue(), orgId, FormKey.OPPORTUNITY.getKey())));
+                        differ.setOldValueName(String.join(", ", handleConfig(differ.getOldValue(), orgId, FormKey.OPPORTUNITY.getKey()).toString()));
+                        break;
+                    default:
+                        break;
+                }
             }
 
             if (Strings.CS.equals("circulationType", differ.getColumn())) {
@@ -126,7 +157,56 @@ public class SystemModuleLogService extends BaseModuleLogService {
         });
 
         differences.removeIf(differ -> differ.getOldValueName() == null && differ.getNewValueName() == null);
+        differences.addAll(detailTabDifferences);
         return differences;
+    }
+
+    private JsonDifferenceDTO buildDetailTabDifference(JsonDifferenceDTO formPropDifference) {
+        FormProp oldProp = parseFormProp(formPropDifference.getOldValue());
+        FormProp newProp = parseFormProp(formPropDifference.getNewValue());
+        List<FormDetailTab> oldTabs = oldProp == null ? null : oldProp.getDetailTabs();
+        List<FormDetailTab> newTabs = newProp == null ? null : newProp.getDetailTabs();
+        if (Objects.equals(oldTabs, newTabs)
+                || ((oldTabs == null || oldTabs.isEmpty()) && (newTabs == null || newTabs.isEmpty()))) {
+            return null;
+        }
+
+        JsonDifferenceDTO difference = new JsonDifferenceDTO();
+        difference.setColumn("detailTabs");
+        difference.setColumnName(Translator.get("log.form.detailTabs"));
+        difference.setOldValue(oldTabs);
+        difference.setNewValue(newTabs);
+        difference.setOldValueName(formatDetailTabs(oldTabs));
+        difference.setNewValueName(formatDetailTabs(newTabs));
+        difference.setType(formPropDifference.getType());
+        return difference;
+    }
+
+    private FormProp parseFormProp(Object value) {
+        return value == null ? null : JSON.parseObject(JSON.toJSONString(value), FormProp.class);
+    }
+
+    private String formatDetailTabs(List<FormDetailTab> tabs) {
+        if (tabs == null) {
+            return "";
+        }
+        return tabs.stream().map(tab -> {
+            List<String> details = new ArrayList<>();
+            if (tab.getRelatedForm() != null) {
+                details.add(optionName(tab.getRelatedForm()));
+            }
+            if (tab.getRelatedField() != null) {
+                details.add(optionName(tab.getRelatedField()));
+            }
+            details.add(Translator.get(Boolean.FALSE.equals(tab.getEnable()) ? "log.enable.false" : "log.enable.true"));
+            details.add(0, tab.getName());
+            return String.join(" - ", details);
+        }).collect(Collectors.joining("\n"));
+    }
+
+    private String optionName(OptionDTO option) {
+        return option.getName() != null && !option.getName().isBlank()
+                ? option.getName() : Objects.toString(option.getId(), "");
     }
 
     private List<String> handleConfig(Object value, String orgId, String formKey) {
@@ -145,7 +225,7 @@ public class SystemModuleLogService extends BaseModuleLogService {
                     } else if (Strings.CI.equals(formKey, FormKey.CONTRACT.getKey())) {
                         stageConfigList = extContractStageConfigMapper.getStageConfigList(orgId);
                     } else {
-
+                        stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
                     }
                     fields = moduleFormCacheService.getBusinessFormConfig(formKey, orgId).getFields();
 
@@ -160,24 +240,44 @@ public class SystemModuleLogService extends BaseModuleLogService {
                             String title = Translator.get("advanced_circulation_condition") + "\n" +
                                     Translator.get("advanced_circulation_condition_field") + "|" + Translator.get("advanced_circulation_condition_type") + "|" + Translator.get("advanced_circulation_condition_default_value") + "|" + Translator.get("isRequired");
                             String data = "";
-                            for (CirculationFieldValue fieldValue : circulationFieldValues) {
-                                BaseField baseField = fields.stream().filter(field -> Strings.CI.equals(field.getId(), fieldValue.getFieldId())).findFirst().orElse(null);
-                                if (baseField != null) {
-                                    String s = baseField.getName() + "|" + Translator.get(fieldValue.getValueType()) + "|" + ((Strings.CI.equals(fieldValue.getValueType(), CirculationFieldValueTypeEnum.FIXED_VALUE.name()) && (fieldValue.getFieldValue() != null)) ? transformFieldValue(baseField, fieldValue.getFieldValue()) : "") + "|" + Translator.get(fieldValue.getRequired().toString());
-                                    data = (data + s) + "\n";
+                            String dateDefaultType = "";
+                            try{
+                                for (CirculationFieldValue fieldValue : circulationFieldValues) {
+                                    BaseField baseField = fields.stream().filter(field -> Strings.CI.equals(field.getId(), fieldValue.getFieldId())).findFirst().orElse(null);
+                                    if (baseField != null) {
+                                        if (Strings.CI.equals(baseField.getType(), FieldType.DATE_TIME.name())) {
+                                            switch (fieldValue.getDateDefaultType()) {
+                                                case "custom":
+                                                    dateDefaultType = Translator.get("CUSTOM");
+                                                    break;
+                                                case "current":
+                                                    dateDefaultType = Translator.get("CURRENT");
+                                                    break;
+                                                default:
+                                                    break;
+                                            }
+                                        }
+                                        String s = baseField.getName() + "|" +
+                                                Translator.get(fieldValue.getValueType()) + "|" + dateDefaultType +
+                                                ((Strings.CI.equals(fieldValue.getValueType(), CirculationFieldValueTypeEnum.FIXED_VALUE.name()) && (fieldValue.getFieldValue() != null)) ? transformFieldValue(baseField, fieldValue.getFieldValue()) : "") + "|" +
+                                                Translator.get(fieldValue.getRequired().toString());
+                                        data = (data + s) + "\n";
+                                    }
                                 }
+                                newValuesList.add(stageName + "\n" + title + "\n" + data);
+                            }catch (Exception e) {
+                                log.error("handleConfig error: ", e);
+                                newValuesList.add(stageName + "\n");
                             }
-                            ;
-                            newValuesList.add(stageName + "\n" + title + "\n" + data);
                         } else {
-                            newValuesList.add(stageName+"\n");
+                            newValuesList.add(stageName + "\n");
                         }
                     });
                 }
 
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
-                return newValuesList;
+                //return newValuesList;
             }
         }
         return newValuesList;

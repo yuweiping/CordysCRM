@@ -6,7 +6,7 @@
     class="crm-contract-table"
     :not-show-table="activeShowType === 'billboard'"
     :not-show-table-filter="isAdvancedSearchMode"
-    :action-config="actionConfig"
+    :action-config="props.readonly ? undefined : actionConfig"
     :fullscreen-target-ref="props.fullscreenTargetRef"
     :hiddenBackToTop="activeShowType === 'billboard'"
     :customTotal="activeShowType === 'billboard'"
@@ -19,11 +19,11 @@
   >
     <template #actionLeft>
       <div class="flex items-center gap-[12px]">
-        <n-button v-permission="['CONTRACT:ADD']" type="primary" @click="handleNewClick">
+        <n-button v-if="!props.readonly" v-permission="['CONTRACT:ADD']" type="primary" @click="handleNewClick">
           {{ t('contract.new') }}
         </n-button>
         <CrmImportButton
-          v-if="hasAnyPermission(['CONTRACT:IMPORT'])"
+          v-if="hasAnyPermission(['CONTRACT:IMPORT']) && !props.readonly"
           :api-type="FormDesignKeyEnum.CONTRACT"
           :title="t('module.contract')"
           @import-success="() => searchData()"
@@ -49,7 +49,7 @@
         @adv-search="handleAdvSearch"
         @keyword-search="searchData"
       />
-      <n-tabs v-model:value="activeShowType" type="segment" size="large" class="show-type-tabs">
+      <n-tabs v-if="!props.hideBoard" v-model:value="activeShowType" type="segment" size="large" class="show-type-tabs">
         <n-tab-pane name="table" class="hidden">
           <template #tab><CrmIcon type="iconicon_list" /></template>
         </n-tab-pane>
@@ -60,6 +60,7 @@
     </template>
     <template #view>
       <CrmViewSelect
+        v-if="!props.detailTabResourceId && !props.hideBoard"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.CONTRACT"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -184,7 +185,6 @@
   import { CirculationTypeEnum } from '@lib/shared/enums/opportunityEnum.js';
   import { ProcessStatusEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
-  import useLocale from '@lib/shared/locale/useLocale';
   import { abbreviateNumber, characterLimit } from '@lib/shared/method';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { ContractItem } from '@lib/shared/models/contract';
@@ -194,6 +194,7 @@
     OpportunityStageConfig,
     type StageConfigItem,
   } from '@lib/shared/models/opportunity';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import { COMMON_SELECTION_OPERATORS } from '@/components/pure/crm-advance-filter/index';
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
@@ -244,6 +245,13 @@
 
   const props = defineProps<{
     fullscreenTargetRef?: HTMLElement | null;
+    readonly?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
+    hideBoard?: boolean;
   }>();
   const emit = defineEmits<{
     (
@@ -267,7 +275,7 @@
   const checkedRowKeys = ref<DataTableRowKey[]>([]);
   const tableRefreshId = ref(0);
   const billboardTotalCount = ref(0);
-  const tableRemoveRefreshId = ref('');
+  const tableRemoveRefreshSignal = ref({ id: '', key: 0 });
   const tableItemRefreshId = ref('');
 
   const formCreateDrawerVisible = ref(false);
@@ -464,7 +472,10 @@
         try {
           await deleteContract(row.id);
           Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
-          tableRemoveRefreshId.value = row.id;
+          tableRemoveRefreshSignal.value = {
+            id: row.id,
+            key: tableRemoveRefreshSignal.value.key + 1,
+          };
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -615,6 +626,12 @@
 
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: FormDesignKeyEnum.CONTRACT,
+    readonly: props.readonly,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     operationColumn: {
       key: 'operation',
       width: 180,
@@ -877,8 +894,11 @@
   }
 
   function searchData(val?: string, refreshId?: string) {
-    if (!activeTab.value) return;
-    setLoadListParams({ keyword: val ?? keyword.value, viewId: activeTab.value });
+    if (!activeTab.value && !props.detailTabResourceId) return;
+    setLoadListParams({
+      keyword: val ?? keyword.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
+    });
     if (activeShowType.value === 'billboard') {
       billboardRef.value?.refresh();
       getStatistic(val);
@@ -951,10 +971,10 @@
   }
 
   watch(
-    () => tableRemoveRefreshId.value,
+    () => tableRemoveRefreshSignal.value,
     (val) => {
-      if (val) {
-        removeItemFromList(val);
+      if (val.id) {
+        removeItemFromList(val.id);
         getStatistic();
       }
     }
@@ -1002,6 +1022,11 @@
   );
 
   onMounted(async () => {
+    if (props.detailTabResourceId) {
+      activeShowType.value = 'table';
+      searchData();
+      return;
+    }
     activeShowType.value = (await getItem<'billboard' | 'table'>('contract-active-show-type')) ?? 'table';
     if (route.query.id) {
       activeSourceId.value = route.query.id as string;

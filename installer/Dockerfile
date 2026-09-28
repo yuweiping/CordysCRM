@@ -7,6 +7,9 @@ RUN npm install -g pnpm@10.4.1 && \
     pnpm run build
 
 
+FROM node:24-alpine AS cockpit-runtime
+
+
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /build
 COPY . /build
@@ -37,7 +40,10 @@ COPY installer/shells /shells
 COPY installer/conf /installer/conf
 
 COPY installer/mcp /app/mcp
-COPY installer/cockpit /app/cockpit
+COPY --from=cockpit-runtime /usr/local/bin/node /usr/local/bin/node
+COPY installer/cockpit/bundle /app/cockpit/bundle
+COPY installer/cockpit/skills /app/cockpit/skills
+RUN apk add --no-cache libstdc++ && node --version
 
 ENV JAVA_CLASSPATH=/app:/app/lib/*
 ENV JAVA_MAIN_CLASS=cn.cordys.Application
@@ -52,7 +58,7 @@ RUN echo -n "${CRM_VERSION}" > /tmp/CRM_VERSION
 
 VOLUME [ "/opt/cordys" ]
 
-EXPOSE 8081 8082
+EXPOSE 8081 8082 8088 3306
 
 RUN chmod 777  /shells/*.sh
 ENTRYPOINT ["sh", "/shells/start-all.sh"]

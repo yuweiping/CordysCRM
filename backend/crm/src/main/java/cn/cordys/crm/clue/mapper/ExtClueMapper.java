@@ -6,6 +6,7 @@ import cn.cordys.common.dto.BatchUpdateDbParam;
 import cn.cordys.common.dto.DeptDataPermissionDTO;
 import cn.cordys.common.dto.OptionDTO;
 import cn.cordys.common.dto.chart.ChartResult;
+import cn.cordys.common.statistic.StatisticSqlMapper;
 import cn.cordys.crm.clue.domain.Clue;
 import cn.cordys.crm.clue.dto.request.ClueBatchTransferRequest;
 import cn.cordys.crm.clue.dto.request.CluePageRequest;
@@ -24,7 +25,7 @@ import java.util.List;
  * @author jianxing
  * @date 2025-02-08 17:42:41
  */
-public interface ExtClueMapper {
+public interface ExtClueMapper extends StatisticSqlMapper {
 
     List<ClueListResponse> list(@Param("request") CluePageRequest request, @Param("orgId") String orgId,
                                 @Param("userId") String userId, @Param("dataPermission") DeptDataPermissionDTO deptDataPermission, @Param("source") boolean source);
@@ -99,7 +100,7 @@ public interface ExtClueMapper {
      *
      * @param clue 线索
      */
-    void updateIncludeNullById(@Param("clue") Clue clue);
+    int updateIncludeNullById(@Param("clue") Clue clue);
 
     /**
      * 检查字段值是否唯一
@@ -128,6 +129,14 @@ public interface ExtClueMapper {
      * @param clue
      */
     void updateClue(@Param("clue") Clue clue);
+
+    int freeze(@Param("id") String id, @Param("orgId") String orgId, @Param("reason") String reason,
+               @Param("unfreezeTime") Long unfreezeTime);
+
+    int unfreeze(@Param("id") String id, @Param("orgId") String orgId, @Param("now") long now,
+                 @Param("expiredOnly") boolean expiredOnly);
+
+    List<Clue> selectExpiredFrozen(@Param("now") long now);
 
 
 }

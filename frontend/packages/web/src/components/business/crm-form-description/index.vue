@@ -11,7 +11,7 @@
       :tooltip-position="props.tooltipPosition"
     >
       <template #divider="{ item }">
-        <CrmFormCreateDivider :field-config="item.fieldInfo" class="!m-0 w-full" />
+        <CrmFormCreateDivider v-if="item.fieldInfo" :field-config="item.fieldInfo" class="!m-0 w-full" />
       </template>
       <template #image="{ item }">
         <n-image-group v-if="item.value?.length">
@@ -36,15 +36,15 @@
             {{ item.label }}
           </div>
           <CrmSingleText
-            v-if="editableByPermission.includes(item.fieldInfo.id)"
-            v-model:value="formDetail[item.fieldInfo.id]"
+            v-if="item.fieldInfo && editableByPermission.includes(item.fieldInfo?.id)"
+            v-model:value="formDetail[item.fieldInfo?.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
-            :path="item.fieldInfo.id"
+            :path="item.fieldInfo?.id"
             isDescriptionRender
-            :feedback="feedbackMap[item.fieldInfo.id]"
+            :feedback="feedbackMap[item.fieldInfo?.id]"
             needInitDetail
             class="flex-1"
           />
@@ -60,16 +60,16 @@
             {{ item.label }}
           </div>
           <CrmTextarea
-            v-if="editableByPermission.includes(item.fieldInfo.id)"
-            v-model:value="formDetail[item.fieldInfo.id]"
+            v-if="item.fieldInfo && editableByPermission.includes(item.fieldInfo?.id)"
+            v-model:value="formDetail[item.fieldInfo?.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
-            :path="item.fieldInfo.id"
+            :path="item.fieldInfo?.id"
             :disabled="!hasAnyPermission(['OPPORTUNITY_MANAGEMENT:UPDATE'])"
             isDescriptionRender
-            :feedback="feedbackMap[item.fieldInfo.id]"
+            :feedback="feedbackMap[item.fieldInfo?.id]"
             needInitDetail
             class="flex-1"
           />
@@ -173,24 +173,24 @@
           </div>
           <CrmDateTime
             v-if="
-              editableByPermission.includes(item.fieldInfo.id) ||
-              (item.fieldInfo.businessKey === 'expectedEndTime' && !item.fieldInfo.resourceFieldId)
+              (item.fieldInfo && editableByPermission.includes(item.fieldInfo?.id)) ||
+              (item.fieldInfo?.businessKey === 'expectedEndTime' && !item.fieldInfo?.resourceFieldId)
             "
-            v-model:value="formDetail[item.fieldInfo.id]"
+            v-model:value="formDetail[item.fieldInfo?.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
-            :path="item.fieldInfo.id"
+            :path="item.fieldInfo?.id"
             :disabled="
-              item.fieldInfo.businessKey === 'expectedEndTime' && !item.fieldInfo.resourceFieldId
-                ? !item.fieldInfo.editable
-                : !editableByPermission.includes(item.fieldInfo.id)
+              item.fieldInfo?.businessKey === 'expectedEndTime' && !item.fieldInfo?.resourceFieldId
+                ? !item.fieldInfo?.editable
+                : !editableByPermission.includes(item.fieldInfo?.id)
             "
             isDescriptionRender
-            :feedback="feedbackMap[item.fieldInfo.id]"
+            :feedback="feedbackMap[item.fieldInfo?.id]"
             needInitDetail
-            @change="editableByPermission.includes(item.fieldInfo.id) ? undefined : handleFormChange()"
+            @change="editableByPermission.includes(item.fieldInfo?.id) ? undefined : handleFormChange()"
           />
           <div v-else>{{ item.value || '-' }}</div>
         </div>
@@ -201,15 +201,15 @@
             {{ item.label }}
           </div>
           <CrmSelect
-            v-if="editableByPermission.includes(item.fieldInfo.id)"
-            v-model:value="formDetail[item.fieldInfo.id]"
+            v-if="item.fieldInfo && editableByPermission.includes(item.fieldInfo?.id)"
+            v-model:value="formDetail[item.fieldInfo?.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
-            :path="item.fieldInfo.id"
+            :path="item.fieldInfo?.id"
             isDescriptionRender
-            :feedback="feedbackMap[item.fieldInfo.id]"
+            :feedback="feedbackMap[item.fieldInfo?.id]"
             class="w-[180px]"
             needInitDetail
             @update:value="handleFieldChange(item.fieldInfo, $event)"
@@ -229,15 +229,15 @@
             {{ item.label }}
           </div>
           <CrmInputNumber
-            v-if="editableByPermission.includes(item.fieldInfo.id)"
-            v-model:value="formDetail[item.fieldInfo.id]"
+            v-if="item.fieldInfo && editableByPermission.includes(item.fieldInfo?.id)"
+            v-model:value="formDetail[item.fieldInfo?.id]"
             :field-config="{
               ...item.fieldInfo,
               showLabel: false,
             }"
-            :path="item.fieldInfo.id"
+            :path="item.fieldInfo?.id"
             isDescriptionRender
-            :feedback="feedbackMap[item.fieldInfo.id]"
+            :feedback="feedbackMap[item.fieldInfo?.id]"
             needInitDetail
           />
           <div v-else>{{ isNotEmpty(item.value) ? item.value : '-' }}</div>
@@ -262,9 +262,9 @@
           <CrmSubTable
             :parent-id="item.key || ''"
             :value="item.value as Record<string, any>[] || []"
-            :sub-fields="item.fieldInfo.subFields"
-            :fixed-column="item.fieldInfo.fixedColumn"
-            :sum-columns="item.fieldInfo.sumColumns"
+            :sub-fields="item.fieldInfo?.subFields || []"
+            :fixed-column="item.fieldInfo?.fixedColumn"
+            :sum-columns="item.fieldInfo?.sumColumns"
             :optionMap="item.optionMap"
             readonly
           />
@@ -278,12 +278,39 @@
           <CrmSubTable
             :parent-id="item.key || ''"
             :value="item.value as Record<string, any>[] || []"
-            :sub-fields="item.fieldInfo.subFields"
-            :fixed-column="item.fieldInfo.fixedColumn"
-            :sum-columns="item.fieldInfo.sumColumns"
+            :sub-fields="item.fieldInfo?.subFields || []"
+            :fixed-column="item.fieldInfo?.fixedColumn"
+            :sum-columns="item.fieldInfo?.sumColumns"
             :optionMap="item.optionMap"
             readonly
           />
+        </div>
+      </template>
+      <template #[FieldTypeEnum.STATISTIC]="{ item }">
+        <div class="field-line flex w-full flex-wrap items-center">
+          <div class="pr-[16px] text-[var(--text-n2)]">
+            {{ item.label }}
+          </div>
+          <div class="flex items-center gap-[8px]">
+            {{ item.value === null || item.value === undefined ? '-' : item.value }}
+            <CrmPopConfirm
+              v-if="item.fieldInfo && !item.fieldInfo.resourceFieldId"
+              v-model:show="popShow[item.fieldInfo?.id]"
+              :title="t('crmFormCreate.reCalculation')"
+              icon-type="warning"
+              :content="t('crmFormCreate.reCalculationTip')"
+              :positive-text="t('common.confirm')"
+              trigger="click"
+              :negative-text="t('common.cancel')"
+              placement="bottom-end"
+              @confirm="handleReCalculation(item.fieldInfo, item)"
+            >
+              <n-button type="warning" quaternary>
+                <template #icon><CrmIcon type="iconicon_error_circle_filled" /></template>
+                {{ t('crmFormCreate.reCalculation') }}
+              </n-button>
+            </CrmPopConfirm>
+          </div>
         </div>
       </template>
     </CrmDescription>
@@ -308,12 +335,14 @@
   import { FieldDataSourceTypeEnum, FieldTypeEnum, FormDesignKeyEnum } from '@lib/shared/enums/formDesignEnum';
   import { ApprovalFieldPermissionModeEnum } from '@lib/shared/enums/process';
   import { useI18n } from '@lib/shared/hooks/useI18n';
+  import { formatNumberValueToString } from '@lib/shared/method/formCreate.js';
   import { isNotEmpty } from '@lib/shared/method/is.js';
   import { CollaborationType } from '@lib/shared/models/customer';
   import type { FormConfig } from '@lib/shared/models/system/module';
   import type { ApprovalFieldPermission } from '@lib/shared/models/system/process';
 
   import CrmDescription, { Description } from '@/components/pure/crm-description/index.vue';
+  import CrmPopConfirm from '@/components/pure/crm-pop-confirm/index.vue';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmTagGroup from '@/components/pure/crm-tag-group/index.vue';
   import CrmFileListModal from '@/components/business/crm-file-list-modal/index.vue';
@@ -325,6 +354,7 @@
   import CrmSingleText from '../crm-form-create/components/basic/singleText.vue';
   import CrmTextarea from '../crm-form-create/components/basic/textarea.vue';
 
+  import { refreshStatistic } from '@/api/modules/index.js';
   import useFormCreateApi from '@/hooks/useFormCreateApi';
   import useUserStore from '@/store/modules/user';
   import { hasAnyPermission } from '@/utils/permission';
@@ -387,6 +417,7 @@
     (e: 'openContractPaymentPlanDetail', params: { id: string }): void;
     (e: 'openOpportunityDetail', params: { id: string }): void;
     (e: 'openQuotationDetail', params: { id: string }): void;
+    (e: 'refresh', params: { id: string }): void;
   }>();
 
   const { t } = useI18n();
@@ -436,15 +467,17 @@
     return descriptions.value
       .filter(
         (item) =>
-          !props.hiddenFields?.includes(item.fieldInfo.id) &&
-          !hiddenFieldByPermission.value?.includes(item.fieldInfo.id) &&
+          item.fieldInfo &&
+          !props.hiddenFields?.includes(item.fieldInfo?.id) &&
+          !hiddenFieldByPermission.value?.includes(item.fieldInfo?.id) &&
           item.fieldInfo?.show !== false
       )
       .map((item) => {
         // 独占一行
         if (
+          item.fieldInfo &&
           [FieldTypeEnum.TEXTAREA, FieldTypeEnum.DIVIDER, FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(
-            item.fieldInfo.type
+            item.fieldInfo?.type
           )
         ) {
           const extraClass = props.column && props.column > 1 ? '!w-full' : '';
@@ -629,7 +662,7 @@
   };
 
   function canOpenDataSource(item: Description) {
-    const config = dataSourceConfig[item.fieldInfo.dataSourceType as FieldDataSourceTypeEnum];
+    const config = dataSourceConfig[item.fieldInfo?.dataSourceType as FieldDataSourceTypeEnum];
 
     if (!config) return false;
 
@@ -637,18 +670,18 @@
   }
 
   function openDataSource(item: Description, value?: string) {
-    const config = dataSourceConfig[item.fieldInfo.dataSourceType as FieldDataSourceTypeEnum];
+    const config = dataSourceConfig[item.fieldInfo?.dataSourceType as FieldDataSourceTypeEnum];
 
     if (!config) return;
-    const option = item.fieldInfo.initialOptions?.find((i: { id: string; name: string }) => i.name === value);
+    const option = item.fieldInfo?.initialOptions?.find((i: { id: string; name: string }) => i.name === value);
 
-    const id = option?.id ?? formDetail.value[item.fieldInfo.id];
+    const id = option?.id ?? formDetail.value[item.fieldInfo?.id || ''];
     config.open(id);
   }
 
   // 打开链接
   function openLink(item: any) {
-    if (item.fieldInfo.openMode === 'openInCurrent') {
+    if (item.fieldInfo?.openMode === 'openInCurrent') {
       window.location.href = item.value;
     } else {
       window.open(item.value, '_blank');
@@ -671,10 +704,28 @@
         (file: AttachmentInfo) => file.id !== id
       );
     }
-    formDetail.value[activeDescItem.value?.fieldInfo.id] = formDetail.value[activeDescItem.value?.fieldInfo.id].filter(
-      (e: string) => e !== id
-    );
+    formDetail.value[activeDescItem.value?.fieldInfo?.id || ''] = formDetail.value[
+      activeDescItem.value?.fieldInfo?.id || ''
+    ].filter((e: string) => e !== id);
     handleFormChange();
+  }
+
+  const popShow = ref<Record<string, boolean>>({});
+  async function handleReCalculation(field: FormCreateField, value: Description) {
+    try {
+      const res = await refreshStatistic(props.sourceId, field.id);
+      if (res === null) {
+        value.value = '-';
+      } else {
+        value.value = formatNumberValueToString(res, field);
+      }
+      popShow.value[field.id] = false;
+      Message.success(t('common.refreshSuccess'));
+      emit('refresh', { id: field.id });
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.log(error);
+    }
   }
 
   watch(
@@ -691,6 +742,11 @@
   onBeforeMount(async () => {
     await initFormConfig();
     await initFormDetail(true);
+    descriptions.value.forEach((e) => {
+      if (e.fieldInfo?.type === FieldTypeEnum.STATISTIC) {
+        popShow.value[e.fieldInfo?.id || ''] = false;
+      }
+    });
     emit('init', collaborationType.value, sourceName.value, detail.value, formConfig.value);
     isInit.value = true;
   });

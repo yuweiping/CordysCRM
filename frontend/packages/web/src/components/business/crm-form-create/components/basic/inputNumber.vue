@@ -1,5 +1,22 @@
 <template>
+  <CrmInputNumber
+    v-if="props.pureInput"
+    v-model:value="value"
+    :max="1000000000"
+    :min="-1000000000"
+    :placeholder="''"
+    :disabled="props.fieldConfig.editable === false || props.disabled || !!props.fieldConfig.resourceFieldId"
+    :parse="parse"
+    :format="format"
+    :precision="props.longFloat ? props.fieldConfig.precision || 13 : props.fieldConfig.precision"
+    clearable
+    class="w-full"
+    @update-value="($event:number | null) => emit('change', $event)"
+  >
+    <template v-if="props.fieldConfig.numberFormat === 'percent'" #suffix> % </template>
+  </CrmInputNumber>
   <n-form-item
+    v-else
     :label="props.fieldConfig.name"
     :path="props.path"
     :rule="formItemRules"
@@ -41,7 +58,6 @@
 <script setup lang="ts">
   import { NDivider, NFormItem } from 'naive-ui';
 
-  import { FieldTypeEnum } from '@lib/shared/enums/formDesignEnum';
   import type { FormConfig } from '@lib/shared/models/system/module';
 
   import CrmInputNumber from '@/components/pure/crm-input-number/index.vue';
@@ -60,6 +76,8 @@
     isDescriptionRender?: boolean; // 是否是描述渲染
     ignoreRule?: boolean;
     disabled?: boolean;
+    pureInput?: boolean; // 是否是纯输入框，主要用于公式计算结果渲染
+    longFloat?: boolean; // 是否是长浮点数，是的话且没设置保留位数时就保留最长小数位
   }>();
   const emit = defineEmits<{
     (e: 'change', value: number | null): void;
@@ -103,7 +121,15 @@
         const [integerPart, decimalPart] = val.toFixed(props.fieldConfig.precision).split('.');
         return `${integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimalPart}`;
       }
+      if (props.longFloat && !props.fieldConfig.precision) {
+        const [integerPart, decimalPart] = val.toFixed(13).split('.');
+        return `${integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${decimalPart}`;
+      }
       return val.toLocaleString('en-US');
+    }
+    if (props.longFloat && !props.fieldConfig.precision) {
+      const floatVal = typeof val === 'number' ? val.toFixed(13) : Number(val).toFixed(13);
+      return Number(floatVal) === val ? val : floatVal;
     }
     return typeof val === 'number'
       ? val.toFixed(props.fieldConfig.precision || 0)

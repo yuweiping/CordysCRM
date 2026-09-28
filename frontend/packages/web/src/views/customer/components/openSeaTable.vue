@@ -91,6 +91,8 @@
     :hidden-columns="hiddenColumns"
     @change="searchData(undefined, undefined, activeCustomerId)"
     @delete="removeItemFromList(activeCustomerId)"
+    @freeze="openFreezeModal($event, 'freeze')"
+    @unfreeze="openFreezeModal($event, 'unfreeze')"
   />
   <TransferModal
     v-model:show="showDistributeModal"
@@ -113,6 +115,16 @@
     :ids="checkedRowKeys"
     :form-key="FormDesignKeyEnum.CUSTOMER_OPEN_SEA"
     @refresh="handleRefresh"
+  />
+  <CrmFreezeModal
+    v-if="activeRow && openSea"
+    v-model:show="freezeModalShow"
+    :type="freezeType"
+    :resource-name="activeRow.name"
+    :resource-id="activeRow.id"
+    :pool-id="openSea"
+    resource-type="customer"
+    @success="handleItemRefresh"
   />
 </template>
 
@@ -138,6 +150,8 @@
   import { BatchActionConfig } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmBatchEditModal from '@/components/business/crm-batch-edit-modal/index.vue';
+  import CrmFreezeTag from '@/components/business/crm-freeze-modal/freezeTag.vue';
+  import CrmFreezeModal from '@/components/business/crm-freeze-modal/index.vue';
   import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
@@ -361,6 +375,16 @@
         popSlotContent: 'distributePopContent',
       },
       {
+        label: t('common.freeze'),
+        key: 'freeze',
+        permission: ['CUSTOMER_MANAGEMENT_POOL:FREEZE'],
+      },
+      {
+        label: t('common.unfreeze'),
+        key: 'unfreeze',
+        permission: ['CUSTOMER_MANAGEMENT_POOL:FREEZE'],
+      },
+      {
         label: t('common.delete'),
         key: 'delete',
         permission: ['CUSTOMER_MANAGEMENT_POOL:DELETE'],
@@ -470,7 +494,20 @@
     }
   }
 
+  const freezeModalShow = ref(false);
+  const freezeType = ref<'freeze' | 'unfreeze'>('freeze');
+  const activeRow = ref();
+
+  function openFreezeModal(name: string, type: 'freeze' | 'unfreeze') {
+    if (!activeRow.value && activeCustomerId.value) {
+      activeRow.value = { name, id: activeCustomerId.value };
+    }
+    freezeType.value = type;
+    freezeModalShow.value = true;
+  }
+
   function handleActionSelect(row: any, actionKey: string) {
+    activeRow.value = row;
     switch (actionKey) {
       case 'pop-claim':
         handleClaim(row);
@@ -480,6 +517,12 @@
         break;
       case 'delete':
         handleDelete(row);
+        break;
+      case 'freeze':
+        openFreezeModal(row.name, 'freeze');
+        break;
+      case 'unfreeze':
+        openFreezeModal(row.name, 'unfreeze');
         break;
       default:
         break;
@@ -506,13 +549,19 @@
       ? undefined
       : {
           key: 'operation',
-          width: currentLocale.value === 'en-US' ? 200 : 150,
+          width:
+            currentLocale.value === 'en-US'
+              ? operationGroupList.value.length * 80
+              : operationGroupList.value.length * 50,
           fixed: 'right',
           render: (row: any) =>
             h(
               CrmOperationButton,
               {
-                groupList: operationGroupList.value,
+                groupList: operationGroupList.value.filter(
+                  (item) =>
+                    item.key && !(row.frozen ? ['freeze', 'claim', 'distribute'] : ['unfreeze']).includes(item.key)
+                ),
                 onSelect: (key: string) => handleActionSelect(row, key),
                 onCancel: () => {
                   distributeForm.value.owner = null;
@@ -531,19 +580,43 @@
         },
     specialRender: {
       name: (row: any) => {
-        return props.isLimitShowDetail && row.hasPermission === false
-          ? h(CrmNameTooltip, { text: row.name })
-          : h(
-              CrmTableButton,
-              {
-                onClick: () => {
-                  activeCustomerId.value = row.id;
-                  openSea.value = row.poolId ?? openSea.value;
-                  showOverviewDrawer.value = true;
-                },
-              },
-              { default: () => row.name, trigger: () => row.name }
-            );
+        return h(
+          'div',
+          { class: 'flex max-w-full items-center gap-[12px]' },
+          {
+            default: () => [
+              h(
+                'div',
+                { class: 'min-w-0 flex-1 overflow-hidden' },
+                props.isLimitShowDetail && row.hasPermission === false
+                  ? h(CrmNameTooltip, { text: row.name })
+                  : h(
+                      CrmTableButton,
+                      {
+                        onClick: () => {
+                          activeCustomerId.value = row.id;
+                          openSea.value = row.poolId ?? openSea.value;
+                          showOverviewDrawer.value = true;
+                        },
+                      },
+                      { default: () => row.name, trigger: () => row.name }
+                    )
+              ),
+              row.frozen
+                ? h(
+                    'div',
+                    { class: 'flex-shrink-0' },
+                    h(CrmFreezeTag, {
+                      resourceType: 'customer',
+                      freezeType: row.unfreezeTime ? 'custom' : 'freezeForever',
+                      unfreezeTime: row.unfreezeTime,
+                      freezeReason: row.freezeReason,
+                    })
+                  )
+                : null,
+            ],
+          }
+        );
       },
     },
     permission: ['CUSTOMER_MANAGEMENT_POOL:PICK', 'CUSTOMER_MANAGEMENT_POOL:ASSIGN', 'CUSTOMER_MANAGEMENT_POOL:DELETE'],
@@ -559,7 +632,9 @@
   function handleSorterChange(sorter: SortParams) {
     if (openSea.value) {
       setLoadListParams({ keyword: keyword.value, poolId: openSea.value, viewId: activeTab.value });
-      propsEvent.value.sorterChange(sorter);
+      nextTick(() => {
+        propsEvent.value.sorterChange(sorter);
+      });
     }
   }
 
@@ -593,6 +668,10 @@
     });
     loadList(false, refreshId);
     crmTableRef.value?.scrollTo({ top: 0 });
+  }
+
+  function handleItemRefresh(id: string) {
+    searchData(undefined, undefined, id);
   }
 
   function handlePoolChange(e: string) {

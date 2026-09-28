@@ -71,6 +71,7 @@
       v-model:show="importModal"
       :title="t('role.member')"
       :confirm-loading="validateLoading"
+      :template-file-name="t('org.userImportTemplateFileName')"
       @validate="validateTemplate"
     />
 
@@ -829,7 +830,8 @@
     }
   }
 
-  const platFormName = computed(() => platFormNameMap[appStore.activePlatformResource.syncResource]);
+  const activeSyncResource = computed(() => appStore.activePlatformResource.syncResource || CompanyTypeEnum.WECOM);
+  const platFormName = computed(() => platFormNameMap[activeSyncResource.value]);
 
   // 同步二次确认
   function handleSyncConfirm() {
@@ -857,6 +859,7 @@
   }
 
   const isHasConfigPermission = computed(() => hasAnyPermission(['SYSTEM_SETTING:UPDATE'])); // 有配置权限
+  const hasSyncPermission = computed(() => hasAnyPermission(['SYS_ORGANIZATION:SYNC'])); // 有同步权限
   const isHasConfig = ref<boolean>(false); // 已配置
   const renderSyncResult = ref<VNode<RendererElement, { [key: string]: any }> | null>(null);
 
@@ -873,7 +876,7 @@
 
   const moreActions = computed(() => {
     return [
-      ...(hasAnyPermission(['SYS_ORGANIZATION:SYNC'])
+      ...(hasSyncPermission.value
         ? [
             {
               label: t('org.formPlatformSync', { type: platFormName.value }),
@@ -1188,7 +1191,7 @@
   }
 
   async function updateShow(show: boolean) {
-    if (show && isHasConfigPermission.value && isHasConfig.value) {
+    if (show && hasSyncPermission.value && isHasConfigPermission.value && isHasConfig.value) {
       await checkSyncing();
       renderSyncResult.value = renderSync();
     }
@@ -1200,13 +1203,13 @@
       const res = await getConfigSynchronization();
       if (res) {
         const platFormConfig = res.find(
-          (item) => platformType.includes(item.type) && item.type === appStore.activePlatformResource.syncResource
+          (item) => platformType.includes(item.type) && item.type === activeSyncResource.value
         );
         currentIntegration.value = {
-          type: appStore.activePlatformResource.syncResource,
+          type: activeSyncResource.value,
           verify: platFormConfig?.verify || false,
           config: {
-            ...defaultThirdPartyConfigMap[appStore.activePlatformResource.syncResource],
+            ...defaultThirdPartyConfigMap[activeSyncResource.value],
             ...platFormConfig?.config,
           },
         };
@@ -1228,7 +1231,8 @@
     }
   );
 
-  onBeforeMount(() => {
+  onBeforeMount(async () => {
+    await appStore.initThirdPartyResource();
     // TODO license 先放开
     // if (isHasConfigPermission.value && licenseStore.hasLicense()) {
     //   initIntegration();

@@ -80,6 +80,7 @@ import cn.cordys.crm.system.excel.listener.CustomFieldMergeCellEventListener;
 import cn.cordys.crm.system.mapper.ExtStageAdvancedConfigMapper;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
 import cn.cordys.crm.system.service.*;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -116,6 +117,8 @@ public class ContractService extends BaseExportService implements ApprovalResour
 
     @Resource
     private ContractFieldService contractFieldService;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private BaseMapper<Contract> contractMapper;
     @Resource
@@ -214,6 +217,10 @@ public class ContractService extends BaseExportService implements ApprovalResour
         contractFieldService.saveModuleField(contract, orgId, operatorId, moduleFields, false);
         contractMapper.insert(contract);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.CONTRACT.getKey(), contract.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.CONTRACT.getKey(), contract.getId(), orgId);
         baseService.handleAddLogWithSubTable(contract, moduleFields, Translator.get("products_info"), moduleFormConfigDTO);
 
         // 保存表单配置快照
@@ -309,6 +316,7 @@ public class ContractService extends BaseExportService implements ApprovalResour
         if (Strings.CI.equals(getResponse.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
             Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
             getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
+            getResponse.setSubmitterId(baseService.getApprovingResourceSubmitterId(getResponse.getId()));
         }
         return getResponse;
     }
@@ -419,8 +427,14 @@ public class ContractService extends BaseExportService implements ApprovalResour
             //判断总金额
             setAmount(request.getAmount(), contract);
             moduleFields.add(new BaseModuleFieldValue("products", request.getProducts()));
+            // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+            // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+            StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                    FormKey.CONTRACT.getKey(), List.of(request.getId()), orgId);
             updateFields(moduleFields, contract, orgId, userId);
             contractMapper.update(contract);
+            // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+            statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
             //删除快照
             LambdaQueryWrapper<ContractSnapshot> delWrapper = new LambdaQueryWrapper<>();
             delWrapper.eq(ContractSnapshot::getContractId, request.getId());
@@ -515,11 +529,18 @@ public class ContractService extends BaseExportService implements ApprovalResour
             return;
         }
 
+        // 捕的是审批分流之后真正要删的 deleteIds, 不是 permittedIds —— 走审批的那批此刻并没删掉,
+        // 捕了就是白捕, 而且审批通过后还会由审批侧再删一次, 那次自会重算。
+        // 删除会同时毁掉关联字段的值, 所以只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CONTRACT.getKey(), deleteIds, orgId);
         contractFieldService.deleteByResourceIds(deleteIds);
         contractMapper.deleteByIds(deleteIds);
         LambdaQueryWrapper<ContractSnapshot> wrapper = new LambdaQueryWrapper<>();
         wrapper.in(ContractSnapshot::getContractId, deleteIds);
         snapshotBaseMapper.deleteByLambda(wrapper);
+        // 删完再重算, 此时被删的那批已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         List<LogDTO> logs = permittedContracts.stream()
                 .filter(contract -> deleteIds.contains(contract.getId()))
@@ -544,6 +565,9 @@ public class ContractService extends BaseExportService implements ApprovalResour
         }
         checkContractRelated(id);
 
+        // 删除会同时毁掉关联字段的值, 所以「这份合同关联了谁」只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CONTRACT.getKey(), List.of(id), orgId);
         contractFieldService.deleteByResourceId(id);
         contractMapper.deleteByPrimaryKey(id);
 
@@ -551,6 +575,8 @@ public class ContractService extends BaseExportService implements ApprovalResour
         LambdaQueryWrapper<ContractSnapshot> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContractSnapshot::getContractId, id);
         snapshotBaseMapper.deleteByLambda(wrapper);
+        // 删完再重算, 此时被删的那条已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
         // 添加日志上下文
         OperationLogContext.setResourceName(contract.getName());
     }
@@ -587,6 +613,7 @@ public class ContractService extends BaseExportService implements ApprovalResour
             if (Strings.CI.equals(response.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
                 Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(response.getId()), orgId);
                 response.setFirstApproved(firstNodeApproved.get(response.getId()));
+                response.setSubmitterId(baseService.getApprovingResourceSubmitterId(response.getId()));
             }
         }
         response.setApproved(contract.getApproved());
@@ -654,6 +681,8 @@ public class ContractService extends BaseExportService implements ApprovalResour
 
         List<String> approvingResourceIds = list.stream().filter(item -> Strings.CI.contains(item.getApprovalStatus(), ApprovalStatus.APPROVING.name())).map(ContractListResponse::getId).toList();
         Map<String, Boolean> firstNodeApprovedMap = baseService.getApprovingResourceFirstNodeApproved(approvingResourceIds, orgId);
+        // 提审人仅存在于审批中的合同, 非审批中状态无需查询审批实例, 统一返回空
+        Map<String, String> submitterIdMap = baseService.getApprovingResourceSubmitterIds(approvingResourceIds);
 
         list.forEach(item -> {
             item.setOwnerName(userNameMap.get(item.getOwner()));
@@ -667,6 +696,7 @@ public class ContractService extends BaseExportService implements ApprovalResour
             List<BaseModuleFieldValue> contractFields = resolvefieldValueMap.get(item.getId());
             item.setModuleFields(contractFields);
             item.setFirstApproved(firstNodeApprovedMap.get(item.getId()));
+            item.setSubmitterId(submitterIdMap.get(item.getId()));
         });
         return baseService.setCreateAndUpdateUserName(list);
     }
@@ -1114,7 +1144,14 @@ public class ContractService extends BaseExportService implements ApprovalResour
         filteredRequest.setFieldId(request.getFieldId());
         filteredRequest.setFieldValue(request.getFieldValue());
 
+        // 统计字段: 批量编辑只改一个字段, 改的若是关联字段, 下面这批合同的关联关系会整批换人 ——
+        // 换之前它们指向的宿主得先捕下来, 否则那些宿主的统计值会一直偏大; 改的不是关联字段时
+        // 这一步在服务内部直接短路, 只多一次反查。用 permittedIds: 没权限的那些根本没被写
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHostsForFieldChange(
+                FormKey.CONTRACT.getKey(), request.getFieldId(), permittedIds, organizationId);
         contractFieldService.batchUpdate(filteredRequest, field, permittedContracts, Contract.class, LogModule.CONTRACT_INDEX, extContractMapper::batchUpdate, userId, organizationId);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, permittedIds);
 
         // 批量更新后重建每条合同的快照
         ModuleFormConfigDTO moduleFormConfigDTO = getFormConfig(organizationId);
@@ -1236,6 +1273,10 @@ public class ContractService extends BaseExportService implements ApprovalResour
             } else {
                 extContractMapper.moveDownStageContract(pos, request.getStage(), DEFAULT_POS);
             }
+        }
+
+        if (!stageAdvancedConfigService.checkStage(contract.getStage(), request.getStage(), FormKey.CONTRACT.getKey())) {
+            return;
         }
 
         contract.setPos(pos);

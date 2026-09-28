@@ -21,6 +21,7 @@ import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.ServiceUtils;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.product.domain.Product;
 import cn.cordys.crm.product.domain.ProductField;
 import cn.cordys.crm.product.domain.ProductFieldBlob;
@@ -44,6 +45,8 @@ import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.StatisticFieldService;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -79,6 +82,8 @@ public class ProductService {
 
     @Resource
     private BaseMapper<Product> productBaseMapper;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private ExtProductMapper extProductMapper;
     @Resource
@@ -211,6 +216,10 @@ public class ProductService {
 
         productBaseMapper.insert(product);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.PRODUCT.getKey(), product.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.PRODUCT.getKey(), product.getId(), orgId);
         // 添加日志上下文
         baseService.handleAddLogWithResourceName(product, request.getModuleFields());
         return product;
@@ -230,9 +239,16 @@ public class ProductService {
         // 获取模块字段
         List<BaseModuleFieldValue> originCustomerFields = productFieldService.getModuleFieldValuesByResourceId(request.getId());
 
+        // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+        // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.PRODUCT.getKey(), List.of(request.getId()), orgId);
+
         // 更新模块字段
         updateModuleField(product, request.getModuleFields(), orgId, userId);
         productBaseMapper.update(product);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
 
         //添加日志
         baseService.handleUpdateLog(oldProduct, product, originCustomerFields, request.getModuleFields(), request.getId(), product.getName());
@@ -265,10 +281,14 @@ public class ProductService {
     @OperationLog(module = LogModule.PRODUCT_MANAGEMENT, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id) {
         Product product = productBaseMapper.selectByPrimaryKey(id);
+        // 统计字段: 删除会一并带走关联字段的值, 宿主关系只能删前先捕; 重算要等删完才准
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.PRODUCT.getKey(), List.of(id), OrganizationContext.getOrganizationId());
         // 删除产品
         productBaseMapper.deleteByPrimaryKey(id);
         // 删除产品模块字段
         productFieldService.deleteByResourceId(id);
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
         // 添加日志上下文
         OperationLogContext.setResourceName(product.getName());
     }
@@ -276,7 +296,14 @@ public class ProductService {
     public void batchUpdate(ResourceBatchEditRequest request, String userId, String organizationId) {
         BaseField field = productFieldService.getAndCheckField(request.getFieldId(), organizationId);
         List<Product> products = productBaseMapper.selectByIds(request.getIds());
+        // 统计字段: 批量编辑只改一个字段, 改的若是关联字段, 下面这批产品的关联关系会整批换人 ——
+        // 换之前它们指向的宿主得先捕下来, 否则那些宿主的统计值会一直偏大; 改的不是关联字段时
+        // 这一步在服务内部直接短路, 只多一次反查
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHostsForFieldChange(
+                FormKey.PRODUCT.getKey(), request.getFieldId(), request.getIds(), organizationId);
         productFieldService.batchUpdate(request, field, products, Product.class, LogModule.PRODUCT_MANAGEMENT, extProductMapper::batchUpdate, userId, organizationId);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, request.getIds());
     }
 
     /**
@@ -292,8 +319,12 @@ public class ProductService {
         if (products == null || products.isEmpty()) {
             return;
         }
+        // 统计字段: 捕获放在这里而不是方法开头 —— 上面已经过滤掉了查不到的产品, 只该为真正会删掉的抓
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.PRODUCT.getKey(), ids, OrganizationContext.getOrganizationId());
         productBaseMapper.deleteByIds(ids);
         productFieldService.deleteByResourceIds(ids);
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         List<LogDTO> logs = products.stream()
                 .map(p -> {

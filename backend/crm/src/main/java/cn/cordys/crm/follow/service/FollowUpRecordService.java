@@ -19,6 +19,7 @@ import cn.cordys.common.service.BaseService;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.clue.domain.Clue;
 import cn.cordys.crm.customer.domain.Customer;
 import cn.cordys.crm.follow.constants.FollowUpPlanType;
@@ -35,6 +36,8 @@ import cn.cordys.crm.system.dto.response.ModuleFormConfigDTO;
 import cn.cordys.crm.system.dto.response.UserResponse;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.StatisticFieldService;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import com.github.pagehelper.Page;
@@ -54,6 +57,8 @@ import java.util.stream.Stream;
 public class FollowUpRecordService extends BaseFollowUpService {
     @Resource
     private BaseMapper<FollowUpRecord> followUpRecordMapper;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private FollowUpRecordFieldService followUpRecordFieldService;
     @Resource
@@ -101,6 +106,10 @@ public class FollowUpRecordService extends BaseFollowUpService {
 
         followUpRecordMapper.insert(followUpRecord);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.FOLLOW_RECORD.getKey(), followUpRecord.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.FOLLOW_RECORD.getKey(), followUpRecord.getId(), orgId);
         handleFollowTimeAndFollower(request.getCustomerId(), request.getOpportunityId(), request.getClueId(), request.getFollowTime(), request.getOwner());
         return followUpRecord;
     }
@@ -159,9 +168,15 @@ public class FollowUpRecordService extends BaseFollowUpService {
             FollowUpRecord updateFollowUpRecord = newRecord(newRecord, request, userId);
             // 获取模块字段
             List<BaseModuleFieldValue> originCustomerFields = followUpRecordFieldService.getModuleFieldValuesByResourceId(request.getId());
+            // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+            // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+            StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                    FormKey.FOLLOW_RECORD.getKey(), List.of(request.getId()), orgId);
             //更新模块字段
             updateModuleField(updateFollowUpRecord, request.getModuleFields(), orgId, userId);
             followUpRecordMapper.update(updateFollowUpRecord);
+            // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+            statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
             handleFollowTimeAndFollower(updateFollowUpRecord.getCustomerId(), updateFollowUpRecord.getOpportunityId(), updateFollowUpRecord.getClueId(), updateFollowUpRecord.getFollowTime(), updateFollowUpRecord.getOwner());
             baseService.handleUpdateLog(followUpRecord, updateFollowUpRecord, originCustomerFields, request.getModuleFields(), followUpRecord.getId(), Translator.get("update_follow_up_record"));
         }, () -> {
@@ -506,8 +521,13 @@ public class FollowUpRecordService extends BaseFollowUpService {
         if (ids.isEmpty()) {
             return;
         }
+        // 删除会同时带走关联字段的值, 所以「这些记录关联了谁」只能删前先捕; 重算又要等删完才准。
+        // 放在这里而不是三个公开入口上: 删除、按客户级联、按线索级联最后都汇到这一处。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.FOLLOW_RECORD.getKey(), ids, OrganizationContext.getOrganizationId());
         followUpRecordFieldService.deleteByResourceIds(ids);
         followUpRecordMapper.deleteByIds(ids);
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
     }
 
     private List<FollowUpRecord> getByCustomerIds(List<String> customerIds) {

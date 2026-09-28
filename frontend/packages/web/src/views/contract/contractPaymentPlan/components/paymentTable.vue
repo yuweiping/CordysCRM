@@ -6,7 +6,7 @@
     :fullscreen-target-ref="props.fullscreenTargetRef"
     :class="`crm-contract-payment-table-${props.formKey}`"
     :not-show-table-filter="isAdvancedSearchMode"
-    :action-config="actionConfig"
+    :action-config="props.readonly ? undefined : actionConfig"
     @page-change="propsEvent.pageChange"
     @page-size-change="propsEvent.pageSizeChange"
     @sorter-change="propsEvent.sorterChange"
@@ -26,7 +26,7 @@
           {{ t('contract.newPlan') }}
         </n-button>
         <CrmImportButton
-          v-if="hasAnyPermission(['CONTRACT_PAYMENT_PLAN:IMPORT']) && !props.isContractTab"
+          v-if="hasAnyPermission(['CONTRACT_PAYMENT_PLAN:IMPORT']) && !props.isContractTab && !props.readonly"
           :api-type="FormDesignKeyEnum.CONTRACT_PAYMENT"
           :title="t('module.paymentPlan')"
           @import-success="() => searchData()"
@@ -55,7 +55,7 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.isContractTab"
+        v-if="!props.isContractTab && !props.detailTabResourceId"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.CONTRACT_PAYMENT"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -106,6 +106,7 @@
   import useLocale from '@lib/shared/locale/useLocale';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
   import type { PaymentPlanItem } from '@lib/shared/models/contract';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import { COMMON_SELECTION_OPERATORS } from '@/components/pure/crm-advance-filter/index';
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
@@ -150,6 +151,11 @@
     sourceName?: string;
     readonly?: boolean;
     formKey: FormDesignKeyEnum.CONTRACT_PAYMENT | FormDesignKeyEnum.CONTRACT_CONTRACT_PAYMENT;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
   const emit = defineEmits<{
     (e: 'openContractDrawer', params: { id: string }): void;
@@ -353,6 +359,12 @@
 
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.formKey,
+    readonly: props.readonly,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     excludeFieldIds: ['contractId'],
     operationColumn: {
       key: 'operation',
@@ -413,7 +425,6 @@
     containerClass: `.crm-contract-payment-table-${props.formKey}`,
   });
   const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
-
   const exportColumns = computed<ExportTableColumnItem[]>(() =>
     getExportColumns(propsRes.value.columns, customFieldsFilterConfig.value as FilterFormItem[], fieldList.value, true)
   );
@@ -443,7 +454,7 @@
   function searchData(val?: string, refreshId?: string) {
     setLoadListParams({
       keyword: val ?? keyword.value,
-      viewId: props.isContractTab ? 'ALL' : activeTab.value,
+      ...(props.detailTabResourceId ? {} : { viewId: props.isContractTab ? 'ALL' : activeTab.value }),
       contractId: props.sourceId,
     });
     loadList(false, refreshId);
@@ -523,7 +534,11 @@
     (val) => {
       if (val) {
         checkedRowKeys.value = [];
-        setLoadListParams({ keyword: keyword.value, viewId: activeTab.value, contractId: props.sourceId });
+        setLoadListParams({
+          keyword: keyword.value,
+          viewId: activeTab.value,
+          contractId: props.sourceId,
+        });
         // initTableViewChartParams(viewChartCallBack);
         crmTableRef.value?.setColumnSort(val);
       }
@@ -531,6 +546,10 @@
   );
 
   onMounted(async () => {
+    if (props.detailTabResourceId) {
+      searchData();
+      return;
+    }
     if (route.query.id && !props.isContractTab) {
       activeSourceId.value = route.query.id as string;
       showDetailDrawer.value = true;

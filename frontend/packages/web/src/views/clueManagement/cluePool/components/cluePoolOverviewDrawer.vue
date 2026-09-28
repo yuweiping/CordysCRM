@@ -93,6 +93,8 @@
 
   const emit = defineEmits<{
     (e: 'remove'): void;
+    (e: 'freeze'): void;
+    (e: 'unfreeze'): void;
   }>();
 
   const { openModal } = useModal();
@@ -110,46 +112,66 @@
   const claimLoading = ref(false);
   const distributeLoading = ref(false);
 
-  const buttonList: ActionsItem[] = [
-    {
-      label: t('common.claim'),
-      key: 'claim',
-      permission: ['CLUE_MANAGEMENT_POOL:PICK'],
-      text: false,
-      ghost: true,
-      class: 'n-btn-outline-primary',
-      popConfirmProps: {
-        loading: claimLoading.value,
-        title: t('clue.claimOverviewTip'),
-        positiveText: t('common.claim'),
-        iconType: 'primary',
-      },
-    },
-    {
-      label: t('common.distribute'),
-      key: 'distribute',
-      permission: ['CLUE_MANAGEMENT_POOL:ASSIGN'],
-      text: false,
-      ghost: true,
-      class: 'n-btn-outline-primary',
-      popConfirmProps: {
-        loading: distributeLoading.value,
-        title: t('common.distribute'),
-        positiveText: t('common.confirm'),
-        iconType: 'primary',
-      },
-      popSlotContent: 'distributePopContent',
-    },
-    {
-      label: t('common.delete'),
-      key: 'delete',
-      permission: ['CLUE_MANAGEMENT_POOL:DELETE'],
-      text: false,
-      ghost: true,
-      danger: true,
-      class: 'n-btn-outline-primary',
-    },
-  ];
+  const buttonList = computed<ActionsItem[]>(() =>
+    (
+      [
+        {
+          label: t('common.claim'),
+          key: 'claim',
+          permission: ['CLUE_MANAGEMENT_POOL:PICK'],
+          text: false,
+          ghost: true,
+          class: 'n-btn-outline-primary',
+          popConfirmProps: {
+            loading: claimLoading.value,
+            title: t('clue.claimOverviewTip'),
+            positiveText: t('common.claim'),
+            iconType: 'primary',
+          },
+        },
+        {
+          label: t('common.distribute'),
+          key: 'distribute',
+          permission: ['CLUE_MANAGEMENT_POOL:ASSIGN'],
+          text: false,
+          ghost: true,
+          class: 'n-btn-outline-primary',
+          popConfirmProps: {
+            loading: distributeLoading.value,
+            title: t('common.distribute'),
+            positiveText: t('common.confirm'),
+            iconType: 'primary',
+          },
+          popSlotContent: 'distributePopContent',
+        },
+        {
+          label: t('common.freeze'),
+          key: 'freeze',
+          text: false,
+          ghost: true,
+          permission: ['CLUE_MANAGEMENT_POOL:FREEZE'],
+        },
+        {
+          label: t('common.unfreeze'),
+          key: 'unfreeze',
+          text: false,
+          ghost: true,
+          permission: ['CLUE_MANAGEMENT_POOL:FREEZE'],
+        },
+        {
+          label: t('common.delete'),
+          key: 'delete',
+          permission: ['CLUE_MANAGEMENT_POOL:DELETE'],
+          text: false,
+          ghost: true,
+          danger: true,
+          class: 'n-btn-outline-primary',
+        },
+      ] as ActionsItem[]
+    ).filter((item) =>
+      props.detail?.frozen ? !['claim', 'distribute', 'freeze'].includes(item.key || '') : item.key !== 'unfreeze'
+    )
+  );
 
   const distributeFormRef = ref<InstanceType<typeof TransferForm>>();
   const distributeForm = ref<TransferParams>({
@@ -246,6 +268,12 @@
         break;
       case 'delete':
         handleDelete();
+        break;
+      case 'freeze':
+        emit('freeze');
+        break;
+      case 'unfreeze':
+        emit('unfreeze');
         break;
       default:
         break;

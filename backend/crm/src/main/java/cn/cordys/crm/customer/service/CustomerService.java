@@ -29,6 +29,7 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.common.utils.ConditionFilterUtils;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.customer.constants.CustomerResultCode;
 import cn.cordys.crm.customer.domain.*;
 import cn.cordys.crm.customer.dto.request.*;
@@ -66,6 +67,7 @@ import cn.cordys.crm.system.excel.listener.CustomFieldCheckEventListener;
 import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
 import cn.cordys.crm.system.service.*;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -104,6 +106,8 @@ public class CustomerService {
 
     @Resource
     private BaseMapper<Customer> customerMapper;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private ExtCustomerMapper extCustomerMapper;
     @Resource
@@ -458,12 +462,17 @@ public class CustomerService {
         customer.setOrganizationId(orgId);
         customer.setId(IDGenerator.nextStr());
         customer.setInSharedPool(false);
+        customer.setFrozen(false);
 
         //保存自定义字段
         customerFieldService.saveModuleField(customer, orgId, userId, request.getModuleFields(), false);
 
         customerMapper.insert(customer);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.CUSTOMER.getKey(), customer.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.CUSTOMER.getKey(), customer.getId(), orgId);
         baseService.handleAddLogWithResourceName(customer, request.getModuleFields());
         // 通知
         commonNoticeSendService.sendNotice(NotificationConstants.Module.CUSTOMER,
@@ -500,6 +509,11 @@ public class CustomerService {
         // 获取模块字段
         List<BaseModuleFieldValue> originCustomerFields = customerFieldService.getModuleFieldValuesByResourceId(request.getId());
 
+        // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+        // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CUSTOMER.getKey(), List.of(request.getId()), orgId);
+
         if (BooleanUtils.isTrue(request.getAgentInvoke())) {
             customerFieldService.updateModuleFieldByAgent(customer, originCustomerFields, request.getModuleFields(), orgId, userId);
         } else {
@@ -508,6 +522,8 @@ public class CustomerService {
         }
 
         customerMapper.update(customer);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
 
         customer = customerMapper.selectByPrimaryKey(request.getId());
         baseService.handleUpdateLog(originCustomer, customer, originCustomerFields, request.getModuleFields(), originCustomer.getId(), originCustomer.getName());
@@ -600,6 +616,11 @@ public class CustomerService {
     }
 
     public void deleteCustomerResource(List<String> ids) {
+        // 统计字段: 删除会一并带走关联字段的值, 宿主关系只能删前先捕; 重算要等下面全部删完才准。
+        // 挂在这里而不是两个公开入口上: 客户删除、客户批量删除、公海里的两种删除最后都走这一处,
+        // 而且捕获时客户还在、重算时已被本方法删掉, 级联进来的重算会被统计字段服务侧的存在性判断挡掉。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CUSTOMER.getKey(), ids, OrganizationContext.getOrganizationId());
         // 删除客户
         customerMapper.deleteByIds(ids);
         // 删除客户模块字段
@@ -614,6 +635,7 @@ public class CustomerService {
         followUpRecordService.deleteByCustomerIds(ids);
         // 删除跟进计划
         followUpPlanService.deleteByCustomerIds(ids);
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
     }
 
     public void checkResourceRef(List<String> ids) {
@@ -793,6 +815,7 @@ public class CustomerService {
                         customers.forEach(customer -> {
                             customer.setCollectionTime(customer.getCreateTime());
                             customer.setInSharedPool(false);
+                            customer.setFrozen(false);
                             logs.add(new LogDTO(currentOrg, customer.getId(), currentUser, LogType.ADD, LogModule.CUSTOMER_INDEX, customer.getName()));
                         });
                         customerMapper.batchInsert(customers);
@@ -932,7 +955,14 @@ public class CustomerService {
 
         List<Customer> originCustomers = customerMapper.selectByIds(request.getIds());
 
+        // 统计字段: 批量编辑只改一个字段, 改的若是关联字段, 下面这批客户的关联关系会整批换人 ——
+        // 换之前它们指向的宿主得先捕下来, 否则那些宿主的统计值会一直偏大; 改的不是关联字段时
+        // 这一步在服务内部直接短路, 只多一次反查
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHostsForFieldChange(
+                FormKey.CUSTOMER.getKey(), request.getFieldId(), request.getIds(), organizationId);
         customerFieldService.batchUpdate(request, field, originCustomers, Customer.class, LogModule.CUSTOMER_INDEX, extCustomerMapper::batchUpdate, userId, organizationId);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, request.getIds());
     }
 
     /**

@@ -1,5 +1,9 @@
 export default {
   'aiChat.inputPlaceholder': 'Enter a command or question',
+  'aiChat.model': 'Model',
+  'aiChat.personalModel': 'Personal',
+  'aiChat.systemModel': 'System',
+  'aiChat.noModel': 'No models',
   'aiChat.noConversation': 'No conversations',
   'aiChat.emptyTitle': 'What can I do?',
   'aiChat.emptyCustomerLookup': 'Quickly look up customer information',
@@ -40,4 +44,7 @@ export default {
   'aiChat.uploadFile': 'Attachment',
   'aiChat.attachmentUploading': 'Uploading',
   'aiChat.attachmentUploadFailed': 'Upload failed',
+  'aiChat.attachmentUnsupportedType': 'Only images, Office/PDF/OpenDocument/EPUB/RTF, and UTF-8 text are supported.',
+  'aiChat.attachmentMaxCount': 'Upload up to {count} files',
+  'aiChat.attachmentMaxTotalSize': 'Total file size cannot exceed {size} MB',
 };

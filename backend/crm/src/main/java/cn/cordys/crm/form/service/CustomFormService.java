@@ -250,11 +250,13 @@ public class CustomFormService {
         ModuleFormBlob formBlob = new ModuleFormBlob();
         formBlob.setId(formId);
         FormProp formProp = getFormPropForCreate(request.getFormProp());
+        // 自定义表单创建也走统一校验，确保其配置结构与标准表单保存接口保持一致。
+        moduleFormService.validateAndResolveDetailTabs(formId, orgId, formProp);
         formBlob.setProp(JSON.toJSONString(formProp));
         moduleFormBlobMapper.insert(formBlob);
 
         // 校验字段
-        moduleFormService.preCheckForFieldSave(formId, request.getFields());
+        moduleFormService.preCheckForFieldSave(formId, request.getFields(), orgId);
 
         // 保存字段
         moduleFormService.saveFields(request.getFields(), form.getId(), userId);

@@ -39,7 +39,7 @@
 
     <template #view>
       <CrmViewSelect
-        v-if="!props.sourceId"
+        v-if="!props.sourceId && !props.detailTabResourceId"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.OPPORTUNITY_QUOTATION"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -108,7 +108,7 @@
   import { useI18n } from '@lib/shared/hooks/useI18n';
   import { characterLimit } from '@lib/shared/method';
   import { BatchOperationResult, QuotationItem } from '@lib/shared/models/opportunity';
-  import { CluePoolItem } from '@lib/shared/models/system/module';
+  import { CluePoolItem, FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -156,6 +156,11 @@
     readonly?: boolean;
     openseaHiddenColumns?: string[];
     refreshKey?: number;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
 
   const route = useRoute();
@@ -176,7 +181,7 @@
   const activeTab = ref();
   const keyword = ref('');
   const tableRefreshId = ref(0);
-  const tableRemoveRefreshId = ref('');
+  const tableRemoveRefreshSignal = ref({ id: '', key: 0 });
   const tableRefreshItemId = ref('');
 
   const showApprovalModal = ref(false);
@@ -365,7 +370,10 @@
         try {
           await deleteQuotation(row.id);
           Message.success(deleteExecute.value ? t('common.reviewSuccess') : t('common.deleteSuccess'));
-          tableRemoveRefreshId.value = row.id;
+          tableRemoveRefreshSignal.value = {
+            id: row.id,
+            key: tableRemoveRefreshSignal.value.key + 1,
+          };
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error(error);
@@ -479,8 +487,13 @@
 
   await initApprovalPermission();
 
-  const { useTableRes, customFieldsFilterConfig } = await useFormCreateTable({
+  const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.formKey,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     containerClass: `.crm-quotation-table-${props.formKey}`,
     operationColumn: props.readonly
       ? undefined
@@ -576,7 +589,6 @@
     };
   });
   const { propsRes, propsEvent, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
-
   const isAdvancedSearchMode = ref(false);
   const crmTableRef = ref<InstanceType<typeof CrmTable>>();
 
@@ -627,7 +639,7 @@
   function searchData(_keyword?: string, refreshId?: string) {
     setLoadListParams({
       keyword: _keyword ?? keyword.value,
-      viewId: props.sourceId ? 'ALL' : activeTab.value,
+      ...(props.detailTabResourceId ? {} : { viewId: props.sourceId ? 'ALL' : activeTab.value }),
       opportunityId: props.sourceId,
     });
     loadList(false, refreshId);
@@ -672,10 +684,10 @@
   }
 
   watch(
-    () => tableRemoveRefreshId.value,
+    () => tableRemoveRefreshSignal.value,
     (val) => {
-      if (val) {
-        removeItemFromList(val);
+      if (val.id) {
+        removeItemFromList(val.id);
       }
     }
   );
@@ -718,6 +730,10 @@
   });
 
   onMounted(() => {
+    if (props.detailTabResourceId) {
+      searchData();
+      return;
+    }
     if (route.query.id && !props.sourceId) {
       activeSourceId.value = route.query.id as string;
       showDetailDrawer.value = true;

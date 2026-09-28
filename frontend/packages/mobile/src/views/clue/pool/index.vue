@@ -36,9 +36,10 @@
       class="p-[16px]"
       :item-gap="16"
       :load-list-api="getCluePoolList"
+      :immediateCheck="false"
     >
       <template #item="{ item }">
-        <CrmListCommonItem :item="item" :actions="actions" @click="goDetail"></CrmListCommonItem>
+        <CrmListCommonItem :item="item" :actions="actions" resource-type="lead" @click="goDetail"></CrmListCommonItem>
       </template>
     </CrmList>
   </div>
@@ -138,6 +139,7 @@
 
   const actions = [
     {
+      key: 'pick',
       label: t('common.pick'),
       icon: 'iconicon_user_add',
       permission: ['CLUE_MANAGEMENT_POOL:PICK'],
@@ -146,6 +148,7 @@
       },
     },
     {
+      key: 'distribute',
       label: t('common.distribute'),
       icon: 'iconicon_swap',
       permission: ['CLUE_MANAGEMENT_POOL:ASSIGN'],

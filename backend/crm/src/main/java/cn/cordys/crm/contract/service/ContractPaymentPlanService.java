@@ -25,6 +25,7 @@ import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.uid.utils.EnumUtils;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.Translator;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.contract.constants.ContractPaymentPlanStatus;
 import cn.cordys.crm.contract.domain.Contract;
 import cn.cordys.crm.contract.domain.ContractPaymentPlan;
@@ -52,6 +53,8 @@ import cn.cordys.crm.system.excel.listener.CustomFieldMergeCellEventListener;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.StatisticFieldService;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -91,6 +94,8 @@ public class ContractPaymentPlanService extends BaseExportService {
     private BaseMapper<Contract> contractMapper;
     @Resource
     private BaseMapper<ContractPaymentPlan> contractPaymentPlanMapper;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private ExtContractPaymentPlanMapper extContractPaymentPlanMapper;
     @Resource
@@ -303,6 +308,10 @@ public class ContractPaymentPlanService extends BaseExportService {
         // 保存自定义字段
         contractPaymentPlanFieldService.saveModuleField(contractPaymentPlan, orgId, userId, request.getModuleFields(), false);
         contractPaymentPlanMapper.insert(contractPaymentPlan);
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.CONTRACT_PAYMENT_PLAN.getKey(), contractPaymentPlan.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.CONTRACT_PAYMENT_PLAN.getKey(), contractPaymentPlan.getId(), orgId);
         // 日志
         baseService.handleAddLogWithSubTable(contractPaymentPlan, request.getModuleFields(), Translator.get("products_info"), getFormConfig(orgId));
         return contractPaymentPlan;
@@ -321,6 +330,11 @@ public class ContractPaymentPlanService extends BaseExportService {
             originContractPaymentPlanFields = contractPaymentPlanFieldService.getModuleFieldValuesByResourceId(request.getId());
         }
 
+        // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+        // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CONTRACT_PAYMENT_PLAN.getKey(), List.of(request.getId()), orgId);
+
         if (BooleanUtils.isTrue(request.getAgentInvoke())) {
             contractPaymentPlanFieldService.updateModuleFieldByAgent(contractPaymentPlan, originContractPaymentPlanFields, request.getModuleFields(), orgId, userId);
         } else {
@@ -329,6 +343,8 @@ public class ContractPaymentPlanService extends BaseExportService {
         }
 
         contractPaymentPlanMapper.update(contractPaymentPlan);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
 
         contractPaymentPlan = contractPaymentPlanMapper.selectByPrimaryKey(request.getId());
 
@@ -355,7 +371,12 @@ public class ContractPaymentPlanService extends BaseExportService {
 
         String resourceName = contract == null ? originContractPaymentPlan.getContractId() : contract.getName();
 
+        // 删除会同时毁掉关联字段的值, 所以「这条回款计划关联了谁」只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.CONTRACT_PAYMENT_PLAN.getKey(), List.of(id), orgId);
         contractPaymentPlanMapper.deleteByPrimaryKey(id);
+        // 删完再重算, 此时被删的那条已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         // 设置操作对象
         OperationLogContext.setResourceName(resourceName);

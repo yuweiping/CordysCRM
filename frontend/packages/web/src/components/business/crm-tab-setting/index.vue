@@ -13,24 +13,29 @@
       </n-button>
     </template>
     <n-scrollbar class="max-h-[416px] py-[4px]">
-      <div class="mb-[4px] flex h-[24px] w-[175px] items-center justify-between px-[8px] text-[12px]">
-        <div class="font-medium text-[var(--text-n1)]"> {{ t('common.tabConfig') }} </div>
+      <div class="mb-[4px] flex h-[24px] w-full items-center justify-between px-[8px] text-[12px]">
+        <div class="one-line-text font-medium text-[var(--text-n1)]"> {{ t('common.tabConfig') }} </div>
         <n-button text type="primary" size="tiny" :disabled="!hasChange" @click="handleReset">
           {{ t('common.resetDefault') }}
         </n-button>
       </div>
-      <VueDraggable v-model="cachedData" handle=".sort-handle" @change="handleChange">
+      <VueDraggable v-model="cachedData" handle=".sort-handle" @change="handleChange" @end="handleChange">
         <div v-for="element in cachedData" :key="element.name" class="crm-tab-setting-item px-[8px]">
-          <div class="flex flex-1 items-center gap-[8px]">
+          <div class="flex min-w-0 flex-1 items-center gap-[8px]">
             <CrmIcon type="iconicon_move" class="sort-handle cursor-move text-[var(--text-n4)]" :size="12" />
-            <div class="flex flex-1 items-center overflow-hidden">
-              <span class="one-line-text text-[12px]">
+            <div class="min-w-0 flex-1 overflow-hidden">
+              <n-tooltip trigger="hover" placement="top">
+                <template #trigger>
+                  <span class="one-line-text block text-[12px]">
+                    {{ element.tab }}
+                  </span>
+                </template>
                 {{ element.tab }}
-              </span>
+              </n-tooltip>
             </div>
             <n-switch
               v-model:value="element.enable"
-              :disabled="cachedData.filter((e) => e.enable).length <= 1 && element.enable"
+              :disabled="element.disabled"
               size="small"
               :rubber-band="false"
               @update:value="handleChange"
@@ -44,7 +49,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue';
-  import { NButton, NPopover, NScrollbar, NSwitch } from 'naive-ui';
+  import { NButton, NPopover, NScrollbar, NSwitch, NTooltip } from 'naive-ui';
   import { VueDraggable } from 'vue-draggable-plus';
 
   import { useI18n } from '@lib/shared/hooks/useI18n';
@@ -66,26 +71,23 @@
     (e: 'init', value: TabContentItem[]): void;
   }>();
 
-  const cachedData = ref<TabContentItem[]>(props.tabList.filter((e) => hasAllPermission(e?.permission || [])));
+  // 个人展示配置不能直接复用 props 中的对象，否则切换开关会改写全局表单标签配置。
+  const cachedData = ref<TabContentItem[]>(
+    props.tabList.filter((e) => hasAllPermission(e?.permission || [])).map((tab) => ({ ...tab }))
+  );
 
   const popoverVisible = ref(false);
 
   async function saveTabsToLocal(list: TabContentItem[]) {
-    const { getItem, setItem } = useLocalForage();
+    const { setItem } = useLocalForage();
     try {
-      const tabsMap = await getItem<ContentTabsMap>(props.settingKey, true);
-      const newTabsMap = {
-        tabList: list,
-        backupTabList: list,
-      };
-      if (tabsMap) {
-        const isEqual = isArraysEqualWithOrder(tabsMap.backupTabList, list);
-        if (!isEqual) {
-          await setItem(props.settingKey, newTabsMap, true);
-        }
-      } else {
-        await setItem(props.settingKey, newTabsMap, true);
-      }
+      await setItem(
+        props.settingKey,
+        {
+          tabList: list,
+        },
+        true
+      );
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
@@ -96,60 +98,66 @@
     const { getItem } = useLocalForage();
     try {
       const tabsMap = await getItem<ContentTabsMap>(props.settingKey, true);
-      return tabsMap ? tabsMap.tabList : [];
+      return tabsMap;
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
-      return [];
+      return undefined;
     }
   }
 
   const enableTabs = computed<TabContentItem[]>(() => cachedData.value.filter((e) => e.enable));
   const newTabList = computed<TabContentItem[]>(() =>
-    props.tabList.filter((e) => hasAllPermission(e?.permission || []))
+    props.tabList.filter((e) => hasAllPermission(e?.permission || [])).map((tab) => ({ ...tab }))
   );
+
+  let loadVersion = 0;
   async function loadTab() {
+    const currentVersion = ++loadVersion;
+    const currentTabList = newTabList.value;
     try {
-      const localTabs = await getTabsFromLocal();
-      const currentTabMap = new Map(newTabList.value.map((tab) => [tab.name, tab]));
-
-      if (localTabs.length > 0) {
-        // 使用本地存储的顺序，但只包含当前仍然存在的标签页
-        const mergedTabs = localTabs
-          .filter((tab) => currentTabMap.has(tab.name)) // 过滤掉已删除的标签页
-          .map((localTab) => ({
-            ...currentTabMap.get(localTab.name)!,
-            enable: localTab.enable, // 保留启用状态
-          }));
-
-        // 添加新增的标签页（在本地存储中不存在的）
-        const existingNames = new Set(mergedTabs.map((tab) => tab.name));
-        const newTabs = newTabList.value
-          .filter((tab) => !existingNames.has(tab.name))
-          .map((tab) => ({ ...tab, enable: true }));
-
-        const finalTabs = [...mergedTabs, ...newTabs];
-        cachedData.value = finalTabs;
-
-        // 如果有新增标签页或顺序变化，更新本地存储
-        if (newTabs.length > 0 || !isArraysEqualWithOrder(localTabs, mergedTabs)) {
-          await saveTabsToLocal(finalTabs);
-        }
-      } else {
-        // 没有本地存储，使用默认设置
-        await saveTabsToLocal(cachedData.value);
+      const tabsMap = await getTabsFromLocal();
+      if (currentVersion !== loadVersion) {
+        return;
       }
+
+      const localTabs = tabsMap?.tabList || [];
+      const currentTabMap = new Map(currentTabList.map((tab) => [tab.name, tab]));
+      // 保留仍由表单配置开启的标签及个人开关/排序；表单关闭或删除的标签直接移除。
+      const retainedTabs = localTabs
+        .filter((tab) => currentTabMap.has(tab.name))
+        .map((localTab) => ({
+          ...currentTabMap.get(localTab.name)!,
+          enable: localTab.enable,
+        }));
+      const retainedNames = new Set(retainedTabs.map((tab) => tab.name));
+      // 新增标签，以及表单配置“关闭后重新开启”的标签，均默认在个人配置中开启。
+      const addedTabs = currentTabList
+        .filter((tab) => !retainedNames.has(tab.name))
+        .map((tab) => ({ ...tab, enable: true }));
+      const finalTabs = [...retainedTabs, ...addedTabs];
+
+      cachedData.value = finalTabs;
+      if (!isArraysEqualWithOrder(localTabs, finalTabs)) {
+        await saveTabsToLocal(finalTabs);
+      }
+      emit('init', enableTabs.value);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(e);
-      cachedData.value = newTabList.value.map((tab) => ({ ...tab, enable: true }));
+      cachedData.value = newTabList.value.map((tab) => ({
+        ...tab,
+        enable: tab.enable,
+      }));
+      emit('init', enableTabs.value);
     }
   }
 
   const hasChange = ref(false);
-  function handleUpdateShow(show: boolean) {
+  async function handleUpdateShow(show: boolean) {
     if (!show && hasChange.value) {
-      saveTabsToLocal(cachedData.value);
+      // 拖拽结束后统一提交最终排序，确保详情页与本地缓存使用同一份数组。
+      await saveTabsToLocal(cachedData.value);
       emit('init', enableTabs.value);
       hasChange.value = false;
     }
@@ -160,13 +168,12 @@
   }
 
   function handleReset() {
-    hasChange.value = false;
-    loadTab();
+    cachedData.value = newTabList.value.map((tab) => ({ ...tab, enable: true }));
+    hasChange.value = true;
   }
 
   onBeforeMount(async () => {
     await loadTab();
-    emit('init', enableTabs.value);
   });
 
   watch(
@@ -181,7 +188,7 @@
 <style lang="less">
   .crm-tab-setting-popover {
     padding: 4px !important;
-    min-width: 175px;
+    width: 200px;
     .crm-tab-setting-item {
       height: 28px;
       gap: 8px;

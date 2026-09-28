@@ -9,6 +9,13 @@
         :tag="item.stageName ?? ''"
         :text-color="getStage(item.stage)?.color"
       />
+      <CrmTag
+        v-if="item.frozen"
+        bg-color="var(--warning-5)"
+        text-color="var(--warning-yellow)"
+        :tag="t('common.frozen')"
+        @click.stop="frozenPopupShow = true"
+      />
     </div>
     <div class="crm-list-common-item-content">
       <div
@@ -32,17 +39,39 @@
       />
     </div>
   </div>
+  <van-popup v-model:show="frozenPopupShow" position="bottom" class="rounded-[12px_12px_0_0]" closeable>
+    <div class="mb-[16px] flex w-full flex-col items-center gap-[8px] px-[16px]">
+      <div class="flex items-center gap-[4px] p-[16px]">
+        <CrmIcon name="iconicon_info_circle_filled" color="var(--warning-yellow)" width="16px" height="16px" />
+        <div class="font-semibold">
+          {{ `${props.resourceType === 'customer' ? t('menu.customer') : t('menu.clue')}${t('common.frozen')}` }}
+        </div>
+      </div>
+      <div class="w-full break-words text-left">{{ item.freezeReason }}</div>
+      <div class="flex w-full items-center justify-between text-[12px]">
+        <div class="text-[var(--text-n4)]">
+          {{ t('common.unfreezeTime') }}
+        </div>
+        {{ item.unfreezeTime ? dayjs(item.unfreezeTime).format('YYYY-MM-DD HH:mm:ss') : t('common.freezeForever') }}
+      </div>
+    </div>
+  </van-popup>
 </template>
 
 <script setup lang="ts">
   import CrmTextButton from '@/components/pure/crm-text-button/index.vue';
 
+  import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import useAppStore from '@/store/modules/app';
   import { hasAllPermission, hasAnyPermission } from '@/utils/permission';
+  import { useI18n } from '@lib/shared/hooks/useI18n';
+  import dayjs from 'dayjs';
 
   const appStore = useAppStore();
+  const { t } = useI18n();
 
   export interface CrmListCommonItemActionsItem {
+    key?: string;
     label: string;
     icon: string;
     permission: string[];
@@ -53,6 +82,7 @@
     item: Record<string, any>;
     hiddenStage?: boolean;
     actions?: CrmListCommonItemActionsItem[];
+    resourceType?: 'customer' | 'lead';
   }>();
 
   const emit = defineEmits<{
@@ -88,10 +118,16 @@
   }
 
   const actionList = computed(() => {
-    return props.actions?.filter((e) =>
-      e.allPermission ? hasAllPermission(e.permission) : hasAnyPermission(e.permission)
-    );
+    return props.actions?.filter((e) => {
+      if (props.item.frozen && ['pick', 'distribute'].includes(e.key || '')) {
+        return false;
+      }
+
+      return e.allPermission ? hasAllPermission(e.permission) : hasAnyPermission(e.permission);
+    });
   });
+
+  const frozenPopupShow = ref(false);
 </script>
 
 <style lang="less" scoped>

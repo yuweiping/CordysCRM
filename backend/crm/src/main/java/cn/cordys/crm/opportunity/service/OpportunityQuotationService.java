@@ -54,6 +54,8 @@ import cn.cordys.crm.system.service.DictService;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.StatisticFieldService;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -85,6 +87,8 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
 
     @Resource
     private OpportunityQuotationFieldService opportunityQuotationFieldService;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private BaseService baseService;
     @Resource
@@ -158,6 +162,10 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
         opportunityQuotationFieldService.saveModuleField(opportunityQuotation, orgId, userId, moduleFields, false);
         opportunityQuotationMapper.insert(opportunityQuotation);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.QUOTATION.getKey(), opportunityQuotation.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.QUOTATION.getKey(), opportunityQuotation.getId(), orgId);
         // 保存表单配置快照
         List<BaseModuleFieldValue> resolveFieldValues = moduleFormService.resolveSnapshotFields(moduleFields, moduleFormConfigDTO, opportunityQuotationFieldService, opportunityQuotation.getId());
         OpportunityQuotationGetResponse response = getOpportunityQuotationGetResponse(opportunityQuotation, resolveFieldValues, moduleFormConfigDTO);
@@ -237,6 +245,7 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
 		if (Strings.CI.equals(response.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
 			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(response.getId()), orgId);
 			response.setFirstApproved(firstNodeApproved.get(response.getId()));
+			response.setSubmitterId(baseService.getApprovingResourceSubmitterId(response.getId()));
 		}
         response.setApproved(opportunityQuotation.getApproved());
         return response;
@@ -284,6 +293,7 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
 		if (Strings.CI.equals(response.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
 			Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(response.getId()), orgId);
 			response.setFirstApproved(firstNodeApproved.get(response.getId()));
+			response.setSubmitterId(baseService.getApprovingResourceSubmitterId(response.getId()));
 		}
         response.setApproved(opportunityQuotation.getApproved());
         return response;
@@ -684,8 +694,13 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
             return;
         }
         checkQuotationLinked(id, "opportunity.quotation.already.associated");
+        // 删除会同时毁掉关联字段的值, 所以「这条报价单关联了谁」只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.QUOTATION.getKey(), List.of(id), organizationId);
         opportunityQuotationFieldService.deleteByResourceId(id);
         opportunityQuotationMapper.deleteByPrimaryKey(id);
+        // 删完再重算, 此时被删的那条已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         //删除快照
         LambdaQueryWrapper<OpportunityQuotationSnapshot> wrapper = new LambdaQueryWrapper<>();
@@ -747,6 +762,8 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
 		// 审批相关
 		List<String> approvingResourceIds = listData.stream().filter(item -> Strings.CI.contains(item.getApprovalStatus(), ApprovalStatus.APPROVING.name())).map(OpportunityQuotationListResponse::getId).toList();
 		Map<String, Boolean> firstNodeApprovedMap = baseService.getApprovingResourceFirstNodeApproved(approvingResourceIds, organizationId);
+		// 提审人仅存在于审批中的报价单, 非审批中状态无需查询审批实例, 统一返回空
+		Map<String, String> submitterIdMap = baseService.getApprovingResourceSubmitterIds(approvingResourceIds);
         listData.forEach(item -> {
             item.setModuleFields(resolvefieldValueMap.get(item.getId()));
             UserDeptDTO userDeptDTO = userDeptMap.get(item.getCreateUser());
@@ -755,6 +772,7 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
                 item.setDepartmentName(userDeptDTO.getDeptName());
             }
 			item.setFirstApproved(firstNodeApprovedMap.get(item.getId()));
+			item.setSubmitterId(submitterIdMap.get(item.getId()));
         });
         return baseService.setCreateAndUpdateUserName(listData);
     }
@@ -781,6 +799,10 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
             throw new GenericException(Translator.get("opportunity.quotation.not.exist"));
         }
         List<BaseModuleFieldValue> originFields = new ArrayList<>();
+        // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+        // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.QUOTATION.getKey(), List.of(id), orgId);
         OpportunityQuotation opportunityQuotation = BeanUtils.copyBean(new OpportunityQuotation(), request);
         opportunityQuotation.setUpdateTime(System.currentTimeMillis());
         opportunityQuotation.setUpdateUser(userId);
@@ -794,6 +816,8 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
         moduleFields.add(new BaseModuleFieldValue("products", request.getProducts()));
         updateFields(moduleFields, opportunityQuotation, orgId, userId);
         opportunityQuotationMapper.update(opportunityQuotation);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(id));
 
         //删除快照
         LambdaQueryWrapper<OpportunityQuotationSnapshot> delWrapper = new LambdaQueryWrapper<>();
@@ -1004,6 +1028,11 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
         filteredRequest.setFieldId(request.getFieldId());
         filteredRequest.setFieldValue(request.getFieldValue());
 
+        // 统计字段: 批量编辑只改一个字段, 改的若是关联字段, 下面这批报价单的关联关系会整批换人 ——
+        // 换之前它们指向的宿主得先捕下来, 否则那些宿主的统计值会一直偏大; 改的不是关联字段时
+        // 这一步在服务内部直接短路, 只多一次反查。用 permittedIds: 没权限的那些根本没被写
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHostsForFieldChange(
+                FormKey.QUOTATION.getKey(), request.getFieldId(), permittedIds, organizationId);
         opportunityQuotationFieldService.batchUpdate(
                 filteredRequest,
                 field,
@@ -1014,6 +1043,8 @@ public class OpportunityQuotationService implements ApprovalResourceHandler {
                 userId,
                 organizationId
         );
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, permittedIds);
 
         ModuleFormConfigDTO moduleFormConfigDTO = moduleFormCacheService.getBusinessFormConfig(FormKey.QUOTATION.getKey(), organizationId);
         ModuleFormConfigDTO saveModuleFormConfigDTO = JSON.parseObject(JSON.toJSONString(moduleFormConfigDTO), ModuleFormConfigDTO.class);

@@ -20,6 +20,7 @@ import cn.cordys.common.pager.PageUtils;
 import cn.cordys.common.pager.PagerWithOption;
 import cn.cordys.common.permission.PermissionCache;
 import cn.cordys.common.permission.PermissionUtils;
+import cn.cordys.common.response.result.CrmHttpResultCode;
 import cn.cordys.common.service.BaseChartService;
 import cn.cordys.common.service.BaseExportService;
 import cn.cordys.common.service.BaseService;
@@ -30,6 +31,7 @@ import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.JSON;
 import cn.cordys.common.util.Translator;
 import cn.cordys.common.utils.ConditionFilterUtils;
+import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.customer.domain.Customer;
 import cn.cordys.crm.customer.dto.response.CustomerContactListAllResponse;
 import cn.cordys.crm.customer.mapper.ExtCustomerContactMapper;
@@ -43,7 +45,7 @@ import cn.cordys.crm.opportunity.dto.request.*;
 import cn.cordys.crm.opportunity.dto.response.OpportunityDetailResponse;
 import cn.cordys.crm.opportunity.dto.response.OpportunityListResponse;
 import cn.cordys.crm.opportunity.dto.response.OpportunitySearchStatisticResponse;
-import cn.cordys.crm.opportunity.dto.response.StageConfigResponse;
+import cn.cordys.crm.opportunity.dto.response.OpportunityStageResponse;
 import cn.cordys.crm.opportunity.mapper.ExtOpportunityMapper;
 import cn.cordys.crm.opportunity.mapper.ExtOpportunityStageConfigMapper;
 import cn.cordys.crm.product.mapper.ExtProductMapper;
@@ -65,13 +67,12 @@ import cn.cordys.crm.system.excel.listener.CustomFieldCheckEventListener;
 import cn.cordys.crm.system.excel.listener.CustomFieldImportEventListener;
 import cn.cordys.crm.system.excel.listener.CustomFieldMergeCellEventListener;
 import cn.cordys.crm.system.notice.CommonNoticeSendService;
-import cn.cordys.crm.system.service.DictService;
-import cn.cordys.crm.system.service.LogService;
-import cn.cordys.crm.system.service.ModuleFormCacheService;
-import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.*;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
+import cn.cordys.security.SessionUtils;
 import cn.idev.excel.FastExcelFactory;
 import cn.idev.excel.enums.CellExtraTypeEnum;
 import com.github.pagehelper.Page;
@@ -107,6 +108,8 @@ public class OpportunityService extends BaseExportService {
     public static final Long DEFAULT_POS = 1L;
     @Resource
     private ExtOpportunityMapper extOpportunityMapper;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private BaseService baseService;
     @Resource
@@ -147,6 +150,8 @@ public class OpportunityService extends BaseExportService {
     private ExtOpportunityStageConfigMapper extOpportunityStageConfigMapper;
     @Resource
     private DataScopeService dataScopeService;
+    @Resource
+    private StageAdvancedConfigService stageAdvancedConfigService;
 
     public PagerWithOption<List<OpportunityListResponse>> list(OpportunityPageRequest request, String userId, String orgId,
                                                                DeptDataPermissionDTO deptDataPermission, Boolean source) {
@@ -240,10 +245,10 @@ public class OpportunityService extends BaseExportService {
         Map<String, OpportunityRule> ownersDefaultRuleMap = opportunityRuleService.getOwnersDefaultRuleMap(ownerIds, orgId);
         Map<String, UserDeptDTO> userDeptMap = baseService.getUserDeptMapByUserIds(ownerIds, orgId);
 
-        List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
-        Map<String, StageConfigResponse> endConfigMaps = stageConfigList.stream().filter(config ->
+        List<OpportunityStageResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
+        Map<String, OpportunityStageResponse> endConfigMaps = stageConfigList.stream().filter(config ->
                 Strings.CI.equals(config.getType(), OpportunityStageType.END.name())
-        ).collect(Collectors.toMap(StageConfigResponse::getId, Function.identity()));
+        ).collect(Collectors.toMap(OpportunityStageResponse::getId, Function.identity()));
 
         // 失败原因
         DictConfigDTO dictConf = dictService.getDictConf(DictModule.OPPORTUNITY_FAIL_RS.name(), orgId);
@@ -287,7 +292,7 @@ public class OpportunityService extends BaseExportService {
     @OperationLog(module = LogModule.OPPORTUNITY_INDEX, type = LogType.ADD)
     public Opportunity add(OpportunityAddRequest request, String operatorId, String orgId) {
         productService.checkProductList(request.getProducts());
-        List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
+        List<OpportunityStageResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
         Long nextPos = getNextPos(orgId, stageConfigList.getFirst().getId());
         Opportunity opportunity = new Opportunity();
         String id = IDGenerator.nextStr();
@@ -317,6 +322,10 @@ public class OpportunityService extends BaseExportService {
         opportunityFieldService.saveModuleField(opportunity, orgId, operatorId, request.getModuleFields(), false);
         opportunityMapper.insert(opportunity);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.OPPORTUNITY.getKey(), opportunity.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.OPPORTUNITY.getKey(), opportunity.getId(), orgId);
         baseService.handleAddLogWithSubTable(opportunity, request.getModuleFields(), Translator.get("products_info"), getFormConfig(orgId));
 
         // 消息通知
@@ -349,6 +358,10 @@ public class OpportunityService extends BaseExportService {
             Opportunity updateOpportunity = newOpportunity(newOpportunity, request, userId);
             // 获取模块字段
             List<BaseModuleFieldValue> originCustomerFields = opportunityFieldService.getModuleFieldValuesByResourceId(request.getId());
+            // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+            // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+            StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                    FormKey.OPPORTUNITY.getKey(), List.of(request.getId()), orgId);
             if (BooleanUtils.isTrue(request.getAgentInvoke())) {
                 opportunityFieldService.updateModuleFieldByAgent(updateOpportunity, originCustomerFields, request.getModuleFields(), orgId, userId);
             } else {
@@ -356,6 +369,8 @@ public class OpportunityService extends BaseExportService {
                 updateModuleField(updateOpportunity, request.getModuleFields(), orgId, userId);
             }
             extOpportunityMapper.updateIncludeNullById(updateOpportunity);
+            // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+            statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
             baseService.handleUpdateLogWithSubTable(oldOpportunity, newOpportunity, originCustomerFields, request.getModuleFields(),
                     oldOpportunity.getId(), oldOpportunity.getName(), Translator.get("products_info"), getFormConfig(orgId));
         }, () -> {
@@ -400,12 +415,17 @@ public class OpportunityService extends BaseExportService {
     @OperationLog(module = LogModule.OPPORTUNITY_INDEX, type = LogType.DELETE, resourceId = "{#id}")
     public void delete(String id, String userId, String orgId) {
         Opportunity opportunity = opportunityMapper.selectByPrimaryKey(id);
+        // 删除会同时毁掉关联字段的值, 所以「这条商机关联了谁」只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.OPPORTUNITY.getKey(), List.of(id), orgId);
         Optional.ofNullable(opportunity).ifPresentOrElse(item -> {
             opportunityMapper.deleteByPrimaryKey(opportunity.getId());
             opportunityFieldService.deleteByResourceId(opportunity.getId());
         }, () -> {
             throw new GenericException("opportunity_not_found");
         });
+        // 删完再重算, 此时被删的那条已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
         // 添加日志上下文
         OperationLogContext.setResourceName(opportunity.getName());
 
@@ -476,8 +496,14 @@ public class OpportunityService extends BaseExportService {
         if (CollectionUtils.isEmpty(toDoIds)) {
             return;
         }
+        // 捕的是阶段过滤之后真正要删的 toDoIds, 不是入参 ids —— 成功阶段的商机不会被删, 拿它去捕等于白捕。
+        // 删除会同时毁掉关联字段的值, 所以只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.OPPORTUNITY.getKey(), toDoIds, orgId);
         opportunityMapper.deleteByIds(toDoIds);
         opportunityFieldService.deleteByResourceIds(toDoIds);
+        // 删完再重算, 此时被删的那批已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
         List<LogDTO> logs = new ArrayList<>();
         opportunityList.forEach(opportunity -> {
             LogDTO logDTO = new LogDTO(opportunity.getOrganizationId(), opportunity.getId(), userId, LogType.DELETE, LogModule.OPPORTUNITY_INDEX, opportunity.getName());
@@ -533,10 +559,10 @@ public class OpportunityService extends BaseExportService {
         response.setContactName(contactMap.get(response.getContactId()));
         response.setFollowerName(userNameMap.get(response.getFollower()));
 
-        List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(response.getOrganizationId());
-        Map<String, StageConfigResponse> endConfigMaps = stageConfigList.stream().filter(config ->
+        List<OpportunityStageResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(response.getOrganizationId());
+        Map<String, OpportunityStageResponse> endConfigMaps = stageConfigList.stream().filter(config ->
                 Strings.CI.equals(config.getType(), OpportunityStageType.END.name())
-        ).collect(Collectors.toMap(StageConfigResponse::getId, Function.identity()));
+        ).collect(Collectors.toMap(OpportunityStageResponse::getId, Function.identity()));
 
         // 计算保留天数(成功失败阶段不计算)
         response.setReservedDays(endConfigMaps.containsKey(response.getStage()) ?
@@ -637,48 +663,69 @@ public class OpportunityService extends BaseExportService {
      */
     @OperationLog(module = LogModule.OPPORTUNITY_INDEX, type = LogType.UPDATE, resourceId = "{#request.id}")
     public void updateStage(OpportunityStageRequest request, String orgId) {
+        String userId = SessionUtils.getUserId();
+        if (StringUtils.isBlank(userId) || StringUtils.isBlank(orgId)
+                || !PermissionUtils.hasPermission(PermissionConstants.OPPORTUNITY_MANAGEMENT_UPDATE)) {
+            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+        }
         final Opportunity oldOpportunity = opportunityMapper.selectByPrimaryKey(request.getId());
         if (oldOpportunity == null) {
             throw new GenericException(Translator.get("opportunity_not_found"));
         }
 
-        final List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
+        // 使用实际商机的组织和负责人校验，避免依赖资源 provider 的选择结果。
+        if (!orgId.equals(oldOpportunity.getOrganizationId()) || StringUtils.isBlank(oldOpportunity.getOwner())
+                || !dataScopeService.hasDataPermission(userId, orgId, oldOpportunity.getOwner(),
+                PermissionConstants.OPPORTUNITY_MANAGEMENT_UPDATE)) {
+            throw new GenericException(CrmHttpResultCode.FORBIDDEN);
+        }
 
-        final Optional<StageConfigResponse> successOpt = stageConfigList.stream()
+        final List<OpportunityStageResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(orgId);
+        if (stageConfigList.stream().noneMatch(cfg -> Objects.equals(cfg.getId(), request.getStage()))) {
+            throw new GenericException(Translator.get("opportunity_stage_not_exist"));
+        }
+
+        final Optional<OpportunityStageResponse> successOpt = stageConfigList.stream()
                 .filter(cfg -> Strings.CI.equals(cfg.getType(), OpportunityStageType.END.name())
                         && Strings.CI.equals(cfg.getRate(), "100"))
                 .findFirst();
 
-        final Optional<StageConfigResponse> failOpt = stageConfigList.stream()
+        final Optional<OpportunityStageResponse> failOpt = stageConfigList.stream()
                 .filter(cfg -> Strings.CI.equals(cfg.getType(), OpportunityStageType.END.name())
                         && Strings.CI.equals(cfg.getRate(), "0"))
                 .findFirst();
 
         final Map<String, String> stageMap = stageConfigList.stream()
-                .collect(Collectors.toMap(StageConfigResponse::getId, StageConfigResponse::getName));
+                .collect(Collectors.toMap(OpportunityStageResponse::getId, OpportunityStageResponse::getName));
 
-        final Opportunity newOpportunity = new Opportunity();
-        newOpportunity.setId(request.getId());
-        newOpportunity.setLastStage(oldOpportunity.getStage());
-        newOpportunity.setStage(request.getStage());
+        final Map<String, String> originalVal = new HashMap<>(1);
+        originalVal.put("stage", stageMap.get(oldOpportunity.getStage()));
+
+        if (!stageAdvancedConfigService.checkStage(oldOpportunity.getStage(), request.getStage(), FormKey.OPPORTUNITY.getKey())) {
+            return;
+        }
+
+
+        oldOpportunity.setLastStage(oldOpportunity.getStage());
+        oldOpportunity.setStage(request.getStage());
 
         final boolean isSuccessStage = successOpt.map(cfg -> Strings.CI.equals(request.getStage(), cfg.getId())).orElse(false);
         final boolean isFailStage = failOpt.map(cfg -> Strings.CI.equals(request.getStage(), cfg.getId())).orElse(false);
 
         if (isSuccessStage || isFailStage) {
-            newOpportunity.setActualEndTime(System.currentTimeMillis());
+            oldOpportunity.setActualEndTime(System.currentTimeMillis());
         }
         if (isFailStage) {
-            newOpportunity.setFailureReason(request.getFailureReason());
+            oldOpportunity.setFailureReason(request.getFailureReason());
         }
 
         final Long nextPos = getNextPos(oldOpportunity.getOrganizationId(), request.getStage());
-        newOpportunity.setPos(nextPos);
+        oldOpportunity.setPos(nextPos);
 
-        opportunityMapper.update(newOpportunity);
+        opportunityMapper.update(oldOpportunity);
 
-        final Map<String, String> originalVal = new HashMap<>(1);
-        originalVal.put("stage", stageMap.get(oldOpportunity.getStage()));
+        updateField(oldOpportunity, request.getFields(), userId);
+
         final Map<String, String> modifiedVal = new HashMap<>(1);
         modifiedVal.put("stage", stageMap.get(request.getStage()));
 
@@ -689,6 +736,21 @@ public class OpportunityService extends BaseExportService {
                         .modifiedValue(modifiedVal)
                         .build()
         );
+    }
+
+    private void updateField(Opportunity opportunity, List<BaseModuleFieldValue> requestFields, String userId) {
+        if (CollectionUtils.isNotEmpty(requestFields)) {
+            ModuleFormConfigDTO businessFormConfig = moduleFormCacheService.getBusinessFormConfig(FormKey.OPPORTUNITY.getKey(), opportunity.getOrganizationId());
+            List<BaseField> fields = businessFormConfig.getFields();
+            requestFields.forEach(field -> {
+                BaseField baseField = fields.stream().filter(customField -> customField.getId().equals(field.getFieldId())).findFirst().orElse(null);
+                ResourceBatchEditRequest updateRequest = new ResourceBatchEditRequest();
+                updateRequest.setIds(List.of(opportunity.getId()));
+                updateRequest.setFieldId(field.getFieldId());
+                updateRequest.setFieldValue(field.getFieldValue());
+                opportunityFieldService.batchUpdate(updateRequest, baseField, List.of(opportunity), Opportunity.class, LogModule.OPPORTUNITY_INDEX, extOpportunityMapper::batchUpdate, userId, opportunity.getOrganizationId());
+            });
+        }
     }
 
     public ResourceTabEnableDTO getTabEnableConfig(String userId, String orgId) {
@@ -761,7 +823,7 @@ public class OpportunityService extends BaseExportService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ImportResponse realImport(MultipartFile file, ImportRequest request, String currentOrg, String currentUser) {
         try {
-            List<StageConfigResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(currentOrg);
+            List<OpportunityStageResponse> stageConfigList = extOpportunityStageConfigMapper.getStageConfigList(currentOrg);
 
             List<BaseField> fields = moduleFormService.getAllFields(FormKey.OPPORTUNITY.getKey(), currentOrg);
             boolean supportSubHead = moduleFormService.supportSubHead(fields);
@@ -966,7 +1028,14 @@ public class OpportunityService extends BaseExportService {
 
         List<Opportunity> originOpportunities = opportunityMapper.selectByIds(request.getIds());
 
+        // 统计字段: 批量编辑只改一个字段, 改的若是关联字段, 下面这批商机的关联关系会整批换人 ——
+        // 换之前它们指向的宿主得先捕下来, 否则那些宿主的统计值会一直偏大; 改的不是关联字段时
+        // 这一步在服务内部直接短路, 只多一次反查
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHostsForFieldChange(
+                FormKey.OPPORTUNITY.getKey(), request.getFieldId(), request.getIds(), organizationId);
         opportunityFieldService.batchUpdate(request, field, originOpportunities, Opportunity.class, LogModule.OPPORTUNITY_INDEX, extOpportunityMapper::batchUpdate, userId, organizationId);
+        // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+        statisticFieldService.refreshAfterRelatedChange(statisticScope, request.getIds());
     }
 
 
@@ -995,6 +1064,11 @@ public class OpportunityService extends BaseExportService {
                 extOpportunityMapper.moveDownStageOpportunity(pos, request.getStage(), DEFAULT_POS);
             }
         }
+
+        if (!stageAdvancedConfigService.checkStage(opportunity.getStage(), request.getStage(), FormKey.OPPORTUNITY.getKey())) {
+            return;
+        }
+
         Opportunity dragOpportunity = new Opportunity();
         dragOpportunity.setId(request.getDragNodeId());
         dragOpportunity.setPos(pos);
@@ -1003,6 +1077,7 @@ public class OpportunityService extends BaseExportService {
         dragOpportunity.setUpdateUser(userId);
         dragOpportunity.setUpdateTime(System.currentTimeMillis());
         opportunityMapper.updateById(dragOpportunity);
+        updateField(dragOpportunity, request.getFields(), userId);
     }
 
     public List<ChartResult> chart(ChartAnalysisRequest request, String userId, String orgId, DeptDataPermissionDTO deptDataPermission) {

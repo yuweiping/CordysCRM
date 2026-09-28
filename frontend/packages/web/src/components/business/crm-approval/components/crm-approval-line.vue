@@ -83,25 +83,27 @@
                       content-class="relative"
                     >
                       <template #trigger>
-                        <CrmTag type="info" theme="outline" tooltipDisabled @click.stop>
-                          {{ t('common.COUNTERSIGNATURE') }}
-                        </CrmTag>
+                        <CrmIcon
+                          type="iconicon_info_circle_filled"
+                          color="var(--warning-yellow)"
+                          :size="16"
+                          @click.stop
+                        />
                       </template>
                       <div class="flex h-full max-w-[400px] flex-col items-center gap-[8px] overflow-hidden">
                         <div class="mr-auto flex items-center gap-[8px]">
                           <CrmIcon type="iconicon_info_circle_filled" color="var(--warning-yellow)" :size="16" />
                           <div>{{ t('crm.approval.fallbackReason') }}</div>
                         </div>
-                        <n-scrollbar class="mb-[8px] max-h-[20vh]">
+                        <n-scrollbar class="mb-[8px] h-auto max-h-[20vh]">
                           <div class="w-full text-[var(--text-n4)]">{{ node.backReason }}</div>
                         </n-scrollbar>
-                        <n-scrollbar :content-style="{ maxHeight: 'calc(100% - 20vh)' }" class="flex-1">
-                          <CrmFileList
-                            v-if="node.backAttachments?.length > 0"
-                            :files="node.backAttachments"
-                            class="mt-[8px]"
-                            readonly
-                          />
+                        <n-scrollbar
+                          v-if="node.backAttachments?.length > 0"
+                          :content-style="{ maxHeight: 'calc(100% - 20vh)' }"
+                          class="flex-1"
+                        >
+                          <CrmFileList :files="node.backAttachments" class="mt-[8px]" readonly />
                         </n-scrollbar>
                       </div>
                     </n-popover>
@@ -159,16 +161,15 @@
                               <CrmIcon type="iconicon_info_circle_filled" color="var(--warning-yellow)" :size="16" />
                               <div>{{ t('crm.approval.addSign') }}</div>
                             </div>
-                            <n-scrollbar class="mb-[8px] max-h-[20vh]">
+                            <n-scrollbar class="mb-[8px] h-auto max-h-[20vh]">
                               <div class="w-full text-[var(--text-n4)]">{{ task.signComment }}</div>
                             </n-scrollbar>
-                            <n-scrollbar :content-style="{ maxHeight: 'calc(100% - 20vh)' }" class="flex-1">
-                              <CrmFileList
-                                v-if="task.signAttachments?.length > 0"
-                                :files="task.signAttachments"
-                                class="mt-[8px]"
-                                readonly
-                              />
+                            <n-scrollbar
+                              v-if="task.signAttachments?.length > 0"
+                              :content-style="{ maxHeight: 'calc(100% - 20vh)' }"
+                              class="flex-1"
+                            >
+                              <CrmFileList :files="task.signAttachments" class="mt-[8px]" readonly />
                             </n-scrollbar>
                           </div>
                         </n-popover>

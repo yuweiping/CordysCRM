@@ -90,6 +90,8 @@
     :detail="activeClue"
     :hidden-columns="hiddenColumns"
     @remove="removeItemFromList(activeClue?.id || '')"
+    @freeze="openFreezeModal('freeze')"
+    @unfreeze="openFreezeModal('unfreeze')"
   />
   <addOrEditPoolDrawer
     v-model:visible="drawerVisible"
@@ -113,6 +115,16 @@
     :ids="checkedRowKeys"
     :form-key="FormDesignKeyEnum.CLUE_POOL"
     @refresh="handleRefresh"
+  />
+  <CrmFreezeModal
+    v-if="activeRow && poolId"
+    v-model:show="freezeModalShow"
+    :type="freezeType"
+    :resource-name="activeRow.name"
+    :resource-id="activeRow.id"
+    :pool-id="poolId"
+    resource-type="lead"
+    @success="handleItemRefresh"
   />
 </template>
 
@@ -139,6 +151,8 @@
   import { BatchActionConfig } from '@/components/pure/crm-table/type';
   import CrmTableButton from '@/components/pure/crm-table-button/index.vue';
   import CrmBatchEditModal from '@/components/business/crm-batch-edit-modal/index.vue';
+  import CrmFreezeTag from '@/components/business/crm-freeze-modal/freezeTag.vue';
+  import CrmFreezeModal from '@/components/business/crm-freeze-modal/index.vue';
   import CrmImportButton from '@/components/business/crm-import-button/index.vue';
   import CrmOperationButton from '@/components/business/crm-operation-button/index.vue';
   import CrmTableExportModal from '@/components/business/crm-table-export-modal/index.vue';
@@ -436,7 +450,24 @@
     }
   }
 
+  const freezeModalShow = ref(false);
+  const freezeType = ref<'freeze' | 'unfreeze'>('freeze');
+  const activeRow = ref();
+  const activeClue = ref<Partial<CluePoolListItem>>();
+
+  function openFreezeModal(type: 'freeze' | 'unfreeze') {
+    if (!activeRow.value && activeClue.value) {
+      activeRow.value = {
+        id: activeClue.value?.id,
+        name: activeClue.value?.name,
+      };
+    }
+    freezeType.value = type;
+    freezeModalShow.value = true;
+  }
+
   function handleActionSelect(row: CluePoolListItem, actionKey: string) {
+    activeRow.value = row;
     switch (actionKey) {
       case 'pop-claim':
         handleClaim(row);
@@ -447,12 +478,17 @@
       case 'delete':
         handleDelete(row);
         break;
+      case 'freeze':
+        openFreezeModal('freeze');
+        break;
+      case 'unfreeze':
+        openFreezeModal('unfreeze');
+        break;
       default:
         break;
     }
   }
 
-  const activeClue = ref<Partial<CluePoolListItem>>();
   const activeTab = ref();
   const handleAdvanceFilter = ref<null | ((...args: any[]) => void)>(null);
   const handleSearchData = ref<null | ((...args: any[]) => void)>(null);
@@ -474,36 +510,46 @@
             h(
               CrmOperationButton,
               {
-                groupList: [
-                  {
-                    label: t('common.claim'),
-                    key: 'claim',
-                    permission: ['CLUE_MANAGEMENT_POOL:PICK'],
-                    popConfirmProps: {
-                      loading: claimLoading.value,
-                      title: t('clue.claimTip', { name: characterLimit(row.name) }),
-                      positiveText: t('common.claim'),
-                      iconType: 'primary',
+                groupList: (
+                  [
+                    {
+                      label: t('common.claim'),
+                      key: 'claim',
+                      permission: ['CLUE_MANAGEMENT_POOL:PICK'],
+                      popConfirmProps: {
+                        loading: claimLoading.value,
+                        title: t('clue.claimTip', { name: characterLimit(row.name) }),
+                        positiveText: t('common.claim'),
+                        iconType: 'primary',
+                      },
                     },
-                  },
-                  {
-                    label: t('common.distribute'),
-                    key: 'distribute',
-                    permission: ['CLUE_MANAGEMENT_POOL:ASSIGN'],
-                    popConfirmProps: {
-                      loading: distributeLoading.value,
-                      title: t('common.distribute'),
-                      positiveText: t('common.confirm'),
-                      iconType: 'primary',
+                    {
+                      label: t('common.distribute'),
+                      key: 'distribute',
+                      permission: ['CLUE_MANAGEMENT_POOL:ASSIGN'],
+                      popConfirmProps: {
+                        loading: distributeLoading.value,
+                        title: t('common.distribute'),
+                        positiveText: t('common.confirm'),
+                        iconType: 'primary',
+                      },
+                      popSlotContent: 'distributePopContent',
                     },
-                    popSlotContent: 'distributePopContent',
-                  },
-                  {
-                    label: t('common.delete'),
-                    key: 'delete',
-                    permission: ['CLUE_MANAGEMENT_POOL:DELETE'],
-                  },
-                ],
+                    {
+                      label: t(row.frozen ? 'common.unfreeze' : 'common.freeze'),
+                      key: row.frozen ? 'unfreeze' : 'freeze',
+                      permission: ['CLUE_MANAGEMENT_POOL:FREEZE'],
+                    },
+                    {
+                      label: t('common.delete'),
+                      key: 'delete',
+                      permission: ['CLUE_MANAGEMENT_POOL:DELETE'],
+                    },
+                  ] as ActionsItem[]
+                ).filter(
+                  (item) =>
+                    item.key && !(row.frozen ? ['freeze', 'claim', 'distribute'] : ['unfreeze']).includes(item.key)
+                ),
                 onSelect: (key: string) => handleActionSelect(row, key),
                 onCancel: () => {
                   distributeForm.value = { ...defaultTransferForm };
@@ -522,19 +568,36 @@
         },
     specialRender: {
       name: (row: CluePoolListItem) => {
-        return props.isLimitShowDetail && row.hasPermission === false
-          ? h(CrmNameTooltip, { text: row.name })
-          : h(
-              CrmTableButton,
-              {
-                onClick: () => {
-                  activeClue.value = row;
-                  poolId.value = row.poolId ?? poolId.value;
-                  showOverviewDrawer.value = true;
+        const nameNode =
+          props.isLimitShowDetail && row.hasPermission === false
+            ? h(CrmNameTooltip, { text: row.name })
+            : h(
+                CrmTableButton,
+                {
+                  onClick: () => {
+                    activeClue.value = row;
+                    poolId.value = row.poolId ?? poolId.value;
+                    showOverviewDrawer.value = true;
+                  },
                 },
-              },
-              { default: () => row.name, trigger: () => row.name }
-            );
+                { default: () => row.name, trigger: () => row.name }
+              );
+
+        return h('div', { class: 'flex max-w-full items-center gap-[12px]' }, [
+          h('div', { class: 'min-w-0 flex-1 overflow-hidden' }, [nameNode]),
+          row.frozen
+            ? h(
+                'div',
+                { class: 'flex-shrink-0' },
+                h(CrmFreezeTag, {
+                  resourceType: 'lead',
+                  freezeType: row.unfreezeTime ? 'custom' : 'freezeForever',
+                  unfreezeTime: row.unfreezeTime,
+                  freezeReason: row.freezeReason,
+                })
+              )
+            : null,
+        ]);
       },
     },
     permission: ['CLUE_MANAGEMENT_POOL:PICK', 'CLUE_MANAGEMENT_POOL:ASSIGN', 'CLUE_MANAGEMENT_POOL:DELETE'],
@@ -544,10 +607,16 @@
 
   const { propsRes, propsEvent, tableQueryParams, loadList, setLoadListParams, setAdvanceFilter } = useTableRes;
 
+  const hasPageInit = ref(false);
   function handleSorterChange(sorter: SortParams) {
     if (poolId.value) {
+      hasPageInit.value = true;
       setLoadListParams({ keyword: keyword.value, poolId: poolId.value, viewId: activeTab.value });
-      propsEvent.value.sorterChange(sorter);
+      nextTick(() => {
+        propsEvent.value.sorterChange(sorter);
+      });
+    } else {
+      hasPageInit.value = false;
     }
   }
 
@@ -589,6 +658,10 @@
     }
   }
 
+  function handleItemRefresh(id: string) {
+    searchData(undefined, undefined, id);
+  }
+
   function handlePoolChange(e: string) {
     checkedRowKeys.value = [];
     searchData(undefined, e);
@@ -598,6 +671,14 @@
     try {
       cluePoolOptions.value = await getPoolOptions();
       poolId.value = cluePoolOptions.value[0]?.id || '';
+      if (!hasPageInit.value) {
+        setLoadListParams({
+          keyword: keyword.value,
+          viewId: activeTab.value,
+          poolId: poolId.value,
+        });
+        nextTick(() => loadList());
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(error);

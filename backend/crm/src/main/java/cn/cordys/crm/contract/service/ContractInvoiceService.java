@@ -66,6 +66,8 @@ import cn.cordys.crm.system.service.DictService;
 import cn.cordys.crm.system.service.LogService;
 import cn.cordys.crm.system.service.ModuleFormCacheService;
 import cn.cordys.crm.system.service.ModuleFormService;
+import cn.cordys.crm.system.service.StatisticFieldService;
+import cn.cordys.crm.system.service.StatisticFieldService.StatisticHostScope;
 import cn.cordys.excel.utils.EasyExcelExporter;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -100,6 +102,8 @@ public class ContractInvoiceService extends BaseExportService implements Approva
 
     @Resource
     private ContractInvoiceFieldService invoiceFieldService;
+    @Resource
+    private StatisticFieldService statisticFieldService;
     @Resource
     private BaseMapper<ContractInvoice> invoiceMapper;
     @Resource
@@ -213,6 +217,10 @@ public class ContractInvoiceService extends BaseExportService implements Approva
         invoiceFieldService.saveModuleField(invoice, orgId, operatorId, moduleFields, false);
         invoiceMapper.insert(invoice);
 
+        // 统计字段: 本条记录刚建好, 先按各统计字段的空值口径把值行落一次
+        statisticFieldService.refreshDataStatisticFields(FormKey.INVOICE.getKey(), invoice.getId(), orgId);
+        // 统计字段: 新数据可能关联到了别的表单记录, 被关联记录的统计值要跟着重算
+        statisticFieldService.refreshByRelatedDataChange(FormKey.INVOICE.getKey(), invoice.getId(), orgId);
         baseService.handleAddLogWithSubTable(invoice, moduleFields, Translator.get("products_info"), moduleFormConfigDTO);
         OperationLogContext.getContext().setResourceName(invoice.getName());
         OperationLogContext.getContext().setResourceId(invoice.getId());
@@ -278,8 +286,14 @@ public class ContractInvoiceService extends BaseExportService implements Approva
             invoice.setCreateTime(originContractInvoice.getCreateTime());
             invoice.setApprovalStatus(originContractInvoice.getApprovalStatus());
 
+            // 统计字段: 关联字段在下面会被覆盖, 改之前先把它当前指向的宿主捕下来 ——
+            // 改成别的关联对象时, 变更前那条宿主的统计值会偏大, 而改完就再也查不出它了
+            StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                    FormKey.INVOICE.getKey(), List.of(request.getId()), orgId);
             updateFields(moduleFields, invoice, orgId, userId);
             invoiceMapper.update(invoice);
+            // 统计字段: 改前改后关联到的宿主记录都要重算(关联没动时这两批是同一批, 去重后只算一次)
+            statisticFieldService.refreshAfterRelatedChange(statisticScope, List.of(request.getId()));
             //删除快照
             LambdaQueryWrapper<ContractInvoiceSnapshot> delWrapper = new LambdaQueryWrapper<>();
             delWrapper.eq(ContractInvoiceSnapshot::getInvoiceId, request.getId());
@@ -342,6 +356,9 @@ public class ContractInvoiceService extends BaseExportService implements Approva
             throw new GenericException(Translator.get("invoice.not.exist"));
         }
 
+        // 删除会同时毁掉关联字段的值, 所以「这张发票关联了谁」只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.INVOICE.getKey(), List.of(id), orgId);
         invoiceFieldService.deleteByResourceId(id);
         invoiceMapper.deleteByPrimaryKey(id);
 
@@ -349,6 +366,8 @@ public class ContractInvoiceService extends BaseExportService implements Approva
         LambdaQueryWrapper<ContractInvoiceSnapshot> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContractInvoiceSnapshot::getInvoiceId, id);
         snapshotBaseMapper.deleteByLambda(wrapper);
+        // 删完再重算, 此时被删的那条已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         // 添加日志上下文
         OperationLogContext.setResourceName(invoice.getName());
@@ -427,6 +446,7 @@ public class ContractInvoiceService extends BaseExportService implements Approva
         if (Strings.CI.equals(getResponse.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
             Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
             getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
+            getResponse.setSubmitterId(baseService.getApprovingResourceSubmitterId(getResponse.getId()));
         }
         getResponse.setApproved(contractInvoice.getApproved());
         return getResponse;
@@ -451,6 +471,7 @@ public class ContractInvoiceService extends BaseExportService implements Approva
             if (Strings.CI.equals(getResponse.getApprovalStatus(), ApprovalStatus.APPROVING.name())) {
                 Map<String, Boolean> firstNodeApproved = baseService.getApprovingResourceFirstNodeApproved(List.of(getResponse.getId()), orgId);
                 getResponse.setFirstApproved(firstNodeApproved.get(getResponse.getId()));
+                getResponse.setSubmitterId(baseService.getApprovingResourceSubmitterId(getResponse.getId()));
             }
             getResponse.setApproved(contractInvoice.getApproved());
             return getResponse;
@@ -487,6 +508,8 @@ public class ContractInvoiceService extends BaseExportService implements Approva
 
         List<String> approvingResourceIds = list.stream().filter(item -> Strings.CI.contains(item.getApprovalStatus(), ApprovalStatus.APPROVING.name())).map(ContractInvoiceListResponse::getId).toList();
         Map<String, Boolean> firstNodeApprovedMap = baseService.getApprovingResourceFirstNodeApproved(approvingResourceIds, orgId);
+        // 提审人仅存在于审批中的发票, 非审批中状态无需查询审批实例, 统一返回空
+        Map<String, String> submitterIdMap = baseService.getApprovingResourceSubmitterIds(approvingResourceIds);
 
         list.forEach(item -> {
             UserDeptDTO userDeptDTO = userDeptMap.get(item.getOwner());
@@ -502,6 +525,7 @@ public class ContractInvoiceService extends BaseExportService implements Approva
             List<BaseModuleFieldValue> invoiceFields = resolvefieldValueMap.get(item.getId());
             item.setModuleFields(invoiceFields);
             item.setFirstApproved(firstNodeApprovedMap.get(item.getId()));
+            item.setSubmitterId(submitterIdMap.get(item.getId()));
         });
         return baseService.setCreateUpdateOwnerUserName(list);
     }
@@ -632,7 +656,14 @@ public class ContractInvoiceService extends BaseExportService implements Approva
         List<ContractInvoice> deleteInvoices = permittedInvoices.stream()
                 .filter(i -> deleteIds.contains(i.getId()))
                 .toList();
+        // 捕的是审批分流之后真正要删的 deleteIds, 不是 permittedIds —— 走审批的那批此刻并没删掉,
+        // 捕了就是白捕, 而且审批通过后还会由审批侧再删一次, 那次自会重算。
+        // 删除会同时毁掉关联字段的值, 所以只能删前先捕; 重算又要等删完才准。
+        StatisticHostScope statisticScope = statisticFieldService.captureRelatedHosts(
+                FormKey.INVOICE.getKey(), deleteIds, orgId);
         contractInvoiceMapper.deleteByIds(deleteIds);
+        // 删完再重算, 此时被删的那批已经不在, 不会被统计进去。
+        statisticFieldService.refreshAfterRelatedDelete(statisticScope);
 
         List<LogDTO> logs = deleteInvoices.stream()
                 .map(invoice ->

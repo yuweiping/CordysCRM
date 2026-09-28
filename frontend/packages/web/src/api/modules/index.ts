@@ -84,6 +84,7 @@ export const {
   exportCustomFormAll,
   exportCustomFormSelected,
   getCustomFormCreatePermission,
+  refreshStatistic,
 } = customFormApi;
 
 export const {
@@ -272,6 +273,8 @@ export const {
   batchVoided,
   batchUpdateQuotation,
   downloadQuotation,
+  saveOptAdvanceConfig,
+  switchOptCirculationType,
 } = opportunityApi;
 
 export const {
@@ -281,6 +284,8 @@ export const {
   updateClue,
   deleteClue,
   assignClue,
+  freezeClue,
+  unfreezeClue,
   getClueTab,
   importLead,
   importPoolLead,
@@ -409,6 +414,8 @@ export const {
   switchCustomerOpenSea,
   deleteCustomerOpenSea,
   assignOpenSeaCustomer,
+  freezeOpenSeaCustomer,
+  unfreezeOpenSeaCustomer,
   deleteOpenSeaCustomer,
   getCustomerHeaderList,
   getCustomerContactTab,
@@ -753,6 +760,8 @@ export const {
   downloadAttachment,
   getCustomerPoolPage,
   getFormDesignConfig,
+  getFormDetailTabOptions,
+  getFormDetailTabPage,
   getFieldDeptUerTree,
   getFieldContactList,
   getFieldProductList,
@@ -785,6 +794,7 @@ export const {
 export const {
   addUser,
   syncOrg,
+  getSyncThirdOrg,
   updateUser,
   deleteUser,
   getUserList,
@@ -801,6 +811,8 @@ export const {
   renameDepartment,
   deleteDepartment,
   getDepartmentTree,
+  getSyncScheduleConfig,
+  saveSyncScheduleConfig,
   resetUserPassword,
   updateOrgUserName,
   importUserPreCheck,

@@ -7,7 +7,7 @@ import { useI18n } from '@lib/shared/hooks/useI18n';
 import { formatNumberValueToString, transformData } from '@lib/shared/method/formCreate';
 import type { CustomFormDetail } from '@lib/shared/models/customForm';
 import type { StageConfigItem } from '@lib/shared/models/opportunity';
-import type { FormDesignConfigDetailParams } from '@lib/shared/models/system/module';
+import type { FormDesignConfigDetailParams, FormDetailTabPageQuery } from '@lib/shared/models/system/module';
 
 import type { CrmDataTableColumn } from '@/components/pure/crm-table/type';
 import useTable from '@/components/pure/crm-table/useTable';
@@ -19,6 +19,7 @@ import {
 import type { FormCreateField } from '@/components/business/crm-form-create/types';
 import { formatFormulaResultValue } from '@/components/business/crm-formula/utils';
 
+import { getFormDetailTabPage } from '@/api/modules';
 import { followPlanStatus } from '@/config/follow';
 import useFormCreateAdvanceFilter from '@/hooks/useFormCreateAdvanceFilter';
 import useUserStore from '@/store/modules/user';
@@ -77,6 +78,11 @@ export interface FormCreateTableProps {
   hiddenRefresh?: boolean;
   enableApproval?: Ref<boolean>;
   customFormId?: Ref<string | undefined>; // 自定义表单id
+  tableKey?: TableKeyEnum | string; // 覆盖默认列缓存 key，用于隔离嵌入式表格的列配置
+  hideOperationColumn?: boolean; // 不生成操作列，不影响 readonly 在既有列表中的行为
+  detailTabResourceId?: string; // 详情关联标签所在详情记录的 ID，传入后改用专用分页接口。
+  detailTabPageFormId?: string; // 当前详情表单 ID，用于确定详情标签分页接口路径。
+  detailTabQuery?: FormDetailTabPageQuery; // 详情关联标签的关联表单、关联字段查询条件。
 }
 
 export default async function useFormCreateTable(props: FormCreateTableProps) {
@@ -472,7 +478,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
               ellipsis: {
                 tooltip: true,
               },
-              render: (row: any) => formatNumberValueToString(row[key], field),
+              render: (row: any) => row[key],
               sortOrder: false,
               sorter: sorter && !field.resourceFieldId,
               filedType: field.type,
@@ -522,6 +528,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
             sorter: !noSorterType.includes(field.type) && !field.resourceFieldId ? sorter : false,
             filedType: field.type,
             resourceFieldId: field.resourceFieldId,
+            render: (row: any) => (row[key] === null && field.type === FieldTypeEnum.STATISTIC ? '-' : row[key]),
           };
         });
 
@@ -565,9 +572,9 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
         columnSelectorDisabled: true,
         render: (row: any, rowIndex: number) => rowIndex + 1,
       });
-      if (!_readOnly && !props.readonly && operationColumn) {
+      if (!_readOnly && !props.readonly && !props.hideOperationColumn && operationColumn) {
         columns.value.push(operationColumn);
-      } else if (!_readOnly && !props.readonly && props.operationColumn) {
+      } else if (!_readOnly && !props.readonly && !props.hideOperationColumn && props.operationColumn) {
         columns.value.push(props.operationColumn);
       }
       customFieldsFilterConfig.value = getFilterListConfig(res);
@@ -581,12 +588,26 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
 
   await initFormConfig();
 
+  const { detailTabResourceId, detailTabPageFormId } = props;
+  const listApi = (() => {
+    if (!detailTabResourceId) {
+      return getFormListApiMap[props.formKey];
+    }
+
+    if (!detailTabPageFormId) {
+      throw new Error('detail tab requires detailTabPageFormId');
+    }
+
+    return (data: any) => getFormDetailTabPage(detailTabPageFormId, detailTabResourceId, data);
+  })();
+
   const useTableRes = useTable(
-    getFormListApiMap[props.formKey],
+    listApi,
     {
       tableKey:
-        props.formKey === FormDesignKeyEnum.CUSTOM_FORM ? props.customFormId?.value : tableKeyMap[props.formKey],
-      showSetting: !!tableKeyMap[props.formKey],
+        props.tableKey ||
+        (props.formKey === FormDesignKeyEnum.CUSTOM_FORM ? props.customFormId?.value : tableKeyMap[props.formKey]),
+      showSetting: !!props.tableKey || !!tableKeyMap[props.formKey],
       showPagination,
       columns: columns.value,
       permission: props.permission,
@@ -595,6 +616,7 @@ export default async function useFormCreateTable(props: FormCreateTableProps) {
       hiddenTotal: props.hiddenTotal,
       hiddenAllScreen: props.hiddenAllScreen,
       hiddenRefresh: props.hiddenRefresh,
+      contextQueryParams: props.detailTabQuery,
     },
     (item, originalData) => {
       return transformData({

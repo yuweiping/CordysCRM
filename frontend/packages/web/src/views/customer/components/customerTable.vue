@@ -66,7 +66,7 @@
     </template>
     <template #view>
       <CrmViewSelect
-        v-if="!props.hiddenAdvanceFilter"
+        v-if="!props.hiddenAdvanceFilter && !props.detailTabResourceId"
         v-model:active-tab="activeTab"
         :type="FormDesignKeyEnum.CUSTOMER"
         :custom-fields-config-list="customFieldsFilterConfig"
@@ -91,6 +91,7 @@
     @saved="searchData(undefined, activeSourceId)"
     @deleted="removeItemFromList(activeSourceId)"
     @transfer="searchData"
+    @refresh="searchData(undefined, activeSourceId)"
   />
   <CrmFormCreateDrawer
     v-model:visible="formCreateDrawerVisible"
@@ -144,6 +145,7 @@
   import useLocale from '@lib/shared/locale/useLocale';
   import { characterLimit } from '@lib/shared/method';
   import { ExportTableColumnItem } from '@lib/shared/models/common';
+  import { FormDetailTabQuery } from '@lib/shared/models/system/module';
 
   import CrmAdvanceFilter from '@/components/pure/crm-advance-filter/index.vue';
   import { FilterForm, FilterFormItem, FilterResult } from '@/components/pure/crm-advance-filter/type';
@@ -191,6 +193,11 @@
     readonly?: boolean;
     isLimitShowDetail?: boolean; // 是否根据权限限查看详情
     hiddenTotal?: boolean;
+    detailTabResourceId?: string;
+    detailTabQuery?: FormDetailTabQuery;
+    detailTabPageFormId?: string;
+    tableKey?: string;
+    hideOperationColumn?: boolean;
   }>();
 
   const emit = defineEmits<{
@@ -512,6 +519,11 @@
   });
   const { useTableRes, customFieldsFilterConfig, fieldList } = await useFormCreateTable({
     formKey: props.formKey,
+    tableKey: props.tableKey,
+    detailTabResourceId: props.detailTabResourceId,
+    detailTabPageFormId: props.detailTabPageFormId,
+    detailTabQuery: props.detailTabQuery,
+    hideOperationColumn: props.hideOperationColumn,
     disabledSelection: (row: any) => {
       return row.collaborationType === 'READ_ONLY';
     },
@@ -701,7 +713,10 @@
   const tableAdvanceFilterRef = ref<InstanceType<typeof CrmAdvanceFilter>>();
 
   function searchData(val?: string, refreshId?: string) {
-    setLoadListParams({ keyword: val ?? keyword.value, viewId: activeTab.value });
+    setLoadListParams({
+      keyword: val ?? keyword.value,
+      ...(props.detailTabResourceId ? {} : { viewId: activeTab.value }),
+    });
     loadList(false, refreshId);
     if (!refreshId) {
       crmTableRef.value?.scrollTo({ top: 0 });
@@ -747,7 +762,10 @@
     (val) => {
       if (val) {
         checkedRowKeys.value = [];
-        setLoadListParams({ keyword: keyword.value, viewId: getChartViewId() ?? activeTab.value });
+        setLoadListParams({
+          keyword: keyword.value,
+          viewId: getChartViewId() ?? activeTab.value,
+        });
         initTableViewChartParams(viewChartCallBack);
         crmTableRef.value?.setColumnSort(val);
       }
@@ -777,6 +795,16 @@
         removeItemFromList(val);
       }
     }
+  );
+
+  watch(
+    () => props.detailTabResourceId,
+    (resourceId) => {
+      if (resourceId) {
+        searchData();
+      }
+    },
+    { immediate: true, flush: 'post' }
   );
 
   onMounted(() => {

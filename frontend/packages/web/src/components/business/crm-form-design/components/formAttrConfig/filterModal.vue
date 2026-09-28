@@ -15,6 +15,7 @@
         :left-fields="realFieldList"
         :right-fields="realRightFields"
         :data-index-placeholder="dataIndexPlaceholder"
+        :match-value-only="props.matchValueOnly"
         :self-id="props.fieldConfig.id"
       />
     </n-scrollbar>
@@ -33,6 +34,7 @@
   import {
     getCustomDataSourceName,
     getDataSourceFormKey,
+    getDataSourceType,
     isCustomDataSourceType,
   } from '@/components/business/crm-data-source-select/utils';
   import { dataSourceFilterFormKeyMap } from '@/components/business/crm-form-create/config';
@@ -58,6 +60,9 @@
     formFields: FormCreateField[];
     formKey: FormDesignKeyEnum;
     customDataSourceForms: CustomFormItem[];
+    fieldSource?: 'dataSource' | 'statisticTarget' | 'currentForm';
+    matchValueOnly?: boolean;
+    combineSearchFieldKey?: keyof FormCreateField;
   }>();
 
   const emit = defineEmits<{
@@ -70,12 +75,19 @@
   };
 
   const formModel = ref<DataSourceFilterCombine>(
-    cloneDeep(props.fieldConfig.combineSearch) || cloneDeep(defaultFormModel)
+    cloneDeep(props.fieldConfig[props.combineSearchFieldKey || 'combineSearch']) || cloneDeep(defaultFormModel)
   );
-  const dataSourceType = computed(() => props.fieldConfig.dataSourceType);
+  const fieldSource = computed(() => props.fieldSource || 'dataSource');
+  const dataSourceType = computed(() =>
+    fieldSource.value === 'statisticTarget'
+      ? getDataSourceType(props.fieldConfig.targetFormId, dataSourceFilterFormKeyMap)
+      : props.fieldConfig.dataSourceType
+  );
   const isCustomForm = computed(() => isCustomDataSourceType(dataSourceType.value));
-  const formKey = computed<FormDesignKeyEnum>(
-    () => getDataSourceFormKey(dataSourceType.value, dataSourceFilterFormKeyMap, FormDesignKeyEnum.CUSTOMER)!
+  const formKey = computed<FormDesignKeyEnum>(() =>
+    fieldSource.value === 'currentForm'
+      ? props.formKey
+      : getDataSourceFormKey(dataSourceType.value, dataSourceFilterFormKeyMap, FormDesignKeyEnum.CUSTOMER)!
   );
 
   const { fieldList, initFormConfig } = useFormCreateApi({
@@ -164,16 +176,31 @@
     [FormDesignKeyEnum.INVOICE]: [...systemApprovalFieldList],
   }));
 
+  const currentSystemSpecialFieldList = computed(() => systemFieldMap.value[props.formKey] || []);
+  const filterSystemSpecialFieldList = computed(() => systemFieldMap.value[formKey.value] || []);
+
   const realFieldList = computed(() => {
-    const systemSpecialFieldList = systemFieldMap.value[formKey.value] || [];
-    return [...fieldList.value, ...systemSpecialFieldList];
+    const fields = fieldSource.value === 'currentForm' ? props.formFields : fieldList.value;
+    return [...fields, ...filterSystemSpecialFieldList.value];
   });
   const realRightFields = computed(() => {
-    const systemSpecialFieldList = systemFieldMap.value[formKey.value] || [];
-    return [...props.formFields, ...systemSpecialFieldList];
+    return [...props.formFields, ...currentSystemSpecialFieldList.value];
   });
 
   const filterContentRef = ref<InstanceType<typeof FilterContent>>();
+
+  function normalizeMatchValueOnlyConditions(conditions: DataSourceFilterCombine['conditions']) {
+    if (!props.matchValueOnly) {
+      return conditions;
+    }
+    return conditions.map((condition) => ({
+      ...condition,
+      matchType: 'MATCH_VALUE' as const,
+      rightFieldId: undefined,
+      rightFieldCustom: true,
+      rightFieldType: FieldTypeEnum.INPUT,
+    }));
+  }
 
   function saveFilter() {
     filterContentRef.value?.formRef?.validate((errors) => {
@@ -217,20 +244,25 @@
     () => visible.value,
     async (val) => {
       if (val) {
-        await initFormConfig();
+        if (fieldSource.value !== 'currentForm') {
+          await initFormConfig();
+        }
         await initStageOptions();
-        formModel.value.conditions = cloneDeep(props.fieldConfig.combineSearch?.conditions) || [
-          {
-            leftFieldId: undefined,
-            leftFieldType: FieldTypeEnum.INPUT,
-            operator: undefined,
-            matchType: 'MATCH_FIELD',
-            rightFieldId: undefined,
-            rightFieldCustom: false,
-            rightFieldCustomValue: '',
-            rightFieldType: FieldTypeEnum.INPUT, // 默认右侧字段类型为输入框
-          },
-        ];
+        const conditions = props.fieldConfig[props.combineSearchFieldKey || 'combineSearch']?.conditions.length
+          ? cloneDeep(props.fieldConfig[props.combineSearchFieldKey || 'combineSearch']?.conditions)
+          : [
+              {
+                leftFieldId: undefined,
+                leftFieldType: FieldTypeEnum.INPUT,
+                operator: undefined,
+                matchType: props.matchValueOnly ? 'MATCH_VALUE' : 'MATCH_FIELD',
+                rightFieldId: undefined,
+                rightFieldCustom: !!props.matchValueOnly,
+                rightFieldCustomValue: '',
+                rightFieldType: FieldTypeEnum.INPUT, // 默认右侧字段类型为输入框
+              },
+            ];
+        formModel.value.conditions = normalizeMatchValueOnlyConditions(conditions);
       }
     },
     {

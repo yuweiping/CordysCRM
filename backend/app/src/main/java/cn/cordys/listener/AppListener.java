@@ -84,7 +84,6 @@ class AppListener implements ApplicationRunner {
         log.info("===== 完成初始化配置 =====");
     }
 
-
     /**
      * 初始化 RSA 配置。
      * <p>

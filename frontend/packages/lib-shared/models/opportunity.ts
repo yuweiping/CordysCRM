@@ -84,8 +84,8 @@ export interface UpdateStageBaseParams {
   name: string;
 }
 
-export interface UpdateOpportunityStageParams {
-  rate: string;
+export interface UpdateOpportunityStageParams extends UpdateStageParams {
+  rate?: string;
 }
 
 export interface UpdateOpportunityStageRollbackParams {
@@ -140,6 +140,7 @@ export interface QuotationItem {
   id: string;
   name: string;
   approved?: boolean;
+  submitterId?: string;
   approvalStatus: ProcessStatusEnum;
   invalid: boolean;
   opportunityId: string;
@@ -199,6 +200,7 @@ export interface CirculationFieldValueItem {
   fieldValue: any;
   required: boolean;
   valueType: CirculationValueTypeEnum;
+  dateDefaultType?: 'custom' | 'current';
   // 前端渲染使用
   fieldProps?: FormCreateField;
 }

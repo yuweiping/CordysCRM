@@ -28,15 +28,20 @@
       </van-button>
     </div>
     <CrmList
-      v-if="openSeaList.length"
       ref="crmListRef"
       :list-params="listParams"
       :load-list-api="getOpenSeaCustomerList"
       class="p-[16px]"
       :item-gap="16"
+      :immediateCheck="false"
     >
       <template #item="{ item }">
-        <CrmListCommonItem :item="item" :actions="actions" @click="goDetail"></CrmListCommonItem>
+        <CrmListCommonItem
+          :item="item"
+          :actions="actions"
+          resource-type="customer"
+          @click="goDetail"
+        ></CrmListCommonItem>
       </template>
     </CrmList>
   </div>
@@ -73,6 +78,7 @@
   });
   const actions = [
     {
+      key: 'pick',
       label: t('common.pick'),
       icon: 'iconicon_user_add',
       permission: ['CUSTOMER_MANAGEMENT_POOL:PICK'],
@@ -95,6 +101,7 @@
       },
     },
     {
+      key: 'distribute',
       label: t('common.distribute'),
       icon: 'iconicon_swap',
       permission: ['CUSTOMER_MANAGEMENT_POOL:ASSIGN'],

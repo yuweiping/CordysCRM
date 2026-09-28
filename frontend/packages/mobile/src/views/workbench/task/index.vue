@@ -76,7 +76,7 @@
                 <div class="flex w-[32px] items-center">
                   <CrmAvatar :text="item.applicant" :size="32" />
                 </div>
-                <div class="flex w-full flex-col gap-[2px]">
+                <div class="flex w-[calc(100%-40px)] flex-col gap-[2px]">
                   <div class="flex items-center justify-between">
                     <div class="one-line-text flex-1">{{ item.applicant }}</div>
                     <div class="flex items-center gap-[8px]">
@@ -150,7 +150,7 @@
   import CrmAvatar from '@/components/business/crm-avatar/index.vue';
   import CrmIcon from '@/components/pure/crm-icon-font/index.vue';
   import ApprovalPopup from '../approval/approvalPopup.vue';
-  import ApprovalStatus from '../approval/approvalStatus.vue';
+  import ApprovalStatus from '@/components/business/crm-approval/crm-approval-status.vue';
 
   import {
     getApprovalConfigDetail,

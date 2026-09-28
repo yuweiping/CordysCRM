@@ -12,6 +12,7 @@
             :origin-form-detail="originFormDetail"
             :form-detail="formDetail"
             :need-init-detail="route.query.needInitDetail === 'Y'"
+            :source-id="route.query.id"
             @change="($event: any) => handleFieldChange($event, item)"
           />
         </template>
@@ -153,6 +154,9 @@
     if (type === FieldTypeEnum.INDUSTRY) {
       return CrmFormCreateComponents.advancedComponents.industry;
     }
+    if (type === FieldTypeEnum.STATISTIC) {
+      return CrmFormCreateComponents.advancedComponents.statistic;
+    }
   }
 
   function handleFieldChange(value: any, item: FormCreateField) {
@@ -166,14 +170,20 @@
     try {
       await formRef.value?.validate();
       const result = cloneDeep(formDetail.value);
-      mobileFieldList.value.forEach((item) => {
+      fieldList.value.forEach((item) => {
         if (item.type === FieldTypeEnum.DATA_SOURCE && Array.isArray(result[item.id])) {
           // 处理数据源字段，单选传单个值
-          result[item.id] = result[item.id]?.[0];
+          result[item.id] = result[item.id]?.[0] || '';
         }
         if (item.type === FieldTypeEnum.PHONE) {
           // 去空格
           result[item.id] = result[item.id]?.replace(/[\s\uFEFF\xA0]+/g, '');
+        }
+        if (item.type === FieldTypeEnum.INPUT_NUMBER && result[item.id] === '-') {
+          result[item.id] = null;
+        }
+        if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(item.type)) {
+          result[item.id] = result[item.id] || [];
         }
       });
       saveForm(result, () => router.back());

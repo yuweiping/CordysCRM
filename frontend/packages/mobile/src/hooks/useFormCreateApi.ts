@@ -9,6 +9,7 @@ import {
   dataSourceTypes,
   departmentTypes,
   formatFormulaResultValue,
+  formatNumberValueToString,
   getNormalFieldValue,
   linkAllAcceptTypes,
   memberTypes,
@@ -465,6 +466,9 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
     ) {
       return value ? [value] : [];
     }
+    if ([FieldTypeEnum.SUB_PRICE, FieldTypeEnum.SUB_PRODUCT].includes(field.type)) {
+      return value || [];
+    }
     return value;
   }
 
@@ -504,6 +508,8 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           const field = res.moduleFields?.find((moduleField: ModuleField) => moduleField.fieldId === item.id);
           if (field) {
             formDetail.value[item.id] = initFieldValue(item, field.fieldValue);
+          } else {
+            formDetail.value[item.id] = initFieldValue(item, '');
           }
           const options = res.optionMap?.[item.id];
           if (
@@ -530,6 +536,11 @@ export default function useFormCreateApi(props: FormCreateApiProps) {
           formDetail.value[item.id] = formDetail.value[item.id] ? Number(formDetail.value[item.id]) : '';
         } else if (item.type === FieldTypeEnum.ATTACHMENT) {
           item.initialOptions = res.attachmentMap?.[item.id];
+        } else if (item.type === FieldTypeEnum.INPUT_NUMBER || item.type === FieldTypeEnum.STATISTIC) {
+          formDetail.value[item.businessKey || item.id] = formatNumberValueToString(
+            formDetail.value[item.businessKey || item.id],
+            item
+          );
         }
         return item;
       });

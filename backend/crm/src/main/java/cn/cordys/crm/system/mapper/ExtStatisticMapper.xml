@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.cordys.crm.system.mapper.ExtStatisticMapper">
+
+    <!--
+        统计字段刷新用的字段配置与字段值读写。
+
+        这里的语句都与「条件怎么筛」无关: 表名、列名全是调用方传进来的参数, 不依赖任何一张表单的字段定义。
+        筛选与聚合曾经也在这里(一套通用片段渲染所有表单), 已经按表单下放到各资源 Mapper ——
+        同一个条件名在不同表单上落到哪个列只有那张表单的 Mapper 知道, 集中在一处必然猜错。
+        需要聚合语句时找 {@code StatisticSqlMapperRegistry}。
+    -->
+
+    <!--
+        指定表单上的统计字段 + 字段属性。
+
+        走索引: sys_module_form.organization_id -> idx_organization_id 先圈出本组织的表单,
+        form_key 再收一道(表单主键上没有 form_key 索引, 这里只是把范围写清楚, 真正的裁剪靠组织索引
+        已经圈出的那几行), 然后按 form_id 走 sys_module_field.idx_form_id_internal_key 的前缀取字段,
+        最后用主键(sys_module_field.id = sys_module_field_blob.id)拿属性。
+        type 一过滤, 剩下的行数就是手工配置的统计字段数量, 通常是个位数。
+
+        属性 JSON 里才写着「统计谁」, 这里不做 JSON 解析: 让 SQL 依赖 json_extract 既绑死数据库方言,
+        解析失败(属性被改坏)时也会静默返回空结果, 不如捞回 Java 里解析并记日志。
+    -->
+    <select id="selectStatisticFields" resultType="cn.cordys.crm.system.dto.StatisticFieldSourceDTO">
+        select mf.form_key as hostFormKey,
+               f.id        as fieldId,
+               b.prop      as prop
+        from sys_module_form mf
+                 inner join sys_module_field f on f.form_id = mf.id and f.type = #{fieldType}
+                 inner join sys_module_field_blob b on b.id = f.id
+        where mf.organization_id = #{orgId}
+          and mf.form_key in
+        <foreach collection="hostFormKeys" item="hostFormKey" open="(" separator="," close=")">
+            #{hostFormKey}
+        </foreach>
+    </select>
+
+    <!-- 字段对字段比较条件里的右值: 宿主表单某条数据的某个字段值 -->
+    <select id="selectFieldValue" resultType="java.lang.String">
+        select f.field_value
+        from
+        <choose>
+            <when test="blob">
+                `${blobTable}` f
+            </when>
+            <otherwise>
+                `${fieldTable}` f
+            </otherwise>
+        </choose>
+        where f.resource_id = #{resourceId} and f.field_id = #{fieldId}
+        limit 1
+    </select>
+
+    <!--
+        业务字段的值: 直接在数据表自己的列上取, 不经过字段值表。
+        列名来自 BusinessModuleField 枚举(闭集), 不是外部输入; 调用方拼进来之前已经校过字符集。
+    -->
+    <select id="selectBusinessFieldValue" resultType="java.lang.String">
+        select `${column}`
+        from `${dataTable}`
+        where id = #{id}
+        limit 1
+    </select>
+
+    <!--
+        一批数据ID里还存在的那些: 删除后重算前剔掉已被级联删掉的宿主记录, 免得给不存在的记录写值行。
+        调用方已按宿主表单分组, 所以这里是单表主键 in。
+    -->
+    <select id="selectExistingDataIds" resultType="java.lang.String">
+        select id
+        from `${dataTable}`
+        where id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <delete id="deleteFieldValue">
+        delete from `${fieldTable}` where field_id = #{fieldId} and resource_id = #{resourceId}
+    </delete>
+
+    <insert id="insertFieldValue">
+        insert into `${fieldTable}` (id, resource_id, field_id, field_value)
+        values (#{id}, #{resourceId}, #{fieldId}, #{fieldValue})
+    </insert>
+
+    <delete id="deleteFieldValuesByFieldId">
+        delete from `${fieldTable}` where field_id = #{fieldId}
+    </delete>
+
+</mapper>
